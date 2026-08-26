@@ -1430,8 +1430,8 @@ napi_value PlatformViewOHOSNapi::nativeSetViewportMetrics(
   LOGD("PlatformViewOHOSNapi::nativeSetViewportMetrics");
 
   napi_status ret;
-  size_t argc = 20;
-  napi_value args[20] = {nullptr};
+  size_t argc = 24;
+  napi_value args[24] = {nullptr};
   ret = napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
   if (ret != napi_ok) {
     LOGE("nativeSetViewportMetrics napi_get_cb_info error");
@@ -1632,6 +1632,42 @@ napi_value PlatformViewOHOSNapi::nativeSetViewportMetrics(
     LOGD(" %{public}ld", featurestate);
   }
 
+  // Display corner radii in physical pixels; -1 means the platform does not
+  // provide them (below API 23), mirroring flutter/flutter#179219.
+  double displayCornerRadiusTopLeft = -1.0;
+  double displayCornerRadiusTopRight = -1.0;
+  double displayCornerRadiusBottomRight = -1.0;
+  double displayCornerRadiusBottomLeft = -1.0;
+  if (argc > 20) {
+    ret = napi_get_value_double(env, args[20], &displayCornerRadiusTopLeft);
+    if (ret != napi_ok) {
+      LOGE("nativeSetViewportMetrics napi_get_value_double error");
+      return nullptr;
+    }
+    ret = napi_get_value_double(env, args[21], &displayCornerRadiusTopRight);
+    if (ret != napi_ok) {
+      LOGE("nativeSetViewportMetrics napi_get_value_double error");
+      return nullptr;
+    }
+    ret = napi_get_value_double(env, args[22], &displayCornerRadiusBottomRight);
+    if (ret != napi_ok) {
+      LOGE("nativeSetViewportMetrics napi_get_value_double error");
+      return nullptr;
+    }
+    ret = napi_get_value_double(env, args[23], &displayCornerRadiusBottomLeft);
+    if (ret != napi_ok) {
+      LOGE("nativeSetViewportMetrics napi_get_value_double error");
+      return nullptr;
+    }
+  }
+  // NOTE: hilog drops messages formatted with "%{public}lf" (the 'l' modifier
+  // is not supported for 'f'), so cast to int like the other metrics logs.
+  LOGD("nativeSetViewportMetrics::displayCornerRadii TL:%{public}ld TR:%{public}ld BR:%{public}ld BL:%{public}ld",
+       static_cast<int64_t>(displayCornerRadiusTopLeft),
+       static_cast<int64_t>(displayCornerRadiusTopRight),
+       static_cast<int64_t>(displayCornerRadiusBottomRight),
+       static_cast<int64_t>(displayCornerRadiusBottomLeft));
+
   flutter::ViewportMetrics metrics{
       static_cast<double>(devicePixelRatio),
       static_cast<double>(physicalWidth),
@@ -1658,10 +1694,10 @@ napi_value PlatformViewOHOSNapi::nativeSetViewportMetrics(
       std::vector<int>(displayFeaturesState.begin(),
                        displayFeaturesState.end()),
       0,     // Display ID
-      -1.0,  // physical_display_corner_radius_top_left
-      -1.0,  // physical_display_corner_radius_top_right
-      -1.0,  // physical_display_corner_radius_bottom_right
-      -1.0,  // physical_display_corner_radius_bottom_left
+      displayCornerRadiusTopLeft,
+      displayCornerRadiusTopRight,
+      displayCornerRadiusBottomRight,
+      displayCornerRadiusBottomLeft,
   };
 
   OHOS_SHELL_HOLDER->GetPlatformView()->SetViewportMetrics(

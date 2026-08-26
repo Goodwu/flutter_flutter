@@ -32,6 +32,8 @@ import { AUTOFILL_SUPPORT_API } from '../plugin/editing/OhosAutoFillHelper';
 const TAG = "FlutterViewTag";
 const EVENT_BACK_PRESS = 'EVENT_BACK_PRESS';
 const DPI_SCALE_RESET: number = -1;
+/** display.getRoundedCorner() is available since API 23 (flutter/flutter#179219). */
+const ROUNDED_CORNER_SUPPORT_API: number = 23;
 
 /**
  * Metrics describing the viewport dimensions and insets.
@@ -72,6 +74,18 @@ export class ViewportMetrics {
   physicalTouchSlop: number = -1;
   /** List of display features such as folds, hinges, or cutouts. */
   displayFeatures: ArrayList<DisplayFeature> = new ArrayList();
+  /**
+   * Display corner radius of the top-left corner in physical pixels,
+   * or -1 if the platform does not provide display corner radii.
+   * Mirrors flutter/flutter#179219 (Android RoundedCorner support).
+   */
+  displayCornerRadiusTopLeft: number = -1;
+  /** Display corner radius of the top-right corner in physical pixels, or -1 if unavailable. */
+  displayCornerRadiusTopRight: number = -1;
+  /** Display corner radius of the bottom-right corner in physical pixels, or -1 if unavailable. */
+  displayCornerRadiusBottomRight: number = -1;
+  /** Display corner radius of the bottom-left corner in physical pixels, or -1 if unavailable. */
+  displayCornerRadiusBottomLeft: number = -1;
 
   /**
    * Creates a deep copy of this ViewportMetrics instance.
@@ -96,6 +110,10 @@ export class ViewportMetrics {
     copy.systemGestureInsetLeft = this.systemGestureInsetLeft;
     copy.physicalTouchSlop = this.physicalTouchSlop;
     copy.displayFeatures = this.displayFeatures;
+    copy.displayCornerRadiusTopLeft = this.displayCornerRadiusTopLeft;
+    copy.displayCornerRadiusTopRight = this.displayCornerRadiusTopRight;
+    copy.displayCornerRadiusBottomRight = this.displayCornerRadiusBottomRight;
+    copy.displayCornerRadiusBottomLeft = this.displayCornerRadiusBottomLeft;
     return copy;
   }
 
@@ -121,7 +139,11 @@ export class ViewportMetrics {
       this.systemGestureInsetBottom === other.systemGestureInsetBottom &&
       this.systemGestureInsetLeft === other.systemGestureInsetLeft &&
       this.physicalTouchSlop === other.physicalTouchSlop &&
-      this.displayFeatures === other.displayFeatures;
+      this.displayFeatures === other.displayFeatures &&
+      this.displayCornerRadiusTopLeft === other.displayCornerRadiusTopLeft &&
+      this.displayCornerRadiusTopRight === other.displayCornerRadiusTopRight &&
+      this.displayCornerRadiusBottomRight === other.displayCornerRadiusBottomRight &&
+      this.displayCornerRadiusBottomLeft === other.displayCornerRadiusBottomLeft;
   }
 }
 
@@ -1345,8 +1367,63 @@ export class FlutterView {
     return false;
   }
 
+  /**
+   * Updates the display corner radii of the viewport metrics.
+   *
+   * Mirrors flutter/flutter#179219 (Android RoundedCorner support): on API levels that
+   * provide the data, corners not reported by the system (flat screens, virtual displays)
+   * resolve to 0; below API 23 the -1 sentinels are kept so the framework decodes
+   * MediaQuery.displayCornerRadii as null.
+   */
+  private updateDisplayCornerRadii(): void {
+    const displayInfo: display.Display = display.getDefaultDisplaySync();
+    if (deviceInfo.sdkApiVersion < ROUNDED_CORNER_SUPPORT_API ||
+        typeof (displayInfo as ESObject)?.getRoundedCorner !== 'function') {
+      return;
+    }
+    const cornerTypeTopLeft = 0;
+    const cornerTypeTopRight = 1;
+    const cornerTypeBottomRight = 2;
+    const cornerTypeBottomLeft = 3;
+    let corners: Array<ESObject>;
+    try {
+      corners = (displayInfo as ESObject)?.getRoundedCorner() as Array<ESObject>;
+    } catch (e) {
+      // Capability not supported on this display (BusinessError 801):
+      // keep the -1 sentinels so the framework treats the radii as unavailable.
+      Log.e(TAG, "updateDisplayCornerRadii error: " + JSON.stringify(e));
+      return;
+    }
+    this.viewportMetrics.displayCornerRadiusTopLeft = 0;
+    this.viewportMetrics.displayCornerRadiusTopRight = 0;
+    this.viewportMetrics.displayCornerRadiusBottomRight = 0;
+    this.viewportMetrics.displayCornerRadiusBottomLeft = 0;
+    for (let i = 0; i < corners.length; i++) {
+      const corner: ESObject = corners[i];
+      const cornerType = corner?.type as number;
+      const radius = corner?.radius as number;
+      switch (cornerType) {
+        case cornerTypeTopLeft:
+          this.viewportMetrics.displayCornerRadiusTopLeft = radius;
+          break;
+        case cornerTypeTopRight:
+          this.viewportMetrics.displayCornerRadiusTopRight = radius;
+          break;
+        case cornerTypeBottomRight:
+          this.viewportMetrics.displayCornerRadiusBottomRight = radius;
+          break;
+        case cornerTypeBottomLeft:
+          this.viewportMetrics.displayCornerRadiusBottomLeft = radius;
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
   private updateViewportMetrics(): boolean {
     if (this.isAttachedToFlutterEngine()) {
+      this.updateDisplayCornerRadii();
       const displayFeatures = this.viewportMetrics.displayFeatures;
       let displayFeatureBound: number[] = new Array(displayFeatures.length * 4);
       let displayFeatureType: number[] = new Array(displayFeatures.length);
@@ -1380,7 +1457,11 @@ export class FlutterView {
         this.viewportMetrics.physicalTouchSlop,
         displayFeatureBound,
         displayFeatureType,
-        displayFeatureStatus)
+        displayFeatureStatus,
+        this.viewportMetrics.displayCornerRadiusTopLeft,
+        this.viewportMetrics.displayCornerRadiusTopRight,
+        this.viewportMetrics.displayCornerRadiusBottomRight,
+        this.viewportMetrics.displayCornerRadiusBottomLeft)
       return true
     }
     return false
