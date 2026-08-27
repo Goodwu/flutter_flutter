@@ -461,6 +461,9 @@ export default class TouchEventProcessor {
       for (let index = length - 1; index >= 0; index--) {
         let dvModel = value.getDVModel().children[index]
         let params = dvModel.getLayoutParams() as Record<string, ESObject>;
+        if (params['hcpp'] === true) {
+          continue;
+        }
         let left = params['left'] as number ?? 0;
         let top = params['top'] as number ?? 0;
         let down = params['down'] as boolean ?? false;

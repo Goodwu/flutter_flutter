@@ -365,9 +365,6 @@ export default class PlatformViewsControllerHybrid implements HybridCompositionH
    */
   private frameDisplayOrder: number[] = [];
   private flutterNapi: FlutterNapi | null = null;
-  // hover 返投的 enter/exit 配对跟踪（dispatchHoverToEngine 防御 converter
-  // kRemove 对未知 device 的解引用）。鼠标 device 全局唯一，bool 足够。
-  private hoverInjected: boolean = false;
   /**
    * hover 配对跟踪（键 = overlay rect 的 viewId，值 = 该 rect 是否已注入 enter）。
    * 按 rect 跟踪后：exit 仅在"该 rect 确实 enter 过 且 没有其他 rect 仍处于
@@ -559,6 +556,8 @@ export default class PlatformViewsControllerHybrid implements HybridCompositionH
     this.viewWrappers.delete(viewId);
     this.displayOffsets.delete(viewId);
     this.overscrollOffsets.delete(viewId);
+    // 清 hover enter 残留，该 rect 的 Block 节点随 dispose清除
+    this.hoverInjectedRects.delete(viewId);
 
     try {
       platformView.dispose();
@@ -1504,7 +1503,6 @@ export default class PlatformViewsControllerHybrid implements HybridCompositionH
     // （兄弟 rect 已 enter）exit 吞掉，由兄弟的 kHover 维持引擎悬停态。
     if (isHover) {
       this.hoverInjectedRects.add(viewId);
-      this.hoverInjected = true;
     } else {
       if (!this.hoverInjectedRects.has(viewId)) {
         // 本 rect 无配对 enter；若全局也无任何活跃 enter，则必须拦下
@@ -1517,7 +1515,6 @@ export default class PlatformViewsControllerHybrid implements HybridCompositionH
         // 悬停态迁到新位置；注入 remove 会误杀其 MouseRegion。
         return;
       }
-      this.hoverInjected = false;
     }
 
     const item: TouchDataItem = {
@@ -1813,7 +1810,6 @@ export default class PlatformViewsControllerHybrid implements HybridCompositionH
     for (let viewId of Array.from(this.platformViews.keys())) {
       this.dispose(viewId);
     }
-    this.hoverInjected = false;
     this.hoverInjectedRects.clear();
     this.frameDisplayOrder = [];
     // 本引擎（或 isolate restart 后）不再持有 rects，清掉自己的 slice
