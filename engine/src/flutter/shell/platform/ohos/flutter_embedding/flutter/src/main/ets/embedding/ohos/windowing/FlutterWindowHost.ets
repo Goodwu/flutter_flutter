@@ -60,6 +60,11 @@ export abstract class FlutterWindowHost {
   abstract attach(): void;
 
   /**
+   * Applies this archetype's title-button decorations. Base no-op; only * hosts whose archetype needs decorations override this, such as Modelless Dialog which has no maximize button.
+   */
+  decorateTitleButtons(): void {}
+
+  /**
    * Attach failed after C++ CreateWindow already handed the view id to
    * Dart (so the Dart controller believes its window exists). Report via
    * the OS-close channel — native fires the same teardown a real OS close

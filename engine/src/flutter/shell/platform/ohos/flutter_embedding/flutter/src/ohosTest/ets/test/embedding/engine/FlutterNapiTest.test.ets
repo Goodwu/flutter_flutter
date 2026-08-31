@@ -198,7 +198,7 @@ export default function FlutterNapiTest() {
 
     it('createRegularAbilityAndBindEntryAbilityDelegateToManager', 0, async (done: Function) => {
       try {
-        flutterNapi.createRegularAbility(9120, 42, 300, 200, 'win');
+        flutterNapi.createRegularAbility(9120, 42, 300, 200, 'win', 1);
         flutterNapi.bindEntryAbilityToView(9121, 300, 200, 'adopted');
       } catch (e) {
       }

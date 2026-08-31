@@ -1065,12 +1065,11 @@ TEST_F(PlatformViewOHOSUt, NotifyDestroyForViewUnknownIsNoop) {
   EXPECT_EQ(delegate().schedule_frame_count(), 0);
 }
 
-TEST_F(PlatformViewOHOSUt, AddRemoveViewForWindowRoundTrip) {
-  view()->AddViewForWindow(3);
-  FlushTasks();
-  auto added = delegate().add_view_ids();
-  ASSERT_EQ(added.size(), 1u);
-  EXPECT_EQ(added[0], 3);
+// No Add counterpart here: OHOS adds views synchronously through
+// OHOSShellHolder::AddViewSync → engine->AddView (the Dart add_view callback
+// must complete before window creation continues), not through this async
+// platform-view delegate route.
+TEST_F(PlatformViewOHOSUt, RemoveViewForWindowRoundTrip) {
   view()->RemoveViewForWindow(3);
   FlushTasks();
   auto removed = delegate().remove_view_ids();

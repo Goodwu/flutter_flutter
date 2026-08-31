@@ -5,10 +5,8 @@
  */
 
 import window from '@ohos.window';
-import UIAbility from '@ohos.app.ability.UIAbility';
 import { FlutterWindowHost } from './FlutterWindowHost';
 import { SubWindowHost } from './SubWindowHost';
-import { AnchoredWindowHost } from './AnchoredWindowHost';
 
 /**
  * viewId → window-host registry, owned by FlutterManager. Membership IS
@@ -29,6 +27,10 @@ export class WindowHostRegistry {
     return this.hosts.get(viewIdStr);
   }
 
+  decorateTitleButtons(viewIdStr: string): void {
+    this.hosts.get(viewIdStr)?.decorateTitleButtons();
+  }
+
   /** Undefined when the view has no SubWindow host or it has not
    * materialized yet. */
   subWindowOf(viewIdStr: string): window.Window | undefined {
@@ -44,34 +46,6 @@ export class WindowHostRegistry {
     const out: FlutterWindowHost[] = [];
     this.hosts.forEach((host) => {
       out.push(host);
-    });
-    return out;
-  }
-
-  /** Anchored sub-windows on `parentAbility` whose re-anchor loop has run
-   * at least once — the ones that must follow the parent when it MOVES
-   * (the loop itself only repositions on the child's own size change). */
-  anchoredHostsOf(parentAbility: UIAbility): AnchoredWindowHost[] {
-    const out: AnchoredWindowHost[] = [];
-    this.hosts.forEach((host) => {
-      if (host instanceof AnchoredWindowHost && host.anchored &&
-          host.parentAbilityOf() === parentAbility) {
-        out.push(host);
-      }
-    });
-    return out;
-  }
-
-  /** Same, keyed by the PARENT VIEW id — the sub-window-parent variant:
-   * children of a dialog are matched by parentViewId, not by ability
-   * (several sub-windows share one ability). */
-  anchoredHostsOfParentView(parentViewId: number): AnchoredWindowHost[] {
-    const out: AnchoredWindowHost[] = [];
-    this.hosts.forEach((host) => {
-      if (host instanceof AnchoredWindowHost && host.anchored &&
-          host.parentViewId === parentViewId) {
-        out.push(host);
-      }
     });
     return out;
   }

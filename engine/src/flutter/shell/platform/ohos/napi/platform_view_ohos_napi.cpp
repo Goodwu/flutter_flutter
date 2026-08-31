@@ -452,10 +452,11 @@ void PlatformViewOHOSNapi::CreateRegularAbility(int64_t view_id,
                                                 int64_t request_id,
                                                 double width,
                                                 double height,
-                                                const std::string& title) {
+                                                const std::string& title,
+                                                int32_t archetype) {
   napi_handle_scope scope;
   napi_open_handle_scope(env_, &scope);
-  napi_value args[5];
+  napi_value args[6];
   napi_status status;
   status = napi_create_int64(env_, view_id, &args[0]);
   if (status != napi_ok) {
@@ -478,8 +479,12 @@ void PlatformViewOHOSNapi::CreateRegularAbility(int64_t view_id,
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_string_utf8 title fail ";
   }
+  status = napi_create_int32(env_, archetype, &args[5]);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_int32 archetype fail ";
+  }
   status = fml::napi::InvokeJsMethod(env_, ref_napi_obj_,
-                                     "createRegularAbility", 5, args);
+                                     "createRegularAbility", 6, args);
   if (status != napi_ok) {
     FML_LOG(ERROR) << "InvokeJsMethod createRegularAbility fail ";
   }

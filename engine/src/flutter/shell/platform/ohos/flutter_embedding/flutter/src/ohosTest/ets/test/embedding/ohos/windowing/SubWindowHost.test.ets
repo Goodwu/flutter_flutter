@@ -157,7 +157,6 @@ export default function subWindowHostTest() {
         expect(fake.showCount).assertEqual(1);
         expect(host.attachChainDone).assertTrue();
         expect(ctx.viewAbilities.has('5')).assertTrue();
-        expect(ctx.parentRectListenerCalls).assertEqual(1);
         expect(stage.createSubWindowName).assertEqual('flutter-5');
         done();
       });

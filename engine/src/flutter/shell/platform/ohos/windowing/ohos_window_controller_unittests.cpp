@@ -875,6 +875,21 @@ TEST_F(OHOSWindowControllerTest, GetTitleUtf8RoundTrip) {
   EXPECT_STREQ(buf, "你好");
 }
 
+TEST_F(OHOSWindowControllerTest, GetTitleTruncationKeepsWholeCodepoints) {
+  void* handle = InsertWindow(controller_, 5, WindowType::kTooltip,
+                              WindowHostKind::kSubWindow);
+  controller_->SetTitle(handle, "你好");  // E4 BD A0 E5 A5 BD
+  // 4 copyable bytes: the cut lands inside 好, so GetTitle must back off to
+  // the whole 你 rather than emit a dangling 0xE5 lead byte.
+  char mid_cut[5] = {};
+  controller_->GetTitle(handle, mid_cut, sizeof(mid_cut));
+  EXPECT_STREQ(mid_cut, "你");
+  // 3 copyable bytes: the cut lands exactly on the 好 boundary — kept as is.
+  char char_boundary[4] = {};
+  controller_->GetTitle(handle, char_boundary, sizeof(char_boundary));
+  EXPECT_STREQ(char_boundary, "你");
+}
+
 TEST_F(OHOSWindowControllerTest, ControllerStateMutationsNoCrash) {
   void* handle = InsertWindow(controller_, 5, WindowType::kRegular,
                               WindowHostKind::kUiAbility);

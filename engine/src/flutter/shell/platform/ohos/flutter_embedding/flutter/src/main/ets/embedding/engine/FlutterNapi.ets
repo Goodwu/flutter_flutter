@@ -695,7 +695,7 @@ export default class FlutterNapi {
                     width: number,
                     height: number,
                     archetype: number): void {
-    Log.i(TAG, `requestWindowHost viewId=${viewId} parentViewId=${parentViewId}` +
+    Log.d(TAG, `requestWindowHost viewId=${viewId} parentViewId=${parentViewId}` +
       ` size=${width}x${height} archetype=${archetype}`);
     FlutterManager.getInstance().createSubWindow(
       viewId, parentViewId, width, height, archetype);
@@ -708,11 +708,12 @@ export default class FlutterNapi {
                        requestId: number,
                        width: number,
                        height: number,
-                       title: string): void {
-    Log.i(TAG, `createRegularAbility viewId=${viewId} requestId=${requestId}` +
-      ` size=${width}x${height} title="${title}"`);
+                       title: string,
+                       archetype: number): void {
+    Log.d(TAG, `createRegularAbility viewId=${viewId} requestId=${requestId}` +
+      ` size=${width}x${height} title="${title}" archetype=${archetype}`);
     FlutterManager.getInstance().createRegularAbilityWindow(
-      viewId, requestId, width, height, title);
+      viewId, requestId, width, height, title, archetype);
   }
 
   /**
@@ -726,7 +727,7 @@ export default class FlutterNapi {
                          width: number,
                          height: number,
                          title: string): void {
-    Log.i(TAG, `bindEntryAbilityToView viewId=${viewId}` +
+    Log.d(TAG, `bindEntryAbilityToView viewId=${viewId}` +
       ` size=${width}x${height} title="${title}"`);
     FlutterManager.getInstance().bindEntryAbilityToView(
       viewId, width, height, title);
@@ -735,50 +736,50 @@ export default class FlutterNapi {
   /** Native entry (InvokeJsMethod "destroyWindowHost"): tear down the OS
    * window host when Dart closes it (controller.destroy()). */
   destroyWindowHost(viewId: number): void {
-    Log.i(TAG, `destroyWindowHost viewId=${viewId}`);
+    Log.d(TAG, `destroyWindowHost viewId=${viewId}`);
     FlutterManager.getInstance().destroyWindowHost(viewId);
   }
 
   exitApplication(): void {
-    Log.i(TAG, `exitApplication`);
+    Log.d(TAG, `exitApplication`);
     FlutterManager.getInstance().exitApplication();
   }
 
   setWindowSize(viewId: number, width: number, height: number): void {
-    Log.i(TAG, `setWindowSize viewId=${viewId} size=${width}x${height}`);
+    Log.d(TAG, `setWindowSize viewId=${viewId} size=${width}x${height}`);
     FlutterManager.getInstance().setWindowSize(viewId, width, height);
   }
 
   setWindowTitle(viewId: number, title: string): void {
-    Log.i(TAG, `setWindowTitle viewId=${viewId} title="${title}"`);
+    Log.d(TAG, `setWindowTitle viewId=${viewId} title="${title}"`);
     FlutterManager.getInstance().setWindowTitle(viewId, title);
   }
 
   setWindowMaximized(viewId: number, maximized: boolean): void {
-    Log.i(TAG, `setWindowMaximized viewId=${viewId} maximized=${maximized}`);
+    Log.d(TAG, `setWindowMaximized viewId=${viewId} maximized=${maximized}`);
     FlutterManager.getInstance().setWindowMaximized(viewId, maximized);
   }
 
   setWindowMinimized(viewId: number, minimized: boolean): void {
-    Log.i(TAG, `setWindowMinimized viewId=${viewId} minimized=${minimized}`);
+    Log.d(TAG, `setWindowMinimized viewId=${viewId} minimized=${minimized}`);
     FlutterManager.getInstance().setWindowMinimized(viewId, minimized);
   }
 
   setWindowFullscreen(viewId: number, fullscreen: boolean): void {
-    Log.i(TAG, `setWindowFullscreen viewId=${viewId} fullscreen=${fullscreen}`);
+    Log.d(TAG, `setWindowFullscreen viewId=${viewId} fullscreen=${fullscreen}`);
     FlutterManager.getInstance().setWindowFullscreen(viewId, fullscreen);
   }
 
   // LOGICAL-px runtime constraint update (max 0 == unbounded).
   setWindowConstraints(viewId: number, minWidth: number, maxWidth: number,
                        minHeight: number, maxHeight: number): void {
-    Log.i(TAG, `setWindowConstraints viewId=${viewId} min=${minWidth}x${minHeight} max=${maxWidth}x${maxHeight}`);
+    Log.d(TAG, `setWindowConstraints viewId=${viewId} min=${minWidth}x${minHeight} max=${maxWidth}x${maxHeight}`);
     FlutterManager.getInstance().setWindowConstraints(viewId, minWidth, maxWidth, minHeight, maxHeight);
   }
 
   // Brings the window to front.
   activateWindow(viewId: number): void {
-    Log.i(TAG, `activateWindow viewId=${viewId}`);
+    Log.d(TAG, `activateWindow viewId=${viewId}`);
     FlutterManager.getInstance().activateWindow(viewId);
   }
 

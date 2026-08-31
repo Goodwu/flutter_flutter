@@ -47,15 +47,6 @@ export interface WindowHostContext {
   /** The display density (DPR); 1.0 when unavailable. */
   densityPixels(): number;
 
-  /** Registers the per-parent windowRectChange listener (parent moved →
-   * re-anchor its anchored sub-windows); idempotent per ability. */
-  ensureParentRectListener(ability: UIAbility, stage: window.WindowStage): void;
-
-  /** Same for a SUB-WINDOW parent (dialog moved → re-anchor its anchored
-   * children); idempotent per parent view id, no-op while the parent's
-   * sub-window has not materialized yet. */
-  ensureSubWindowRectListener(parentViewId: number): void;
-
   /** Re-activates a parent after a child SubWindow closed (WMS does not
    * reliably hand foreground back). Best-effort, logged. */
   restoreParentForeground(ability: UIAbility | undefined, closedViewId: string): void;

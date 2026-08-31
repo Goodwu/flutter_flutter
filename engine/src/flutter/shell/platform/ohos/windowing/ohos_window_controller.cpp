@@ -389,9 +389,15 @@ void OHOSWindowController::GetTitle(void* window,
     const std::string& title = win->GetTitle();
     size_t copy =
         std::min<size_t>(title.size(), static_cast<size_t>(capacity - 1));
-    while (copy > 0 &&
-           (static_cast<unsigned char>(title[copy - 1]) & 0xC0) == 0x80) {
-      copy--;
+    // Only back off when the capacity actually cut the string mid-codepoint.
+    // Checking the last copied byte instead would also strip the tail of a
+    // complete multi-byte character when the whole title fits (e.g. "你好"
+    // in a 16-byte buffer came back as "\xE4\xBD\xA0\xE5").
+    if (copy < title.size()) {
+      while (copy > 0 &&
+             (static_cast<unsigned char>(title[copy]) & 0xC0) == 0x80) {
+        copy--;
+      }
     }
     std::memcpy(out, title.data(), copy);
     out[copy] = '\0';

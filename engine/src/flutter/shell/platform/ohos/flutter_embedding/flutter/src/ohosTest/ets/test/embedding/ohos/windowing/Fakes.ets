@@ -61,6 +61,9 @@ export class FakeWindow {
   shadowRadius: number = -1;
   focusable: boolean = true;
   titleMoveEnabled: boolean = false;
+  /** setWindowTitleButtonVisible(isMax, isMin, isClose) args, 1/0-coded. */
+  titleButtonCalls: Array<Array<number>> = new Array<Array<number>>();
+  titleButtonThrows: boolean = false;
   modalCalls: Array<Array<number>> = new Array<Array<number>>();
   dragEnabled: boolean = false;
   windowEventCb: ((event: window.WindowEventType) => void) | undefined = undefined;
@@ -68,6 +71,11 @@ export class FakeWindow {
   destroyCount: number = 0;
   loadContentCount: number = 0;
   loadContentPage: string = '';
+  /** windowRectChange on() registration count (idempotency probe). */
+  rectOnCount: number = 0;
+  /** getWindowProperties() call count (reanchor/positionAt probe). */
+  propsReads: number = 0;
+  offThrows: boolean = false;
 
   props: FakeWindowProperties = new FakeWindowProperties();
   destroyErr: BusinessError | undefined = undefined;
@@ -193,6 +201,19 @@ export class FakeWindow {
     this.titleMoveEnabled = enabled;
   }
 
+  setWindowTitleButtonVisible(isMaximizeButtonVisible: boolean,
+                              isMinimizeButtonVisible: boolean,
+                              isCloseButtonVisible?: boolean): void {
+    this.titleButtonCalls.push([
+      isMaximizeButtonVisible ? 1 : 0,
+      isMinimizeButtonVisible ? 1 : 0,
+      isCloseButtonVisible === undefined ? -1 : (isCloseButtonVisible ? 1 : 0),
+    ]);
+    if (this.titleButtonThrows) {
+      throw new Error('titlebutton-throws');
+    }
+  }
+
   setSubWindowModal(isModal: boolean, modalityType: number): Promise<void> {
     this.modalCalls.push([isModal ? 1 : 0, modalityType]);
     if (this.rejectModal) {
@@ -210,6 +231,7 @@ export class FakeWindow {
   }
 
   getWindowProperties(): window.WindowProperties {
+    this.propsReads += 1;
     return this.props as ESObject as window.WindowProperties;
   }
 
@@ -233,6 +255,7 @@ export class FakeWindow {
       throw new Error('on-throws');
     }
     if (event === 'windowRectChange') {
+      this.rectOnCount += 1;
       this.rectChangeCb = callback as (options: window.RectChangeOptions) => void;
     } else {
       this.windowEventCb = callback as (event: window.WindowEventType) => void;
@@ -240,6 +263,9 @@ export class FakeWindow {
   }
 
   off(event: string, callback: Function): void {
+    if (this.offThrows) {
+      throw new Error('off-throws');
+    }
     if (event === 'windowRectChange') {
       this.rectChangeCb = undefined;
     } else {
@@ -275,6 +301,14 @@ export class FakeWindowNoShadow {
 /** Dialog-API probe-missing variant: no setWindowTitleMoveEnabled /
  * setSubWindowModal / enableDrag. */
 export class FakeWindowNoDialogApi {
+}
+
+/** Title-button probe-missing variant: no setWindowTitleButtonVisible
+ * (covers the API-14-unavailable branch of decorateTitleButtons). */
+export class FakeWindowNoTitleButton {
+  resize(_w: number, _h: number): Promise<void> {
+    return Promise.resolve();
+  }
 }
 
 /** Dialog-API partial variant: has setSubWindowModal but no enableDrag
@@ -417,8 +451,6 @@ export class FakeHostContext implements WindowHostContext {
   dpr: number = 2.0;
   regularAbilityName: string = 'RegularWindowAbility';
   subWindowPageName: string = 'pages/FlutterWindowPage';
-  parentRectListenerCalls: number = 0;
-  subWindowRectListenerCalls: number = 0;
   restoredForegrounds: Array<string> = new Array<string>();
   activated: Array<Array<number>> = new Array<Array<number>>();
   removedHosts: Array<string> = new Array<string>();
@@ -427,6 +459,8 @@ export class FakeHostContext implements WindowHostContext {
   flutterViews: Map<string, FlutterView> = new Map<string, FlutterView>();
   viewAbilities: Map<string, UIAbility> = new Map<string, UIAbility>();
   subWindows: Map<string, window.Window> = new Map<string, window.Window>();
+  /** subWindowOfView() throws while set (resolveParentWindow catch probe). */
+  subWindowOfViewThrows: boolean = false;
 
   resolveParentAbility(parentViewId: number): UIAbility | undefined {
     return this.parentAbilityFor;
@@ -472,19 +506,14 @@ export class FakeHostContext implements WindowHostContext {
   }
 
   subWindowOfView(viewId: string): window.Window | undefined {
+    if (this.subWindowOfViewThrows) {
+      throw new Error('subWindowOfView-throws');
+    }
     return this.subWindows.get(viewId);
   }
 
   densityPixels(): number {
     return this.dpr;
-  }
-
-  ensureParentRectListener(ability: UIAbility, stage: window.WindowStage): void {
-    this.parentRectListenerCalls += 1;
-  }
-
-  ensureSubWindowRectListener(parentViewId: number): void {
-    this.subWindowRectListenerCalls += 1;
   }
 
   restoreParentForeground(ability: UIAbility | undefined, closedViewId: string): void {
