@@ -88,6 +88,33 @@ TEST(OHBTextureSourceVKTest, NullBufferYieldsInvalid) {
   context->Shutdown();
 }
 
+// RGBX_8888 is treated as opaque: alpha swizzle is forced to eOne (15582302).
+TEST(OHBTextureSourceVKTest, CanImportRGBX8888) {
+  auto context = CreateContext();
+  ASSERT_TRUE(context);
+
+  OH_NativeBuffer* native_buffer =
+      AllocNativeBuffer(16, 16, NATIVEBUFFER_PIXEL_FMT_RGBX_8888);
+  if (native_buffer == nullptr) {
+    GTEST_SKIP() << "Device does not support RGBX_8888 native buffers.";
+  }
+  OHNativeWindowBuffer* window_buffer =
+      OH_NativeWindow_CreateNativeWindowBufferFromNativeBuffer(native_buffer);
+  ASSERT_NE(window_buffer, nullptr);
+
+  OHBTextureSourceVK source(context, window_buffer,
+                            TextureColorSpace::kSRGB);
+  EXPECT_TRUE(source.IsValid()) << "RGBX_8888 buffer should be importable";
+  EXPECT_EQ(source.GetYUVConversion(), nullptr);
+  EXPECT_NE(source.GetImage(), vk::Image{});
+  EXPECT_NE(source.GetImageView(), vk::ImageView{});
+  EXPECT_NE(source.GetRenderTargetView(), vk::ImageView{});
+
+  OH_NativeWindow_DestroyNativeWindowBuffer(window_buffer);
+  OH_NativeBuffer_Unreference(native_buffer);
+  context->Shutdown();
+}
+
 // Constructing with a real RGBA_8888 native buffer yields a valid source.
 TEST(OHBTextureSourceVKTest, CanImportRGBA8888) {
   auto context = CreateContext();

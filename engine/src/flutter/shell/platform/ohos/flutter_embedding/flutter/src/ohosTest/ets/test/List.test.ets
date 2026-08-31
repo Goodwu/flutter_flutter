@@ -133,6 +133,7 @@ import tooltipWindowHostTest from './embedding/ohos/windowing/TooltipWindowHost.
 import popupWindowHostTest from './embedding/ohos/windowing/PopupWindowHost.test';
 import abilityWindowHostTest from './embedding/ohos/windowing/AbilityWindowHost.test';
 import flutterViewTest from './view/FlutterView.test';
+import CoverageTeardownTest from './CoverageTeardown.test';
 
 export default function testsuite() {
   FlutterAbilityAndEntryDelegateTest();
@@ -252,4 +253,5 @@ export default function testsuite() {
   popupWindowHostTest();
   abilityWindowHostTest();
   flutterViewTest();
+  CoverageTeardownTest();
 }

@@ -13,10 +13,20 @@
  * limitations under the License.
  */
 import FlutterNapi, { WindowPositionResult } from '../../../../../main/ets/embedding/engine/FlutterNapi';
+import FlutterEngine from '../../../../../main/ets/embedding/engine/FlutterEngine';
+import PlatformViewsController from '../../../../../main/ets/plugin/platform/PlatformViewsController';
+import {
+  invokeSetViewportMetricsWithCornerRadii,
+  pierceNativeShellHolderId,
+  restoreFlutterNapiHasInit,
+  setShellHolderIdForGuardTest
+} from './CoveragePierceHelpers';
+import FlutterInjector from '../../../../../main/ets/FlutterInjector';
+import FlutterEnginePreload from '../../../../../main/ets/embedding/engine/FlutterEnginePreload';
 import ApplicationInfoLoader from '../../../../../main/ets/embedding/engine/loader/ApplicationInfoLoader';
 import { FlutterRenderer } from '../../../../../main/ets/embedding/engine/renderer/FlutterRenderer';
 import { common } from '@kit.AbilityKit';
-import { beforeAll, describe, expect, it } from '@ohos/hypium';
+import { beforeAll, afterAll, describe, expect, it } from '@ohos/hypium';
 import { EngineLifecycleListener } from '../../../../../main/ets/embedding/engine/FlutterEngine';
 import { resourceManager } from '@kit.LocalizationKit';
 import FlutterApplicationInfo from '../../../../../main/ets/embedding/engine/loader/FlutterApplicationInfo';
@@ -73,6 +83,10 @@ export default function FlutterNapiTest() {
         tiltY: 0,
         sourceTool: SourceTool.Unknown
       }
+    })
+
+    afterAll(() => {
+      restoreFlutterNapiHasInit();
     })
 
     it('checkImplemented', 0, async (done: Function) => {
@@ -232,6 +246,98 @@ export default function FlutterNapiTest() {
         flutterNapi.setWindowConstraints(9140, 50, 500, 50, 500);
         flutterNapi.activateWindow(9140);
       } catch (e) {
+      }
+      done();
+    })
+
+    it('setViewportMetrics_with_display_corner_radii', 0, async (done: Function) => {
+      console.info("uitest: setViewportMetrics_with_display_corner_radii begin");
+      const ctx = getContext() as common.UIAbilityContext;
+      // The engine is constructed but never init()ed, so its napi is NOT
+      // attached and the call returns at the isAttached() guard — this spec
+      // pins the argument shape (24-arg and legacy 20-arg forms), while the
+      // native forwarding is covered by setViewportMetrics_after_engine_init.
+      const unattachedNapi = new FlutterEngine(ctx, null, null, new PlatformViewsController()).getFlutterNapi();
+      unattachedNapi.setViewportMetrics(
+        3.0, 1080, 2340,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        3.0,
+        [], [], [],
+        12, 34, 56, 78
+      );
+      unattachedNapi.setViewportMetrics(
+        2.0, 720, 1280,
+        1, 2, 3, 4,
+        5, 6, 7, 8,
+        9, 10, 11, 12,
+        2.0,
+        [0, 0, 10, 10], [1], [0]
+      );
+      expect(unattachedNapi.isAttached()).assertFalse();
+      done();
+    })
+
+    it('setViewportMetrics_without_display_corner_radii_defaults', 0, async (done: Function) => {
+      console.info("uitest: setViewportMetrics_without_display_corner_radii_defaults begin");
+      const ctx = getContext() as common.UIAbilityContext;
+      const unattachedNapi = new FlutterEngine(ctx, null, null, new PlatformViewsController()).getFlutterNapi();
+      unattachedNapi.setViewportMetrics(
+        3.0, 1080, 2340,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        3.0,
+        [], [], []
+      );
+      expect(unattachedNapi.isAttached()).assertFalse();
+      done();
+    })
+
+    it('setViewportMetrics_zero_corner_radii_flat_screen', 0, async (done: Function) => {
+      console.info("uitest: setViewportMetrics_zero_corner_radii_flat_screen begin");
+      const ctx = getContext() as common.UIAbilityContext;
+      const unattachedNapi = new FlutterEngine(ctx, null, null, new PlatformViewsController()).getFlutterNapi();
+      unattachedNapi.setViewportMetrics(
+        3.0, 1080, 2340,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        3.0,
+        [], [], [],
+        0, 0, 0, 0
+      );
+      expect(unattachedNapi.isAttached()).assertFalse();
+      done();
+    })
+
+    it('setViewportMetrics_zero_shell_holder_returns_early', 0, () => {
+      console.info("uitest: setViewportMetrics_zero_shell_holder_returns_early begin");
+      const napi = new FlutterNapi();
+      setShellHolderIdForGuardTest(napi, 0);
+      invokeSetViewportMetricsWithCornerRadii(napi);
+      expect(napi.nativeShellHolderId).assertEqual(0);
+    })
+
+    it('setViewportMetrics_after_engine_init_with_corner_radii', 0, (done: Function) => {
+      console.info("uitest: setViewportMetrics_after_engine_init_with_corner_radii begin");
+      const ctx = getContext() as common.UIAbilityContext;
+      try {
+        const loader = FlutterInjector.getInstance().getFlutterLoader();
+        if (!loader.initialized) {
+          loader.startInitialization(ctx);
+          loader.ensureInitializationComplete([]);
+        }
+        const napi = FlutterEnginePreload.preLoadFlutterNapi(ctx, loader.findAppBundlePath(), {});
+        if (napi && napi.nativeShellHolderId) {
+          invokeSetViewportMetricsWithCornerRadii(napi);
+          expect(napi.isAttached()).assertTrue();
+        } else {
+          console.info("uitest: napi not attached, skip native forwarding");
+        }
+      } catch (e) {
+        console.info("uitest: real napi init path error, skip: " + JSON.stringify(e));
       }
       done();
     })

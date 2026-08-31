@@ -471,6 +471,10 @@ export default class FlutterNapi {
    * @param displayFeaturesBounds - Array of display feature bounds
    * @param displayFeaturesType - Array of display feature types
    * @param displayFeaturesState - Array of display feature states
+   * @param displayCornerRadiusTopLeft - Top-left display corner radius in physical pixels; defaults to -1 (unavailable) when omitted
+   * @param displayCornerRadiusTopRight - Top-right display corner radius in physical pixels; defaults to -1 (unavailable) when omitted
+   * @param displayCornerRadiusBottomRight - Bottom-right display corner radius in physical pixels; defaults to -1 (unavailable) when omitted
+   * @param displayCornerRadiusBottomLeft - Bottom-left display corner radius in physical pixels; defaults to -1 (unavailable) when omitted
    */
   setViewportMetrics(devicePixelRatio: number, physicalWidth: number
     , physicalHeight: number, physicalPaddingTop: number, physicalPaddingRight: number
@@ -478,7 +482,9 @@ export default class FlutterNapi {
     , physicalViewInsetRight: number, physicalViewInsetBottom: number, physicalViewInsetLeft: number
     , systemGestureInsetTop: number, systemGestureInsetRight: number, systemGestureInsetBottom: number
     , systemGestureInsetLeft: number, physicalTouchSlop: number, displayFeaturesBounds: Array<number>
-    , displayFeaturesType: Array<number>, displayFeaturesState: Array<number>): void {
+    , displayFeaturesType: Array<number>, displayFeaturesState: Array<number>
+    , displayCornerRadiusTopLeft: number = -1, displayCornerRadiusTopRight: number = -1
+    , displayCornerRadiusBottomRight: number = -1, displayCornerRadiusBottomLeft: number = -1): void {
     if (this.isAttached()) {
       if (!this.nativeShellHolderId) {
         Log.e(TAG, "setViewportMetrics this.nativeShellHolderId = " + this.nativeShellHolderId)
@@ -502,7 +508,11 @@ export default class FlutterNapi {
         physicalTouchSlop,
         displayFeaturesBounds,
         displayFeaturesType,
-        displayFeaturesState);
+        displayFeaturesState,
+        displayCornerRadiusTopLeft,
+        displayCornerRadiusTopRight,
+        displayCornerRadiusBottomRight,
+        displayCornerRadiusBottomLeft);
     }
   }
 
