@@ -6,9 +6,12 @@
 
 import { describe, expect, it, Level } from '@ohos/hypium';
 import window from '@ohos.window';
+import display from '@ohos.display';
 import UIAbility from '@ohos.app.ability.UIAbility';
-import { AnchoredWindowHost } from
+import { AnchoredWindowHost, WorkArea } from
   '../../../../../../main/ets/embedding/ohos/windowing/AnchoredWindowHost';
+import { WindowPositionResult } from
+  '../../../../../../main/ets/embedding/engine/FlutterNapi';
 import { WindowArchetype } from
   '../../../../../../main/ets/embedding/ohos/windowing/WindowArchetype';
 import { WindowHostContext } from
@@ -20,8 +23,46 @@ import {
 
 /** Concrete subclass exposing the protected hooks of AnchoredWindowHost. */
 class TestAnchoredHost extends AnchoredWindowHost {
+  /** When set, computePlacement fills pos from [left, top, w, h] (LOGICAL)
+   * and reports success; otherwise the real native round trip runs. */
+  simulatePlacement: number[] | undefined = undefined;
+  /** When set, workAreaPhysical fills from [left, top, w, h] (PHYSICAL)
+   * instead of querying the real display. */
+  workOverride: number[] | undefined = undefined;
+  /** computePlacement args of the last call:
+   * [lw, lh, pL, pT, pW, pH, wL, wT, wW, wH] (LOGICAL). */
+  placementArgs: number[] = new Array<number>();
+
   constructor(ctx: WindowHostContext, viewId: number, parentViewId: number, w: number, h: number) {
     super(ctx, viewId, parentViewId, WindowArchetype.TOOLTIP, w, h);
+  }
+
+  protected computePlacement(pos: WindowPositionResult,
+                             logicalW: number, logicalH: number,
+                             parentLeft: number, parentTop: number,
+                             parentW: number, parentH: number,
+                             workLeft: number, workTop: number,
+                             workW: number, workH: number): boolean {
+    this.placementArgs = [logicalW, logicalH, parentLeft, parentTop,
+                          parentW, parentH, workLeft, workTop, workW, workH];
+    if (this.simulatePlacement !== undefined) {
+      pos.set(this.simulatePlacement[0], this.simulatePlacement[1],
+              this.simulatePlacement[2], this.simulatePlacement[3]);
+      return true;
+    }
+    return super.computePlacement(pos, logicalW, logicalH, parentLeft, parentTop,
+                                  parentW, parentH, workLeft, workTop, workW, workH);
+  }
+
+  protected async workAreaPhysical(out: WorkArea, disp: display.Display): Promise<void> {
+    if (this.workOverride !== undefined) {
+      out.left = this.workOverride[0];
+      out.top = this.workOverride[1];
+      out.width = this.workOverride[2];
+      out.height = this.workOverride[3];
+      return;
+    }
+    await super.workAreaPhysical(out, disp);
   }
 
   setParentForTest(ability: UIAbility | undefined): void {
@@ -44,13 +85,94 @@ class TestAnchoredHost extends AnchoredWindowHost {
   startParentTrackingForTest(): void {
     this.startParentTracking();
   }
+
+  async prepareShowForTest(subWindow: window.Window): Promise<void> {
+    await this.prepareShow(subWindow);
+  }
 }
 
-/** getWindowProperties() throws — exercises outer catch / reanchor catch. */
+/** getWindowProperties() throws — exercises positionAt's size-seeding
+ * fallback (live size unreadable → apply the target unconditionally). */
 class ThrowingPropsWindow extends FakeWindow {
   getWindowProperties(): window.WindowProperties {
     throw new Error('props-throws');
   }
+}
+
+/** getWindowProperties() throws for the first propsFailCount calls, then
+ * behaves — models a transient window-state error (BusinessError 1300002)
+ * at tracking start that clears by placement time. */
+class PropsFailFirstWindow extends FakeWindow {
+  propsFailCount: number = 1;
+
+  getWindowProperties(): window.WindowProperties {
+    if (this.propsFailCount > 0) {
+      this.propsFailCount -= 1;
+      throw new Error('props-transient');
+    }
+    return super.getWindowProperties();
+  }
+}
+
+/** resize() parks on a manual gate — simulates OHOS's ANIMATED resize
+ * outlasting the 50ms throttle window, the exact window where a
+ * fire-and-forget reanchor let a trailing-edge reanchor duplicate the
+ * in-flight resize (stale appliedPhysW/H guard read). */
+class GatedResizeWindow extends FakeWindow {
+  gateOpen: boolean = true;
+  private waiters: Array<Function> = new Array<Function>();
+
+  resize(w: number, h: number): Promise<void> {
+    this.resizeCalls.push([w, h]);
+    if (this.rejectResize) {
+      return Promise.reject(new Error('resize-rejected'));
+    }
+    if (this.gateOpen) {
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve: Function) => {
+      this.waiters.push(resolve);
+    });
+  }
+
+  /** Settles every parked resize; later resizes resolve immediately. */
+  openGate(): void {
+    this.gateOpen = true;
+    const parked: Array<Function> = this.waiters;
+    this.waiters = new Array<Function>();
+    for (let i = 0; i < parked.length; i++) {
+      parked[i]();
+    }
+  }
+}
+
+/** window.RectChangeOptions carrier (ArkTS: no object literals). */
+class FakeRectChangeOptions {
+  rect: window.Rect;
+
+  constructor(left: number, top: number, width: number, height: number) {
+    this.rect = new FakeRect(left, top, width, height) as ESObject as window.Rect;
+  }
+}
+
+/** Fires a tracked parent window's rect-change callback as a pure MOVE:
+ * the event rect mirrors the window's CURRENT props size — the host seeds
+ * its resize baseline from exactly those props. */
+function fireRectChange(win: FakeWindow): void {
+  expect(win.rectChangeCb).not().assertUndefined();
+  const wr = win.props.windowRect;
+  win.rectChangeCb?.(new FakeRectChangeOptions(wr.left + 40, wr.top + 40,
+    wr.width, wr.height) as ESObject as window.RectChangeOptions);
+}
+
+/** Fires a parent RESIZE: applies the new size to the fake's props (a real
+ * window's properties reflect the change too) and notifies. */
+function fireParentResize(win: FakeWindow, width: number, height: number): void {
+  expect(win.rectChangeCb).not().assertUndefined();
+  const wr = win.props.windowRect;
+  win.props.setWindowRect(wr.left, wr.top, width, height);
+  win.rectChangeCb?.(new FakeRectChangeOptions(wr.left, wr.top,
+    width, height) as ESObject as window.RectChangeOptions);
 }
 
 /** drawableRect getter throws — exercises the windowRect fallback. */
@@ -94,11 +216,16 @@ function makePositioned(viewId: number, parentViewId: number): PositionedHosts {
   return new PositionedHosts(ctx, mainWin, stage, host);
 }
 
-/** Fires a tracked parent window's rect-change callback (a pure move — the
- * host only re-anchors on it, the rect payload itself is not consulted). */
-function fireRectChange(win: FakeWindow): void {
-  expect(win.rectChangeCb).not().assertUndefined();
-  win.rectChangeCb?.(new FakeRect(40, 40, 100, 200) as ESObject as window.RectChangeOptions);
+/** Host placed against a live parent (move baseline seeded from props). */
+async function makeAnchored(viewId: number): Promise<PositionedHosts> {
+  const p = makePositioned(viewId, 9);
+  const sub = new FakeWindow();
+  p.host.subWindow = sub as ESObject as window.Window;
+  p.host.workOverride = [0, 0, 2400, 1200];
+  p.host.simulatePlacement = [100, 100, 500, 400];
+  await p.host.placeInitialForTest(sub as ESObject as window.Window, 500, 400, 1000, 800);
+  await sleep(10); // birth placement settles → 1 move
+  return p;
 }
 
 export default function anchoredWindowHostTest() {
@@ -111,6 +238,7 @@ export default function anchoredWindowHostTest() {
       expect(host.viewId).assertEqual(1);
       expect(host.parentViewId).assertEqual(0);
     });
+
   });
 
   describe('AnchoredWindowHost.styleAfterResize', () => {
@@ -259,6 +387,8 @@ export default function anchoredWindowHostTest() {
         expect(p.host.anchored).assertTrue();
         expect(p.mainWin.rectOnCount).assertEqual(1);
         expect(p.mainWin.rectChangeCb).not().assertUndefined();
+        // The parent LIFECYCLE listener lands on the same window.
+        expect(p.mainWin.windowEventCb).not().assertUndefined();
         done();
       });
 
@@ -328,10 +458,15 @@ export default function anchoredWindowHostTest() {
         const p = makePositioned(27, 9);
         const sub = new FakeWindow();
         p.host.subWindow = sub as ESObject as window.Window;
-        p.host.startParentTrackingForTest();
-        fireRectChange(p.mainWin); // leading edge runs now → one reanchor
-        await sleep(10); // reanchor's live-rect read settles
-        expect(sub.propsReads).assertEqual(1);
+        p.host.workOverride = [0, 0, 2400, 1200];
+        p.host.simulatePlacement = [100, 100, 500, 400];
+        // Birth placement seeds the preferred size and starts tracking.
+        await p.host.placeInitialForTest(sub as ESObject as window.Window, 500, 400, 1000, 800);
+        await sleep(10); // placeInitial's positionAt settles → 1 move
+        expect(sub.moveCalls.length).assertEqual(1);
+        fireRectChange(p.mainWin);
+        await sleep(10); // leading-edge reanchor's positionAt settles
+        expect(sub.moveCalls.length).assertEqual(2);
         done();
       });
 
@@ -349,21 +484,183 @@ export default function anchoredWindowHostTest() {
       });
   });
 
+  describe('AnchoredWindowHost.parentResize', () => {
+    it('keeps re-anchoring on parent moves (win32 has no WM_MOVE handling)', Level.LEVEL0,
+      async (done: Function) => {
+        const p = await makeAnchored(70);
+        const sub = p.host.subWindow as ESObject as FakeWindow;
+        const moves = sub.moveCalls.length;
+        fireRectChange(p.mainWin);
+        await sleep(10);
+        expect(sub.moveCalls.length).assertEqual(moves + 1);
+        expect(sub.destroyCount).assertEqual(0);
+        expect(p.host.anchored).assertTrue();
+        done();
+      });
+
+    it('destroys the host on a parent resize (win32 WM_SIZE → destroy)', Level.LEVEL0,
+      async (done: Function) => {
+        const p = await makeAnchored(71);
+        const sub = p.host.subWindow as ESObject as FakeWindow;
+        const moves = sub.moveCalls.length;
+        fireParentResize(p.mainWin, 800, 600);
+        expect(sub.destroyCount).assertEqual(1); // OS sub-window removed
+        expect(p.host.anchored).assertFalse(); // tracking stopped
+        expect(p.mainWin.rectChangeCb).assertUndefined(); // listener off'd
+        expect(p.mainWin.windowEventCb).assertUndefined(); // lifecycle too
+        expect(p.ctx.removedHosts.length).assertEqual(1); // bookkeeping dropped
+        // Teardown never re-shows the parent (win32 DestroyWindow parity).
+        expect(p.ctx.restoredForegrounds.includes('71')).assertFalse();
+        await sleep(80); // no trailing reanchor sneaks in post-teardown
+        expect(sub.moveCalls.length).assertEqual(moves);
+        done();
+      });
+
+    it('recognizes a single-step resize when the tracking-start seed failed',
+      Level.LEVEL0, async (done: Function) => {
+        // seedParentSize's read at tracking start fails (transient 1300002);
+        // the placement read moments later succeeds — THAT read must seed
+        // the baseline, or the first event (a single-step resize: maximize /
+        // snap / fold) would seed its own post-resize rect and the destroy
+        // would never fire.
+        const stage = new FakeWindowStage();
+        const parent = new PropsFailFirstWindow();
+        parent.propsFailCount = 1;
+        stage.mainWindow = parent as ESObject as window.Window;
+        const ctx = new FakeHostContext();
+        ctx.stage = stage as ESObject as window.WindowStage;
+        ctx.dpr = 2.0;
+        const ability: UIAbility = new FakeAbility() as ESObject as UIAbility;
+        ctx.parentAbilityFor = ability;
+        const host = new TestAnchoredHost(ctx, 82, 9, 100, 80);
+        const sub = new FakeWindow();
+        host.subWindow = sub as ESObject as window.Window;
+        host.setParentForTest(ability);
+        host.workOverride = [0, 0, 2400, 1200];
+        host.simulatePlacement = [100, 100, 500, 400];
+        await host.placeInitialForTest(sub as ESObject as window.Window, 500, 400, 1000, 800);
+        await sleep(10); // birth placement settles
+        fireParentResize(parent, 800, 600);
+        expect(sub.destroyCount).assertEqual(1); // resize recognized
+        expect(parent.rectChangeCb).assertUndefined(); // listeners off'd
+        done();
+      });
+  });
+
+  describe('AnchoredWindowHost.deactivatePolicy (win32 parity)', () => {
+    it('destroys IMMEDIATELY on parent WINDOW_INACTIVE (win32 WA_INACTIVE)',
+      Level.LEVEL0, async (done: Function) => {
+        const p = await makeAnchored(60);
+        const sub = p.host.subWindow as ESObject as FakeWindow;
+        p.mainWin.windowEventCb?.(window.WindowEventType.WINDOW_INACTIVE);
+        expect(sub.destroyCount).assertEqual(1); // synchronous — no grace
+        expect(p.ctx.removedHosts.length).assertEqual(1); // bookkeeping dropped
+        // Teardown never re-shows the parent (win32 DestroyWindow parity).
+        expect(p.ctx.restoredForegrounds.includes('60')).assertFalse();
+        expect(p.mainWin.windowEventCb).assertUndefined(); // listeners off'd
+        expect(p.host.anchored).assertFalse();
+        done();
+      });
+
+    it('parent WINDOW_ACTIVE alone destroys nothing', Level.LEVEL0,
+      async (done: Function) => {
+        const p = await makeAnchored(61);
+        const sub = p.host.subWindow as ESObject as FakeWindow;
+        p.mainWin.windowEventCb?.(window.WindowEventType.WINDOW_ACTIVE);
+        await sleep(80); // prove no deferred close either
+        expect(sub.destroyCount).assertEqual(0);
+        expect(p.host.anchored).assertTrue();
+        done();
+      });
+
+    it('one-shot guard: a stray repeat of the captured callback closes once',
+      Level.LEVEL0, async (done: Function) => {
+        const p = await makeAnchored(62);
+        const sub = p.host.subWindow as ESObject as FakeWindow;
+        const cb = p.mainWin.windowEventCb; // captured pre-teardown
+        cb?.(window.WindowEventType.WINDOW_INACTIVE);
+        cb?.(window.WindowEventType.WINDOW_INACTIVE); // teardown noise repeat
+        await sleep(80);
+        expect(sub.destroyCount).assertEqual(1);
+        expect(p.ctx.removedHosts.length).assertEqual(1);
+        done();
+      });
+
+    it('destroys on parent WINDOW_DESTROYED (orphan guard)', Level.LEVEL0,
+      async (done: Function) => {
+        const p = await makeAnchored(83);
+        const sub = p.host.subWindow as ESObject as FakeWindow;
+        // WINDOW_DESTROYED is the LAST thing a destroyed parent's listeners
+        // receive — no later INACTIVE, no further rect event. A popup parent
+        // (never active → never INACTIVE) must still take its anchored
+        // children down, or the non-focusable host is orphaned on screen.
+        const cb = p.mainWin.windowEventCb; // captured pre-teardown
+        cb?.(window.WindowEventType.WINDOW_DESTROYED);
+        expect(sub.destroyCount).assertEqual(1); // OS sub-window removed
+        expect(p.ctx.removedHosts.length).assertEqual(1); // bookkeeping dropped
+        expect(p.ctx.restoredForegrounds.includes('83')).assertFalse();
+        expect(p.mainWin.windowEventCb).assertUndefined(); // listeners off'd
+        expect(p.mainWin.rectChangeCb).assertUndefined();
+        expect(p.host.anchored).assertFalse();
+        cb?.(window.WindowEventType.WINDOW_DESTROYED); // teardown noise repeat
+        expect(sub.destroyCount).assertEqual(1); // one-shot held
+        done();
+      });
+
+    it('a Dart-initiated destroy never re-shows the parent either', Level.LEVEL0,
+      async (done: Function) => {
+        const p = await makeAnchored(63);
+        const sub = p.host.subWindow as ESObject as FakeWindow;
+        p.host.destroy();
+        expect(sub.destroyCount).assertEqual(1);
+        // Anchored closeHost override: NO parent re-show on ANY path.
+        expect(p.ctx.restoredForegrounds.length).assertEqual(0);
+        done();
+      });
+  });
+
+  describe('AnchoredWindowHost.prepareShow', () => {
+    it('makes the host non-focusable (win32 NOACTIVATE parity)', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(64, 9);
+        const sub = new FakeWindow();
+        await p.host.prepareShowForTest(sub as ESObject as window.Window);
+        expect(sub.focusable).assertFalse();
+        done();
+      });
+
+    it('logs a rejected focusable set and continues', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(65, 9);
+        const sub = new FakeWindow();
+        sub.rejectFocusable = true;
+        await p.host.prepareShowForTest(sub as ESObject as window.Window);
+        expect(sub.focusable).assertTrue();
+        done();
+      });
+  });
+
   describe('AnchoredWindowHost.throttledReanchor', () => {
     it('coalesces a burst into one leading + one trailing reanchor', Level.LEVEL0,
       async (done: Function) => {
         const p = makePositioned(32, 9);
         const sub = new FakeWindow();
         p.host.subWindow = sub as ESObject as window.Window;
-        p.host.startParentTrackingForTest();
+        p.host.workOverride = [0, 0, 2400, 1200];
+        p.host.simulatePlacement = [100, 100, 500, 400];
+        await p.host.placeInitialForTest(sub as ESObject as window.Window, 500, 400, 1000, 800);
+        await sleep(10); // placeInitial settles → baseline of 1 move
         fireRectChange(p.mainWin); // leading edge runs now
         await sleep(10);
-        expect(sub.propsReads).assertEqual(1);
+        expect(sub.moveCalls.length).assertEqual(2);
         fireRectChange(p.mainWin); // within 50ms: arms ONE trailing timer
         fireRectChange(p.mainWin); // dropped: a timer is already pending
-        expect(sub.propsReads).assertEqual(1);
+        expect(sub.moveCalls.length).assertEqual(2);
         await sleep(80); // > kMoveThrottleMs(50): flush the trailing edge
-        expect(sub.propsReads).assertEqual(2);
+        expect(sub.moveCalls.length).assertEqual(3);
+        // Reanchors place for the preferred size: the sub's live geometry
+        // is read ONCE (placeInitial's seed), never per reanchor.
+        expect(sub.propsReads).assertEqual(1);
         done();
       });
 
@@ -372,12 +669,15 @@ export default function anchoredWindowHostTest() {
         const p = makePositioned(33, 9);
         const sub = new FakeWindow();
         p.host.subWindow = sub as ESObject as window.Window;
-        p.host.startParentTrackingForTest();
+        p.host.workOverride = [0, 0, 2400, 1200];
+        p.host.simulatePlacement = [100, 100, 500, 400];
+        await p.host.placeInitialForTest(sub as ESObject as window.Window, 500, 400, 1000, 800);
+        await sleep(10);
         fireRectChange(p.mainWin); // leading edge
         fireRectChange(p.mainWin); // arms the trailing edge
         await sleep(80);
-        // Trailing timer fired after the burst ended: 2 reanchors total.
-        expect(sub.propsReads).assertEqual(2);
+        // Trailing timer fired after the burst ended: birth move + 2 re-anchors.
+        expect(sub.moveCalls.length).assertEqual(3);
         done();
       });
   });
@@ -391,6 +691,7 @@ export default function anchoredWindowHostTest() {
         p.host.destroy();
         expect(p.host.anchored).assertFalse();
         expect(p.mainWin.rectChangeCb).assertUndefined();
+        expect(p.mainWin.windowEventCb).assertUndefined();
         expect(p.ctx.removedHosts.length).assertEqual(1);
         done();
       });
@@ -400,14 +701,17 @@ export default function anchoredWindowHostTest() {
         const p = makePositioned(35, 9);
         const sub = new FakeWindow();
         p.host.subWindow = sub as ESObject as window.Window;
-        p.host.startParentTrackingForTest();
+        p.host.workOverride = [0, 0, 2400, 1200];
+        p.host.simulatePlacement = [100, 100, 500, 400];
+        await p.host.placeInitialForTest(sub as ESObject as window.Window, 500, 400, 1000, 800);
+        await sleep(10);
         fireRectChange(p.mainWin); // leading edge runs
         await sleep(10);
         fireRectChange(p.mainWin); // trailing timer armed
-        expect(sub.propsReads).assertEqual(1);
+        expect(sub.moveCalls.length).assertEqual(2);
         p.host.destroy();
         await sleep(80);
-        expect(sub.propsReads).assertEqual(1); // no post-teardown reanchor
+        expect(sub.moveCalls.length).assertEqual(2); // no post-teardown reanchor
         done();
       });
 
@@ -447,29 +751,206 @@ export default function anchoredWindowHostTest() {
       async (done: Function) => {
         const p = makePositioned(39, 9);
         p.host.startParentTrackingForTest();
+        // startParentTracking seeds the move/resize baseline with ONE
+        // getWindowProperties() read; reanchor itself must add none.
+        const readsAfterSeed = p.mainWin.propsReads;
         p.host.subWindow = undefined;
         p.host.reanchor();
-        expect(p.host.anchored).assertTrue();
+        expect(p.mainWin.propsReads).assertEqual(readsAfterSeed); // parent not consulted
         done();
       });
 
-    it('re-places an existing sub-window at its current size', Level.LEVEL0,
+    it('re-places at the preferred size, growing back after a shrink', Level.LEVEL0,
       async (done: Function) => {
         const p = makePositioned(40, 9);
         const sub = new FakeWindow();
         p.host.subWindow = sub as ESObject as window.Window;
-        p.host.startParentTrackingForTest();
+        p.host.workOverride = [0, 0, 2400, 1200];
+        p.host.simulatePlacement = [700, 300, 100, 80]; // shrunk at a screen edge
+        await p.host.placeInitialForTest(sub as ESObject as window.Window, 500, 400, 1000, 800);
+        expect(sub.resizeCalls.length).assertEqual(1); // 1000x800 → 200x160
+        p.host.simulatePlacement = [100, 100, 500, 400]; // constraint lifted
         p.host.reanchor();
         await sleep(10); // positionAt's promise settles
-        expect(sub.propsReads).assertEqual(1); // live rect read exactly once
+        // reanchor asked for the PREFERRED size (500x400 logical), never
+        // the shrunken live rect (100x80) — the compression stays transient.
+        expect(p.host.placementArgs[0]).assertEqual(500);
+        expect(p.host.placementArgs[1]).assertEqual(400);
+        expect(sub.resizeCalls.length).assertEqual(2); // grew back
+        expect(sub.resizeCalls[1][0]).assertEqual(1000);
+        expect(sub.resizeCalls[1][1]).assertEqual(800);
         done();
       });
 
-    it('logs a geometry read failure', Level.LEVEL0, () => {
-      const p = makePositioned(41, 9);
-      p.host.startParentTrackingForTest();
-      p.host.subWindow = new ThrowingPropsWindow() as ESObject as window.Window;
-      p.host.reanchor(); // catch branch — must not throw
-    });
+    it('no-ops before placeInitial seeds the preferred size', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(41, 9);
+        const sub = new FakeWindow();
+        p.host.subWindow = sub as ESObject as window.Window;
+        p.host.workOverride = [0, 0, 2400, 1200];
+        p.host.simulatePlacement = [100, 100, 500, 400];
+        p.host.startParentTrackingForTest();
+        p.host.reanchor(); // anchored, sub present, but preferred unset
+        await sleep(10);
+        expect(sub.moveCalls.length).assertEqual(0);
+        expect(p.host.anchored).assertTrue();
+        done();
+      });
   });
+
+  describe('AnchoredWindowHost.reanchor serialization', () => {
+    it('pends the trailing edge while an animated resize is in flight (no duplicate resize)', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(70, 9);
+        const sub = new GatedResizeWindow();
+        p.host.subWindow = sub as ESObject as window.Window;
+        p.host.workOverride = [0, 0, 2400, 1200];
+        p.host.simulatePlacement = [700, 300, 100, 80]; // shrunken target
+        await p.host.placeInitialForTest(sub as ESObject as window.Window, 500, 400, 1000, 800);
+        expect(sub.resizeCalls.length).assertEqual(1); // birth: 1000x800 → 200x160
+
+        sub.gateOpen = false; // resizes park from here (animated, >50ms)
+        p.host.simulatePlacement = [100, 100, 500, 400]; // constraint lifts
+        fireRectChange(p.mainWin); // leading edge → flight parks in resize()
+        await sleep(10);
+        fireRectChange(p.mainWin); // arms ONE trailing timer
+        await sleep(80); // it fires while the flight is STILL parked
+        // The regression: the trailing reanchor must not have read a stale
+        // appliedPhysW/H and re-issued the in-flight resize.
+        expect(sub.resizeCalls.length).assertEqual(2); // birth + flight
+
+        sub.openGate(); // resize settles → flight completes, drain runs once
+        await sleep(10);
+        // One size change → exactly ONE resize for it; the drained flight
+        // re-places for the preferred size and the guard now sees it applied.
+        expect(sub.resizeCalls.length).assertEqual(2);
+        expect(sub.moveCalls.length).assertEqual(3); // birth + flight + drain
+        done();
+      });
+
+    it('holds the birth placement against an immediate leading-edge reanchor', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(71, 9);
+        const sub = new GatedResizeWindow();
+        p.host.subWindow = sub as ESObject as window.Window;
+        p.host.workOverride = [0, 0, 2400, 1200];
+        p.host.simulatePlacement = [700, 300, 100, 80]; // shrunken target
+        sub.gateOpen = false; // the birth resize itself parks
+        const placed: Promise<void> =
+          p.host.placeInitialForTest(sub as ESObject as window.Window, 500, 400, 1000, 800);
+        // Tracking is live while the birth placement parks in resize(): a
+        // parent move now fires a leading-edge reanchor that must PEND.
+        fireRectChange(p.mainWin);
+        await sleep(10);
+        expect(sub.resizeCalls.length).assertEqual(1); // birth only, no dupe
+
+        sub.openGate(); // birth flight settles → the pended reanchor drains
+        await placed;
+        await sleep(10);
+        // The drain re-places through reanchor()'s front door: same target
+        // (positioner result unchanged) → guard skips, move only.
+        expect(sub.resizeCalls.length).assertEqual(1);
+        expect(sub.moveCalls.length).assertEqual(2); // birth + drained
+        done();
+      });
+  });
+
+  describe('AnchoredWindowHost.positionAt sizing', () => {
+    // Shared setup: parent = ability main window (1000x800 phys at 0,0,
+    // dpr 2 → 500x400 logical content); sub = DISTINCT FakeWindow whose
+    // live rect is also 1000x800 phys.
+    it('applies the positioner-shrunken size before moving', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(50, 9);
+        const sub = new FakeWindow();
+        p.host.subWindow = sub as ESObject as window.Window;
+        p.host.workOverride = [0, 0, 2400, 1200];
+        p.host.simulatePlacement = [700, 300, 100, 80]; // logical, shrunk
+        await p.host.positionAtForTest(500, 400);
+        // dpr 2: target 200x160 phys vs live 1000x800 → resize once, then move.
+        expect(sub.resizeCalls.length).assertEqual(1);
+        expect(sub.resizeCalls[0][0]).assertEqual(200);
+        expect(sub.resizeCalls[0][1]).assertEqual(160);
+        expect(sub.moveCalls.length).assertEqual(1);
+        expect(sub.moveCalls[0][0]).assertEqual(1400);
+        expect(sub.moveCalls[0][1]).assertEqual(600);
+        done();
+      });
+
+    it('does not resize when the positioner keeps the window size', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(51, 9);
+        const sub = new FakeWindow();
+        p.host.subWindow = sub as ESObject as window.Window;
+        p.host.workOverride = [0, 0, 2400, 1200];
+        p.host.simulatePlacement = [100, 100, 500, 400]; // live logical size
+        await p.host.positionAtForTest(500, 400);
+        expect(sub.resizeCalls.length).assertEqual(0);
+        expect(sub.moveCalls.length).assertEqual(1);
+        expect(sub.moveCalls[0][0]).assertEqual(200);
+        expect(sub.moveCalls[0][1]).assertEqual(200);
+        done();
+      });
+
+    it('issues resize once across repeated identical placements', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(52, 9);
+        const sub = new FakeWindow();
+        p.host.subWindow = sub as ESObject as window.Window;
+        p.host.workOverride = [0, 0, 2400, 1200];
+        p.host.simulatePlacement = [700, 300, 100, 80];
+        await p.host.positionAtForTest(500, 400);
+        // A repeat placement at the now-applied size (e.g. a parent-move
+        // burst while pinned at the edge) must not re-issue the resize.
+        await p.host.positionAtForTest(100, 80);
+        expect(sub.resizeCalls.length).assertEqual(1);
+        expect(sub.moveCalls.length).assertEqual(2);
+        done();
+      });
+
+    it('skips degenerate sizes and still moves', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(53, 9);
+        const sub = new FakeWindow();
+        p.host.subWindow = sub as ESObject as window.Window;
+        p.host.workOverride = [0, 0, 2400, 1200];
+        p.host.simulatePlacement = [50, 50, 0, 80]; // width collapses to 0
+        await p.host.positionAtForTest(500, 400);
+        expect(sub.resizeCalls.length).assertEqual(0);
+        expect(sub.moveCalls.length).assertEqual(1);
+        done();
+      });
+
+    it('applies the target size when the live size cannot be read', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(54, 9);
+        const sub = new ThrowingPropsWindow();
+        p.host.subWindow = sub as ESObject as window.Window;
+        p.host.workOverride = [0, 0, 2400, 1200];
+        p.host.simulatePlacement = [700, 300, 100, 80];
+        await p.host.positionAtForTest(500, 400);
+        // Baseline seeding failed → target applied unconditionally.
+        expect(sub.resizeCalls.length).assertEqual(1);
+        expect(sub.resizeCalls[0][0]).assertEqual(200);
+        expect(sub.resizeCalls[0][1]).assertEqual(160);
+        done();
+      });
+
+    it('passes the work area through to the positioner', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(55, 9);
+        const sub = new FakeWindow();
+        p.host.subWindow = sub as ESObject as window.Window;
+        p.host.workOverride = [0, 40, 2400, 1160]; // physical: 40px band excluded
+        p.host.simulatePlacement = [10, 10, 100, 80];
+        await p.host.positionAtForTest(500, 400);
+        // Logical work area: 0, 20, 1200, 580 (÷ dpr 2).
+        expect(p.host.placementArgs[6]).assertEqual(0);
+        expect(p.host.placementArgs[7]).assertEqual(20);
+        expect(p.host.placementArgs[8]).assertEqual(1200);
+        expect(p.host.placementArgs[9]).assertEqual(580);
+        done();
+      });
+  });
+
 }

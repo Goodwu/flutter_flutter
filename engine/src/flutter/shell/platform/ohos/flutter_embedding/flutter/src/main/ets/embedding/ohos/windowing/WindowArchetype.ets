@@ -15,7 +15,6 @@ export enum WindowArchetype {
   DIALOG = 1,
   /** Positioner-anchored, non-focusable SubWindow. */
   TOOLTIP = 2,
-  /** Positioner-anchored, focusable SubWindow. */
   POPUP = 3,
 }
 

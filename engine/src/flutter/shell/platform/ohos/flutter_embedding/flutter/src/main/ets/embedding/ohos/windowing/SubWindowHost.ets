@@ -28,6 +28,8 @@ const TAG = 'SubWindowHost'
  */
 export class SubWindowHost extends FlutterWindowHost {
   subWindow: window.Window | undefined;
+  /** One-shot guard for closeForPolicy — see there. */
+  private closedForPolicy: boolean = false;
 
   constructor(ctx: WindowHostContext,
               viewId: number,
@@ -122,13 +124,14 @@ export class SubWindowHost extends FlutterWindowHost {
           // Per-archetype config; must precede showWindow.
           await this.prepareShow(subWindow);
           await subWindow.showWindow();
-          // OS-initiated teardown: fire the same Dart onWindowDestroyed +
-          // ETS cleanup as a Dart-initiated destroy(); safe either way
-          // (native no-ops when the Dart path already ran; idempotent).
           try {
             subWindow.on('windowEvent', (event: window.WindowEventType) => {
               if (event === window.WindowEventType.WINDOW_DESTROYED) {
                 this.handleOsClosed();
+              } else if (event === window.WindowEventType.WINDOW_ACTIVE) {
+                this.onSubWindowActivated();
+              } else if (event === window.WindowEventType.WINDOW_INACTIVE) {
+                this.onSubWindowDeactivated();
               }
             });
           } catch (e) {
@@ -190,6 +193,45 @@ export class SubWindowHost extends FlutterWindowHost {
   protected async configureAfterShow(subWindow: window.Window): Promise<void> {
   }
 
+  /** This sub-window gained activation: push the view's activation flag to
+   * native (the Dart `isActivated` cache; notify_listeners fires on change).
+   * Anchored hosts are non-focusable and never see this; dialogs do. */
+  protected onSubWindowActivated(): void {
+    this.ctx.notifyWindowActivated(this.viewId, true);
+  }
+
+  /** This sub-window lost activation to another window: push the flag (base
+   * behavior — same channel as onSubWindowActivated). Anchored hosts are
+   * non-focusable and normally never see this; any teardown noise lands on
+   * a view native is already tearing down and is absorbed by
+   * closeForPolicy's one-shot. */
+  protected onSubWindowDeactivated(): void {
+    this.ctx.notifyWindowActivated(this.viewId, false);
+  }
+
+  /**
+   * Archetype-policy teardown (parent resize / deactivation): the SAME
+   * Dart-visible chain as any OS-initiated close — handleOsClosed() fires
+   * nativeHandleOsWindowClosed (→ Dart onWindowDestroyed; native no-ops
+   * when the Dart path already ran; bookkeeping is idempotent), then
+   * closeHost() removes the OS sub-window (its WINDOW_DESTROYED re-enters
+   * handleOsClosed the same way). One-shot: teardown itself can fire
+   * WINDOW_INACTIVE (a focused window losing focus while being destroyed)
+   * and a resize burst can repeat, which must not re-enter destroyWindow.
+   * Restore semantics live in closeHost — AnchoredWindowHost overrides it
+   * to never re-show the parent (win32 DestroyWindow parity); dialogs keep
+   * the default restore.
+   */
+  protected closeForPolicy(reason: string): void {
+    if (this.closedForPolicy) {
+      return;
+    }
+    this.closedForPolicy = true;
+    Log.i(TAG, `${reason}; destroying ${this.viewIdStr}`);
+    this.handleOsClosed();
+    this.closeHost();
+  }
+
   // ---- Teardown -----------------------------------------------------------
 
   handleOsClosed(): void {
@@ -201,7 +243,13 @@ export class SubWindowHost extends FlutterWindowHost {
     super.handleOsClosed();
   }
 
-  protected closeHost(): void {
+  /** restoreParent=false skips the parent re-show below. AnchoredWindowHost
+   * overrides this entry to ALWAYS pass false (win32 DestroyWindow parity:
+   * a non-focusable host never took the parent's foreground, and a stray
+   * showWindow would steal the focus from its new holder); dialogs keep the
+   * default — WMS does not reliably hand foreground back after a modal
+   * child closes. */
+  protected closeHost(restoreParent?: boolean): void {
     const sub = this.subWindow;
     if (!sub) {
       Log.w(TAG, `destroyWindowHost: no sub-window host for ${this.viewIdStr} (already closed?)`);
@@ -214,6 +262,9 @@ export class SubWindowHost extends FlutterWindowHost {
       sub.destroyWindow((err) => {
         if (err && err.code) {
           Log.w(TAG, `destroyWindowHost: destroyWindow failed for ${this.viewIdStr}: ${JSON.stringify(err)}`);
+          return;
+        }
+        if (restoreParent === false) {
           return;
         }
         // WMS does not reliably restore the parent main window to the

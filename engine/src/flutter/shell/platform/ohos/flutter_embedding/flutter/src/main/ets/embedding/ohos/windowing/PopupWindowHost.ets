@@ -8,8 +8,6 @@ import { WindowArchetype } from './WindowArchetype';
 import { WindowHostContext } from './WindowHostContext';
 import { AnchoredWindowHost } from './AnchoredWindowHost';
 
-/** Popup host: like a tooltip but STAYS FOCUSABLE (its content can hold
- * interactive items). Per-type behavior beyond this lands here. */
 export class PopupWindowHost extends AnchoredWindowHost {
   constructor(ctx: WindowHostContext,
               viewId: number,

@@ -769,6 +769,17 @@ class PopupWindowControllerOHOS extends PopupWindowController with _WindowContro
   Rect _anchorRect;
   WindowPositioner _positioner;
 
+  // isActivated/activate() deliberately keep the BASE PopupWindowController
+  // semantics (walk to the closest regular/dialog parent, _window.dart): the
+  // OHOS popup host is permanently non-focusable
+  // (AnchoredWindowHost.prepareShow → setWindowFocusable(false)), so the
+  // embedding never updates the popup's own activation flag — reading it
+  // would pin isActivated to false — and showWindow() cannot hand keyboard
+  // focus to a non-focusable window. The contract's keyboard-input path
+  // ("parent active + focus node inside the popup focused") runs through
+  // the active parent, which activate() raises. macOS's popup controller
+  // keeps the base semantics for the same reason.
+
   @override
   BaseWindowController get parent => _parent;
 
