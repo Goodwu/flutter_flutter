@@ -14,6 +14,16 @@ import { FlutterWindowHost } from './FlutterWindowHost';
 
 const TAG = 'AbilityWindowHost'
 
+/** @ohos.window symbol newer than the API-12 typedef this embedding
+ * compiles against (@since 14). A direct reference breaks SDK-12 builds,
+ * so probe at runtime. Extends Window so the cast below type-checks under
+ * strict ArkTS (which forbids non-overlapping casts). */
+interface TitleButtonApi extends window.Window {
+  setWindowTitleButtonVisible(isMaximizeButtonVisible: boolean,
+                              isMinimizeButtonVisible: boolean,
+                              isCloseButtonVisible?: boolean): void;
+}
+
 export enum AbilityHostMode {
   /** The FIRST top-level window ADOPTS the EntryAbility's pre-created main
    * window + implicit view 0 instead of spawning a sibling UIAbility. */
@@ -38,8 +48,9 @@ export class AbilityWindowHost extends FlutterWindowHost {
               requestId: number,
               width: number,
               height: number,
-              title: string) {
-    super(ctx, viewId, 0, WindowArchetype.REGULAR, width, height);
+              title: string,
+              archetype: WindowArchetype = WindowArchetype.REGULAR) {
+    super(ctx, viewId, 0, archetype, width, height);
     this.mode = mode;
     this.requestId = requestId;
     this.title = title;
@@ -119,9 +130,7 @@ export class AbilityWindowHost extends FlutterWindowHost {
       this.failAttach('attachSpawned: no bundleName');
       return;
     }
-    // The ability class is APP code (cannot ship in the HAR): default is the
-    // sample's name; apps with their own class call
-    // FlutterManager.setRegularWindowAbilityName (unconfigured → reject).
+
     const want: Want = {
       bundleName: bundleName,
       abilityName: this.ctx.regularWindowAbilityName(),
@@ -139,6 +148,29 @@ export class AbilityWindowHost extends FlutterWindowHost {
         + ` ${JSON.stringify(err)}`);
       this.failAttach('attachSpawned: startAbility rejected');
     });
+  }
+
+  decorateTitleButtons(): void {
+    if (this.isAdopted() || this.archetype !== WindowArchetype.DIALOG) {
+      return;
+    }
+    const win = this.resolveWindow();
+    if (!win) {
+      Log.w(TAG, `decorateTitleButtons: no window for viewId=${this.viewIdStr}`);
+      return;
+    }
+    const api = win as TitleButtonApi;
+    if (typeof api.setWindowTitleButtonVisible !== 'function') {
+      Log.w(TAG, `decorateTitleButtons: setWindowTitleButtonVisible` +
+        ` unavailable (API 14+) for viewId=${this.viewIdStr}; maximize stays`);
+      return;
+    }
+    try {
+      api.setWindowTitleButtonVisible(false, true, true);
+    } catch (e) {
+      Log.w(TAG, `decorateTitleButtons: setWindowTitleButtonVisible failed` +
+        ` for ${this.viewIdStr}: ${JSON.stringify(e)}`);
+    }
   }
 
   /** View 0 is keyed by its "oh_flutter_<n>" XComponent id, NOT "0" —

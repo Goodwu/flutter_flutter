@@ -351,24 +351,6 @@ void PlatformViewOHOS::NotifyDestroyForView(int64_t view_id) {
   latch.Wait();
 }
 
-void PlatformViewOHOS::AddViewForWindow(int64_t view_id) {
-  FML_DCHECK(view_id != kFlutterImplicitViewId);
-
-  // Shell::OnPlatformViewAddView DCHECKs the platform task runner; callers
-  // arrive on the UI thread, so hop over.
-  auto weak_this = GetWeakPtr();
-  task_runners_.GetPlatformTaskRunner()->PostTask([weak_this, view_id]() {
-    if (!weak_this) {
-      return;
-    }
-    weak_this->AddView(view_id, ViewportMetrics{}, [view_id](bool added) {
-      if (!added) {
-        FML_LOG(ERROR) << "Engine AddView failed for view " << view_id;
-      }
-    });
-  });
-}
-
 void PlatformViewOHOS::RemoveViewForWindow(int64_t view_id) {
   FML_DCHECK(view_id != kFlutterImplicitViewId);
 

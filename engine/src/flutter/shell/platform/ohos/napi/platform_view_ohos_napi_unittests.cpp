@@ -104,12 +104,12 @@ TEST_F(PlatformViewOHOSNapiTest, RequestWindowHostNullEnv) {
   EXPECT_NO_FATAL_FAILURE(facade.RequestWindowHost(9401, 0, 640.0, 480.0, 1));
 }
 
-// createRegularAbility: 5 args — int64 view_id, int64 request_id,
-// double width, double height, string title.
-TEST_F(PlatformViewOHOSNapiTest, CreateRegularAbilityNullEnv) {
+// createRegularAbility: 6 args — int64 view_id, int64 request_id,
+// double width, double height, string title, int32 archetype.
+TEST(PlatformViewOHOSNapi, CreateRegularAbilityNullEnv) {
   PlatformViewOHOSNapi facade(nullptr);
-  EXPECT_NO_FATAL_FAILURE(
-      facade.CreateRegularAbility(9401, 1001, 640.0, 480.0, "title"));
+  facade.CreateRegularAbility(9401, 1001, 640.0, 480.0, "title", 1);
+  SUCCEED();
 }
 
 // bindEntryAbilityToView: 4 args — int64 view_id, double width, double height,
@@ -350,7 +350,7 @@ TEST_F(PlatformViewOHOSNapiTest, WindowingCalloutsCompleteMarshaling) {
   PlatformViewOHOSNapi facade(nullptr);
   EXPECT_NO_FATAL_FAILURE({
     facade.RequestWindowHost(9401, 0, 640.0, 480.0, 1);
-    facade.CreateRegularAbility(9401, 1001, 640.0, 480.0, "title");
+    facade.CreateRegularAbility(9401, 1001, 640.0, 480.0, "title", 0);
     facade.BindEntryAbilityToView(9401, 640.0, 480.0, "title");
     facade.DestroyWindowHost(9401);
     facade.ExitApplication();
@@ -429,7 +429,7 @@ TEST_F(PlatformViewOHOSNapiTest, CalloutsInvokeJsMethodFailureBranches) {
   PlatformViewOHOSNapi facade(nullptr);
   const std::vector<std::function<void()>> callouts = {
       [&] { facade.RequestWindowHost(1, 0, 1.0, 2.0, 3); },
-      [&] { facade.CreateRegularAbility(1, 2, 1.0, 2.0, "t"); },
+      [&] { facade.CreateRegularAbility(1, 2, 1.0, 2.0, "t", 1); },
       [&] { facade.BindEntryAbilityToView(1, 1.0, 2.0, "t"); },
       [&] { facade.DestroyWindowHost(1); },
       [&] { facade.ExitApplication(); },

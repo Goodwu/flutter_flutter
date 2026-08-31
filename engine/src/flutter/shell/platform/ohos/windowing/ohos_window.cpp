@@ -144,7 +144,8 @@ void OHOSWindow::RequestUiAbilityHost() const {
     return;
   }
   facade->CreateRegularAbility(view_id_, /*request_id=*/view_id_, width, height,
-                               /*title=*/"");
+                               /*title=*/"",
+                               static_cast<int32_t>(type_));
 }
 
 }  // namespace flutter

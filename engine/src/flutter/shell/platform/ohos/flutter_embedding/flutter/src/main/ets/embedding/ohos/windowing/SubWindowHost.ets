@@ -56,7 +56,7 @@ export class SubWindowHost extends FlutterWindowHost {
     const parentAbilityResolved: UIAbility = parentAbility;
     // Window name must be unique; use the viewId.
     windowStage.createSubWindow('flutter-' + this.viewIdStr, (err, subWindow) => {
-      if (err.code || !subWindow) {
+      if ((err && err.code) || !subWindow) {
         Log.e(TAG, `createSubWindow failed: ${JSON.stringify(err)}`);
         this.failAttach('createSubWindow');
         return;
@@ -84,10 +84,6 @@ export class SubWindowHost extends FlutterWindowHost {
       }
       // A sub-window's viewToAbility entry points at the PARENT ability.
       this.ctx.setViewAbility(this.viewIdStr, parentAbilityResolved);
-      // Anchored sub-windows must also follow parent MOVES (the child's own
-      // size loop does not reposition on parent movement). One listener per
-      // parent ability; it re-anchors only that parent's anchored children.
-      this.ctx.ensureParentRectListener(parentAbilityResolved, windowStage);
 
       const storage = new LocalStorage();
       storage.setOrCreate('viewId', this.viewIdStr);

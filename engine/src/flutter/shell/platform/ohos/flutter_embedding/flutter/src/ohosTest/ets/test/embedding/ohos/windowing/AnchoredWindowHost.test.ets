@@ -41,8 +41,8 @@ class TestAnchoredHost extends AnchoredWindowHost {
     await this.positionAt(lw, lh);
   }
 
-  reanchorForTest(): void {
-    this.reanchor();
+  startParentTrackingForTest(): void {
+    this.startParentTracking();
   }
 }
 
@@ -94,6 +94,13 @@ function makePositioned(viewId: number, parentViewId: number): PositionedHosts {
   return new PositionedHosts(ctx, mainWin, stage, host);
 }
 
+/** Fires a tracked parent window's rect-change callback (a pure move — the
+ * host only re-anchors on it, the rect payload itself is not consulted). */
+function fireRectChange(win: FakeWindow): void {
+  expect(win.rectChangeCb).not().assertUndefined();
+  win.rectChangeCb?.(new FakeRect(40, 40, 100, 200) as ESObject as window.RectChangeOptions);
+}
+
 export default function anchoredWindowHostTest() {
   describe('AnchoredWindowHost.constructor', () => {
     it('starts unanchored with the TOOLTIP archetype', Level.LEVEL0, () => {
@@ -103,15 +110,6 @@ export default function anchoredWindowHostTest() {
       expect(host.archetype).assertEqual(WindowArchetype.TOOLTIP);
       expect(host.viewId).assertEqual(1);
       expect(host.parentViewId).assertEqual(0);
-    });
-
-    it('parentAbilityOf reflects the resolved parent ability', Level.LEVEL0, () => {
-      const ctx = new FakeHostContext();
-      const host: TestAnchoredHost = new TestAnchoredHost(ctx, 2, 0, 100, 80);
-      expect(host.parentAbilityOf()).assertEqual(undefined);
-      const ability: UIAbility = new FakeAbility() as ESObject as UIAbility;
-      host.setParentForTest(ability);
-      expect(host.parentAbilityOf()).assertEqual(ability);
     });
   });
 
@@ -175,12 +173,11 @@ export default function anchoredWindowHostTest() {
   });
 
   describe('AnchoredWindowHost.placeInitial', () => {
-    it('marks anchored and registers the sub-window rect listener', Level.LEVEL0,
+    it('marks the host anchored on placement', Level.LEVEL0,
       async (done: Function) => {
         const p = makePositioned(8, 9);
         await p.host.placeInitialForTest(p.host.subWindow as ESObject as window.Window, 100, 80, 200, 160);
         expect(p.host.anchored).assertTrue();
-        expect(p.ctx.subWindowRectListenerCalls).assertEqual(1);
         done();
       });
   });
@@ -254,25 +251,225 @@ export default function anchoredWindowHostTest() {
       });
   });
 
-  describe('AnchoredWindowHost.reanchor', () => {
-    it('returns early without a sub-window', Level.LEVEL0, () => {
-      const ctx = new FakeHostContext();
-      const host: TestAnchoredHost = new TestAnchoredHost(ctx, 17, 0, 100, 80);
-      host.reanchorForTest();
-      expect(ctx.subWindowRectListenerCalls).assertEqual(0);
-    });
+  describe('AnchoredWindowHost.startParentTracking', () => {
+    it('listens on the ability main window and flips anchored', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(20, 9);
+        p.host.startParentTrackingForTest();
+        expect(p.host.anchored).assertTrue();
+        expect(p.mainWin.rectOnCount).assertEqual(1);
+        expect(p.mainWin.rectChangeCb).not().assertUndefined();
+        done();
+      });
 
-    it('re-anchors an existing sub-window at its current size', Level.LEVEL0, () => {
-      const p = makePositioned(18, 9);
-      p.host.reanchorForTest();
-      expect(p.ctx.subWindowRectListenerCalls).assertEqual(1);
-    });
+    it('is idempotent while already anchored', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(21, 9);
+        p.host.startParentTrackingForTest();
+        p.host.startParentTrackingForTest();
+        expect(p.mainWin.rectOnCount).assertEqual(1);
+        done();
+      });
+
+    it('stays unanchored without a parent ability', Level.LEVEL0,
+      async (done: Function) => {
+        const ctx = new FakeHostContext();
+        const host: TestAnchoredHost = new TestAnchoredHost(ctx, 22, 0, 100, 80);
+        host.startParentTrackingForTest();
+        expect(host.anchored).assertFalse();
+        done();
+      });
+
+    it('stays unanchored without a windowStage', Level.LEVEL0,
+      async (done: Function) => {
+        const ctx = new FakeHostContext();
+        ctx.parentAbilityFor = new FakeAbility() as ESObject as UIAbility;
+        const host: TestAnchoredHost = new TestAnchoredHost(ctx, 23, 0, 100, 80);
+        host.setParentForTest(ctx.parentAbilityFor);
+        host.startParentTrackingForTest();
+        expect(host.anchored).assertFalse();
+        done();
+      });
+
+    it('stays unanchored when resolveParentWindow throws', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(24, 9);
+        p.ctx.subWindowOfViewThrows = true;
+        p.host.startParentTrackingForTest();
+        expect(p.host.anchored).assertFalse();
+        expect(p.mainWin.rectOnCount).assertEqual(0);
+        done();
+      });
+
+    it('stays unanchored when on() throws', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(25, 9);
+        p.mainWin.onThrows = true;
+        p.host.startParentTrackingForTest();
+        expect(p.host.anchored).assertFalse();
+        done();
+      });
+
+    it('prefers the parent sub-window over the main window', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(26, 9);
+        const parentSub = new FakeWindow();
+        p.ctx.subWindows.set('9', parentSub as ESObject as window.Window);
+        p.host.startParentTrackingForTest();
+        expect(parentSub.rectOnCount).assertEqual(1);
+        expect(p.mainWin.rectOnCount).assertEqual(0);
+        done();
+      });
+  });
+
+  describe('AnchoredWindowHost.onParentRectChanged', () => {
+    it('re-anchors the host on a parent rect change', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(27, 9);
+        const sub = new FakeWindow();
+        p.host.subWindow = sub as ESObject as window.Window;
+        p.host.startParentTrackingForTest();
+        fireRectChange(p.mainWin); // leading edge runs now → one reanchor
+        await sleep(10); // reanchor's live-rect read settles
+        expect(sub.propsReads).assertEqual(1);
+        done();
+      });
+
+    it('keeps the listener bound to the same parent (never rebinds)', Level.LEVEL0,
+      async (done: Function) => {
+        // The host's lifecycle is tied to its parent: a rect event only
+        // re-anchors, it never re-resolves or re-binds the listener.
+        const p = makePositioned(29, 9);
+        p.host.subWindow = new FakeWindow() as ESObject as window.Window;
+        p.host.startParentTrackingForTest();
+        fireRectChange(p.mainWin);
+        expect(p.mainWin.rectOnCount).assertEqual(1);
+        expect(p.mainWin.rectChangeCb).not().assertUndefined();
+        done();
+      });
+  });
+
+  describe('AnchoredWindowHost.throttledReanchor', () => {
+    it('coalesces a burst into one leading + one trailing reanchor', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(32, 9);
+        const sub = new FakeWindow();
+        p.host.subWindow = sub as ESObject as window.Window;
+        p.host.startParentTrackingForTest();
+        fireRectChange(p.mainWin); // leading edge runs now
+        await sleep(10);
+        expect(sub.propsReads).assertEqual(1);
+        fireRectChange(p.mainWin); // within 50ms: arms ONE trailing timer
+        fireRectChange(p.mainWin); // dropped: a timer is already pending
+        expect(sub.propsReads).assertEqual(1);
+        await sleep(80); // > kMoveThrottleMs(50): flush the trailing edge
+        expect(sub.propsReads).assertEqual(2);
+        done();
+      });
+
+    it('applies the final resting position via the trailing edge', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(33, 9);
+        const sub = new FakeWindow();
+        p.host.subWindow = sub as ESObject as window.Window;
+        p.host.startParentTrackingForTest();
+        fireRectChange(p.mainWin); // leading edge
+        fireRectChange(p.mainWin); // arms the trailing edge
+        await sleep(80);
+        // Trailing timer fired after the burst ended: 2 reanchors total.
+        expect(sub.propsReads).assertEqual(2);
+        done();
+      });
+  });
+
+  describe('AnchoredWindowHost.stopParentTracking', () => {
+    it('releases the listener and clears anchored on destroy', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(34, 9);
+        p.host.startParentTrackingForTest();
+        expect(p.mainWin.rectChangeCb).not().assertUndefined();
+        p.host.destroy();
+        expect(p.host.anchored).assertFalse();
+        expect(p.mainWin.rectChangeCb).assertUndefined();
+        expect(p.ctx.removedHosts.length).assertEqual(1);
+        done();
+      });
+
+    it('cancels a pending trailing reanchor', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(35, 9);
+        const sub = new FakeWindow();
+        p.host.subWindow = sub as ESObject as window.Window;
+        p.host.startParentTrackingForTest();
+        fireRectChange(p.mainWin); // leading edge runs
+        await sleep(10);
+        fireRectChange(p.mainWin); // trailing timer armed
+        expect(sub.propsReads).assertEqual(1);
+        p.host.destroy();
+        await sleep(80);
+        expect(sub.propsReads).assertEqual(1); // no post-teardown reanchor
+        done();
+      });
+
+    it('survives an off() throw during teardown', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(36, 9);
+        p.host.startParentTrackingForTest();
+        p.mainWin.offThrows = true;
+        p.host.destroy();
+        expect(p.host.anchored).assertFalse();
+        done();
+      });
+
+    it('is idempotent across repeated teardown', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(37, 9);
+        p.host.startParentTrackingForTest();
+        p.host.destroy();
+        p.host.destroy();
+        expect(p.host.anchored).assertFalse();
+        done();
+      });
+  });
+
+  describe('AnchoredWindowHost.reanchor', () => {
+    it('no-ops while not anchored (teardown gate)', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(38, 9);
+        const sub = new FakeWindow();
+        p.host.subWindow = sub as ESObject as window.Window;
+        p.host.reanchor(); // never placed / already torn down
+        expect(sub.propsReads).assertEqual(0);
+        done();
+      });
+
+    it('no-ops without a sub-window', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(39, 9);
+        p.host.startParentTrackingForTest();
+        p.host.subWindow = undefined;
+        p.host.reanchor();
+        expect(p.host.anchored).assertTrue();
+        done();
+      });
+
+    it('re-places an existing sub-window at its current size', Level.LEVEL0,
+      async (done: Function) => {
+        const p = makePositioned(40, 9);
+        const sub = new FakeWindow();
+        p.host.subWindow = sub as ESObject as window.Window;
+        p.host.startParentTrackingForTest();
+        p.host.reanchor();
+        await sleep(10); // positionAt's promise settles
+        expect(sub.propsReads).assertEqual(1); // live rect read exactly once
+        done();
+      });
 
     it('logs a geometry read failure', Level.LEVEL0, () => {
-      const p = makePositioned(19, 9);
+      const p = makePositioned(41, 9);
+      p.host.startParentTrackingForTest();
       p.host.subWindow = new ThrowingPropsWindow() as ESObject as window.Window;
-      p.host.reanchorForTest();
-      expect(p.ctx.subWindowRectListenerCalls).assertEqual(1);
+      p.host.reanchor(); // catch branch — must not throw
     });
   });
 }

@@ -87,11 +87,7 @@ class PlatformViewOHOS final : public PlatformView {
   /// @brief Tears down a non-implicit view's surface (paired with RemoveView).
   void NotifyDestroyForView(int64_t view_id);
 
-  /// @brief Adds a non-implicit view (posts to the platform task runner);
-  ///        surface bound later via `NotifyCreateForView`.
-  void AddViewForWindow(int64_t view_id);
-
-  /// @brief Removes a non-implicit view (paired with AddViewForWindow).
+  /// @brief Removes a non-implicit view.
   void RemoveViewForWindow(int64_t view_id);
 
   void Preload(int width, int height);

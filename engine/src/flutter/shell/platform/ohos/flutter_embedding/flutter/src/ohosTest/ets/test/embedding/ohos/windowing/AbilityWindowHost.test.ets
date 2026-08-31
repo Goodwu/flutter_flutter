@@ -10,18 +10,21 @@ import UIAbility from '@ohos.app.ability.UIAbility';
 import { common } from '@kit.AbilityKit';
 import { AbilityWindowHost, AbilityHostMode } from
   '../../../../../../main/ets/embedding/ohos/windowing/AbilityWindowHost';
+import { WindowArchetype } from
+  '../../../../../../main/ets/embedding/ohos/windowing/WindowArchetype';
 import { WindowHostContext } from
   '../../../../../../main/ets/embedding/ohos/windowing/WindowHostContext';
 import {
   FakeWindow, FakeWindowStage, FakeAbility, FakeAbilityContext,
-  FakeHostContext, sleep,
+  FakeHostContext, FakeWindowNoTitleButton, sleep,
 } from './Fakes';
 
 /** Concrete subclass exposing the protected teardown hooks. */
 class TestAbilityHost extends AbilityWindowHost {
   constructor(ctx: WindowHostContext, viewId: number, mode: AbilityHostMode,
-    requestId: number, w: number, h: number, title: string) {
-    super(ctx, viewId, mode, requestId, w, h, title);
+    requestId: number, w: number, h: number, title: string,
+    archetype: WindowArchetype = WindowArchetype.REGULAR) {
+    super(ctx, viewId, mode, requestId, w, h, title, archetype);
   }
 
   closeHostForTest(): void {
@@ -103,6 +106,18 @@ function makeTerminateHost(viewId: number): TerminateHost {
   ctx.viewAbilities.set(String(viewId), abilityAsUI);
   const host: TestAbilityHost = new TestAbilityHost(ctx, viewId, AbilityHostMode.SPAWNED, 1, 0, 0, '');
   return new TerminateHost(ctx, actx, abilityAsUI, host);
+}
+
+/** SPAWNED view-5 host whose ability + stage + main window all exist. */
+function makeSpawnedHost(win: Object,
+                         archetype: WindowArchetype): TestAbilityHost {
+  const stage = new FakeWindowStage();
+  stage.mainWindow = win as ESObject as window.Window;
+  const ability = new FakeAbility();
+  const ctx = new FakeHostContext();
+  ctx.stage = stage as ESObject as window.WindowStage;
+  ctx.viewAbilities.set('5', ability as ESObject as UIAbility);
+  return new TestAbilityHost(ctx, 5, AbilityHostMode.SPAWNED, 7, 0, 0, '', archetype);
 }
 
 export default function abilityWindowHostTest() {
@@ -233,6 +248,37 @@ export default function abilityWindowHostTest() {
       expect(a.ctx.removedHosts.includes('5')).assertTrue();
       done();
     });
+  });
+
+  describe('AbilityWindowHost.decorateTitleButtons', () => {
+    it('hides the maximize button for a SPAWNED DIALOG', Level.LEVEL0, () => {
+      const mainWin = new FakeWindow();
+      makeSpawnedHost(mainWin, WindowArchetype.DIALOG).decorateTitleButtons();
+      expect(mainWin.titleButtonCalls.length).assertEqual(1);
+      expect(mainWin.titleButtonCalls[0][0]).assertEqual(0);
+      expect(mainWin.titleButtonCalls[0][1]).assertEqual(1);
+      expect(mainWin.titleButtonCalls[0][2]).assertEqual(1);
+    });
+
+    it('no-ops for a SPAWNED REGULAR window', Level.LEVEL0, () => {
+      const mainWin = new FakeWindow();
+      makeSpawnedHost(mainWin, WindowArchetype.REGULAR).decorateTitleButtons();
+      expect(mainWin.titleButtonCalls.length).assertEqual(0);
+    });
+
+    it('no-ops when the window lacks setWindowTitleButtonVisible (API < 14)',
+      Level.LEVEL0, () => {
+        const host = makeSpawnedHost(new FakeWindowNoTitleButton(), WindowArchetype.DIALOG);
+        host.decorateTitleButtons(); // must not throw
+      });
+
+    it('logs and swallows a throwing setWindowTitleButtonVisible',
+      Level.LEVEL0, () => {
+        const mainWin = new FakeWindow();
+        mainWin.titleButtonThrows = true;
+        const host = makeSpawnedHost(mainWin, WindowArchetype.DIALOG);
+        host.decorateTitleButtons(); // must not throw
+      });
   });
 
   describe('AbilityWindowHost.resolveWindow', () => {

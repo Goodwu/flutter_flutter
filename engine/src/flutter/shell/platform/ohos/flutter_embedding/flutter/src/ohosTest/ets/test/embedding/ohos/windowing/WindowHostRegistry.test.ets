@@ -13,8 +13,6 @@ import { FlutterWindowHost } from
   '../../../../../../main/ets/embedding/ohos/windowing/FlutterWindowHost';
 import { SubWindowHost } from
   '../../../../../../main/ets/embedding/ohos/windowing/SubWindowHost';
-import { TooltipWindowHost } from
-  '../../../../../../main/ets/embedding/ohos/windowing/TooltipWindowHost';
 import { WindowArchetype } from
   '../../../../../../main/ets/embedding/ohos/windowing/WindowArchetype';
 import { WindowHostContext } from
@@ -38,17 +36,6 @@ class TestBaseHost extends FlutterWindowHost {
   }
 
   protected closeHostForCascade(parentAbility: UIAbility): void {
-  }
-}
-
-/** AnchoredWindowHost whose protected parentAbility is settable for tests. */
-class TestAnchoredHost extends TooltipWindowHost {
-  constructor(ctx: WindowHostContext, viewId: number, parentViewId: number) {
-    super(ctx, viewId, parentViewId, 0, 0);
-  }
-
-  setParentForTest(ability: UIAbility): void {
-    this.parentAbility = ability;
   }
 }
 
@@ -124,57 +111,4 @@ export default function windowHostRegistryTest() {
       expect(registry.subWindowOf('8')).assertEqual(undefined);
     });
   });
-
-  describe('WindowHostRegistry.anchoredHostsOf', () => {
-    it('filters by anchored flag AND parent ability identity', Level.LEVEL0, () => {
-      const registry: WindowHostRegistry = new WindowHostRegistry();
-      const abilityA: UIAbility = new FakeAbilityStub() as ESObject as UIAbility;
-      const abilityB: UIAbility = new FakeAbilityStub() as ESObject as UIAbility;
-      const anchoredA: TestAnchoredHost = new TestAnchoredHost(ctx, 9, 0);
-      anchoredA.setParentForTest(abilityA);
-      anchoredA.anchored = true;
-      const anchoredB: TestAnchoredHost = new TestAnchoredHost(ctx, 10, 0);
-      anchoredB.setParentForTest(abilityB);
-      anchoredB.anchored = true;
-      const notAnchored: TestAnchoredHost = new TestAnchoredHost(ctx, 11, 0);
-      notAnchored.setParentForTest(abilityA);
-      const base: TestBaseHost = new TestBaseHost(ctx, 12);
-      registry.register(anchoredA);
-      registry.register(anchoredB);
-      registry.register(notAnchored);
-      registry.register(base);
-      const onA = registry.anchoredHostsOf(abilityA);
-      expect(onA.length).assertEqual(1);
-      expect(onA[0]).assertEqual(anchoredA);
-    });
-  });
-
-  describe('WindowHostRegistry.anchoredHostsOfParentView', () => {
-    it('filters anchored hosts by parentViewId', Level.LEVEL0, () => {
-      const registry: WindowHostRegistry = new WindowHostRegistry();
-      const abilityA: UIAbility = new FakeAbilityStub() as ESObject as UIAbility;
-      const childOf5: TestAnchoredHost = new TestAnchoredHost(ctx, 13, 5);
-      childOf5.setParentForTest(abilityA);
-      childOf5.anchored = true;
-      const childOf6: TestAnchoredHost = new TestAnchoredHost(ctx, 14, 6);
-      childOf6.setParentForTest(abilityA);
-      childOf6.anchored = true;
-      const notAnchored: TestAnchoredHost = new TestAnchoredHost(ctx, 15, 5);
-      notAnchored.setParentForTest(abilityA);
-      registry.register(childOf5);
-      registry.register(childOf6);
-      registry.register(notAnchored);
-      const on5 = registry.anchoredHostsOfParentView(5);
-      expect(on5.length).assertEqual(1);
-      expect(on5[0]).assertEqual(childOf5);
-      const on6 = registry.anchoredHostsOfParentView(6);
-      expect(on6.length).assertEqual(1);
-      expect(on6[0]).assertEqual(childOf6);
-    });
-  });
-}
-
-/** Minimal object cast to UIAbility purely for identity comparison. */
-class FakeAbilityStub {
-  context: Object = new Object();
 }

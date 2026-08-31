@@ -16,7 +16,7 @@ import { beforeAll, describe, expect, it } from '@ohos/hypium';
 import { window } from '@kit.ArkUI';
 import UIAbility from '@ohos.app.ability.UIAbility';
 import FlutterManager, { FullScreenListener } from '../../../../../main/ets/embedding/ohos/FlutterManager';
-import { FakeAbility, FakeRect, FakeWindow, FakeWindowStage } from './windowing/Fakes';
+import { FakeAbility } from './windowing/Fakes';
 
 function sleep(time: number) {
   return new Promise<void>((resolve: Function) => setTimeout(resolve, time));
@@ -205,7 +205,7 @@ export default function FlutterManagerTest() {
 
     it('TestCreateRegularAbilityAndBindEntry', 0, (done: Function) => {
       try {
-        flutterManager.createRegularAbilityWindow(9110, 42, 300, 200, 'win');
+        flutterManager.createRegularAbilityWindow(9110, 42, 300, 200, 'win', 0);
         flutterManager.bindEntryAbilityToView(9111, 300, 200, 'adopted');
       } catch (e) {
       }
@@ -277,93 +277,6 @@ export default function FlutterManagerTest() {
       done();
     })
 
-    it('TestEnsureParentRectListenerRegistersAndReuses', 0, (done: Function) => {
-      const ability = new FakeAbility() as ESObject as UIAbility;
-      const fakeWindow = new FakeWindow();
-      const stage = new FakeWindowStage();
-      stage.mainWindow = fakeWindow as ESObject as window.Window;
-      const stageWin = stage as ESObject as window.WindowStage;
-      flutterManager.ensureParentRectListener(ability, stageWin);
-      expect(fakeWindow.rectChangeCb).not().assertNull();
-      // Second registration for the same ability is a no-op.
-      flutterManager.ensureParentRectListener(ability, stageWin);
-      flutterManager.popWindowStage(ability);
-      done();
-    })
-
-    it('TestEnsureParentRectListenerOnThrows', 0, (done: Function) => {
-      const ability = new FakeAbility() as ESObject as UIAbility;
-      const fakeWindow = new FakeWindow();
-      fakeWindow.onThrows = true;
-      const stage = new FakeWindowStage();
-      stage.mainWindow = fakeWindow as ESObject as window.Window;
-      try {
-        flutterManager.ensureParentRectListener(ability, stage as ESObject as window.WindowStage);
-      } catch (e) {
-      }
-      flutterManager.popWindowStage(ability);
-      done();
-    })
-
-    it('TestEnsureParentRectListenerGetMainThrows', 0, (done: Function) => {
-      const ability = new FakeAbility() as ESObject as UIAbility;
-      const stage = new FakeWindowStage();
-      stage.getMainThrows = true;
-      try {
-        flutterManager.ensureParentRectListener(ability, stage as ESObject as window.WindowStage);
-      } catch (e) {
-      }
-      flutterManager.popWindowStage(ability);
-      done();
-    })
-
-    it('TestParentMoveReanchorThrottles', 0, async (done: Function) => {
-      const ability = new FakeAbility() as ESObject as UIAbility;
-      const fakeWindow = new FakeWindow();
-      const stage = new FakeWindowStage();
-      stage.mainWindow = fakeWindow as ESObject as window.Window;
-      flutterManager.ensureParentRectListener(ability, stage as ESObject as window.WindowStage);
-      // First move: elapsed >= throttle → run immediately.
-      const rect = new FakeRect(10, 20, 100, 200) as ESObject as window.RectChangeOptions;
-      fakeWindow.rectChangeCb?.(rect);
-      // Second + third moves within 50ms → trailing run scheduled / dropped.
-      fakeWindow.rectChangeCb?.(rect);
-      fakeWindow.rectChangeCb?.(rect);
-      await sleep(80);
-      flutterManager.popWindowStage(ability);
-      done();
-    })
-
-    it('TestEnsureSubWindowRectListenerUnknownParent', 0, (done: Function) => {
-      // No sub-window host for the parent view → early return.
-      flutterManager.ensureSubWindowRectListener(9301);
-      flutterManager.ensureSubWindowRectListener(9301);
-      done();
-    })
-
-    it('TestRemoveHostReleasesSubWindowRectListener', 0, (done: Function) => {
-      // Numeric viewId → releaseSubWindowRectListener (no listener → early return).
-      flutterManager.removeHost('9302');
-      // Non-numeric viewId → skips the release path entirely.
-      flutterManager.removeHost('oh_flutter_9302');
-      done();
-    })
-
-    it('TestReleaseParentRectListenerViaPopWindowStage', 0, async (done: Function) => {
-      const ability = new FakeAbility() as ESObject as UIAbility;
-      const fakeWindow = new FakeWindow();
-      const stage = new FakeWindowStage();
-      stage.mainWindow = fakeWindow as ESObject as window.Window;
-      const stageWin = stage as ESObject as window.WindowStage;
-      flutterManager.pushWindowStage(ability, stageWin);
-      flutterManager.ensureParentRectListener(ability, stageWin);
-      // Prime abilityKey + throttled reanchor state so pop releases the maps.
-      const rect = new FakeRect(0, 0, 100, 100) as ESObject as window.RectChangeOptions;
-      fakeWindow.rectChangeCb?.(rect);
-      await sleep(80);
-      flutterManager.popWindowStage(ability);
-      done();
-    })
   })
 }
 

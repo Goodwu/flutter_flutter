@@ -6,7 +6,6 @@
 
 import window from '@ohos.window';
 import display from '@ohos.display';
-import UIAbility from '@ohos.app.ability.UIAbility';
 import Log from '../../../util/Log';
 import FlutterNapi, { WindowPositionResult } from '../../engine/FlutterNapi';
 import { WindowArchetype } from './WindowArchetype';
@@ -26,7 +25,9 @@ interface WindowShadowRadiusApi {
  * launch size — OHOS resize is animated and cannot track per-frame content.
  */
 export abstract class AnchoredWindowHost extends SubWindowHost {
-  /** True once the window has been placed (follows parent moves). */
+  /** True while this host is tracking its parent's moves (set in
+   * startParentTracking, cleared in stopParentTracking). Gates reanchor
+   * after teardown — this.subWindow is NOT cleared on teardown paths. */
   anchored: boolean = false;
 
   constructor(ctx: WindowHostContext,
@@ -38,9 +39,127 @@ export abstract class AnchoredWindowHost extends SubWindowHost {
     super(ctx, viewId, parentViewId, archetype, width, height);
   }
 
-  /** The parent ability this window is anchored under (for re-anchor fan-out). */
-  parentAbilityOf(): UIAbility | undefined {
-    return this.parentAbility;
+  // ---- Parent-move tracking ----------------------------------------------
+  // The host listens on its OWN parent window (the parent view's sub-window
+  // when there is one, the ability main window otherwise) so a drag of the
+  // parent re-anchors this window. One listener + one throttle per host,
+  // bound once at startParentTracking and released at stopParentTracking:
+  // this auxiliary window's lifecycle is tied to that parent, so the
+  // listener never moves to another window.
+
+  /** ~20Hz throttle: windowRectChange streams during a drag; sub-window
+   * moves are unanimated. */
+  private static readonly kMoveThrottleMs = 50;
+  /** The parent window listened on from startParentTracking until stop. */
+  private trackedParentWin: window.Window | undefined = undefined;
+  /** Stable arrow so off() always hands back the same reference (FlutterView
+   * uses the same idiom for its windowRectChange callback). */
+  private parentRectCallback = (data: window.RectChangeOptions): void => {
+    this.onParentRectChanged(data);
+  };
+  // Leading-edge timestamp + trailing-edge flag of the throttle.
+  private lastMoveForward: number = 0;
+  private trailingTimer?: number;
+
+  /**
+   * The window this host anchors against: the parent view's OWN sub-window
+   * when it has one (tooltip inside a dialog → the dialog's window; the
+   * hosting ability's main window is a different screen rect entirely), the
+   * ability main window otherwise. Protected: placement (positionAt)
+   * resolves it per call; parent tracking binds it once at start.
+   */
+  protected resolveParentWindow(): window.Window | undefined {
+    const parentAbility = this.parentAbility;
+    if (!parentAbility) {
+      return undefined;
+    }
+    const windowStage = this.ctx.windowStageOf(parentAbility);
+    if (!windowStage) {
+      return undefined;
+    }
+    try {
+      const parentSub = this.ctx.subWindowOfView(String(this.parentViewId));
+      if (parentSub !== undefined) {
+        return parentSub;
+      }
+      return windowStage.getMainWindowSync();
+    } catch (e) {
+      Log.w(TAG, `resolveParentWindow failed for ${this.viewIdStr}: ${JSON.stringify(e)}`);
+      return undefined;
+    }
+  }
+
+  /** Starts following the parent's moves (idempotent; never throws).
+   * anchored flips true only when the listener actually landed. */
+  protected startParentTracking(): void {
+    if (this.anchored) {
+      return;
+    }
+    const parentWin = this.resolveParentWindow();
+    if (!parentWin) {
+      Log.w(TAG, `startParentTracking: no parent window yet for ${this.viewIdStr}`);
+      return;
+    }
+    try {
+      parentWin.on('windowRectChange', this.parentRectCallback);
+    } catch (e) {
+      Log.w(TAG, `startParentTracking: windowRectChange on() failed for ${this.viewIdStr}: ${JSON.stringify(e)}`);
+      return;
+    }
+    this.trackedParentWin = parentWin;
+    this.anchored = true;
+  }
+
+  private onParentRectChanged(data: window.RectChangeOptions): void {
+    this.throttledReanchor();
+  }
+
+  /**
+   * Leading-edge throttle with a trailing edge: events within
+   * [kMoveThrottleMs] are dropped EXCEPT one deferred run, so the final
+   * resting position after a drag burst is always applied.
+   */
+  private throttledReanchor(): void {
+    const now = Date.now();
+    const elapsed = now - this.lastMoveForward;
+    if (elapsed >= AnchoredWindowHost.kMoveThrottleMs) {
+      this.lastMoveForward = now;
+      this.reanchor();
+      return;
+    }
+    if (this.trailingTimer !== undefined) {
+      return;
+    }
+    this.trailingTimer = setTimeout((): void => {
+      this.trailingTimer = undefined;
+      this.lastMoveForward = Date.now();
+      this.reanchor();
+    }, AnchoredWindowHost.kMoveThrottleMs - elapsed) as number;
+  }
+
+  /** Stops following the parent (idempotent) — every teardown path lands
+   * here via the cleanupBookkeeping override. */
+  private stopParentTracking(): void {
+    this.anchored = false;
+    if (this.trailingTimer !== undefined) {
+      clearTimeout(this.trailingTimer);
+      this.trailingTimer = undefined;
+    }
+    const tracked = this.trackedParentWin;
+    this.trackedParentWin = undefined;
+    if (tracked !== undefined) {
+      try {
+        tracked.off('windowRectChange', this.parentRectCallback);
+      } catch (e) {
+        Log.w(TAG, `stopParentTracking: off() failed for ${this.viewIdStr}: ${JSON.stringify(e)}`);
+      }
+    }
+  }
+
+  /** Releases the parent listener before the shared bookkeeping drop. */
+  protected cleanupBookkeeping(): void {
+    this.stopParentTracking();
+    super.cleanupBookkeeping();
   }
 
   // ---- Launch styling: transparent / shadowless / square -----------------
@@ -80,11 +199,9 @@ export abstract class AnchoredWindowHost extends SubWindowHost {
                                         logicalH: number,
                                         physW: number,
                                         physH: number): Promise<void> {
-    this.anchored = true;
-    // If the PARENT is itself a sub-window (tooltip in a dialog), its rect
-    // listener must watch the dialog's sub-window, not the ability main
-    // window — re-anchoring on dialog drags depends on it.
-    this.ctx.ensureSubWindowRectListener(this.parentViewId);
+    // Follow the parent from here on; resolveParentWindow picks the dialog's
+    // sub-window over the ability main window when the parent has one.
+    this.startParentTracking();
     await this.positionAt(logicalW, logicalH);
   }
 
@@ -102,27 +219,13 @@ export abstract class AnchoredWindowHost extends SubWindowHost {
       Log.w(TAG, `positionAt: no subWindow for viewId=${this.viewIdStr}`);
       return;
     }
-    const parentAbility = this.parentAbility;
-    if (!parentAbility) {
-      Log.w(TAG, `positionAt: no parent ability for viewId=${this.viewIdStr}`);
-      return;
-    }
-    const windowStage = this.ctx.windowStageOf(parentAbility);
-    if (!windowStage) {
-      Log.w(TAG, `positionAt: no windowStage for parent of viewId=${this.viewIdStr}`);
+    const parentWin = this.resolveParentWindow();
+    if (!parentWin) {
+      Log.w(TAG, `positionAt: no parent window for viewId=${this.viewIdStr}`);
       return;
     }
     try {
       const dpr = this.ctx.densityPixels();
-      // Parent geometry source: when the parent view is ITSELF a sub-window
-      // (tooltip/popup inside a dialog), the dialog's OWN windowRect is the
-      // anchor parent — the hosting ability's main window is a different
-      // screen rect entirely (same priority as DialogWindowHost.placeInitial).
-      let parentWin = windowStage.getMainWindowSync();
-      const parentSub = this.ctx.subWindowOfView(String(this.parentViewId));
-      if (parentSub !== undefined) {
-        parentWin = parentSub;
-      }
       const wr = parentWin.getWindowProperties().windowRect; // physical px
       // windowRect is the DECORATED rect (origin above the caption) while
       // Dart's anchorRect origin is the CONTENT top-left — translating by
@@ -159,15 +262,15 @@ export abstract class AnchoredWindowHost extends SubWindowHost {
   }
 
   /** Parent moved → re-anchor at the current size; rate limiting is
-   * per-parent in the manager. */
+   * per-host (throttledReanchor). */
   reanchor(): void {
+    if (!this.anchored) {
+      return;
+    }
     const sub = this.subWindow;
     if (!sub) {
       return;
     }
-    // Late parent materialization: the placeInitial attempt may have run
-    // before the parent dialog's sub-window existed. Cheap map check.
-    this.ctx.ensureSubWindowRectListener(this.parentViewId);
     try {
       const dpr = this.ctx.densityPixels();
       const rect = sub.getWindowProperties().windowRect; // physical

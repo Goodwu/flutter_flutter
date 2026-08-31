@@ -97,12 +97,15 @@ class PlatformViewOHOSNapi {
                          double height,
                          int32_t archetype);
   // Regular window → real UIAbility host (startAbility-launched, cached
-  // engine); `title` is currently unused on this path.
+  // engine); `title` is currently unused on this path. Modeless Dialogs ride
+  // the same spawn path and pass archetype=DIALOG so the spawned ability can
+  // apply dialog-specific chrome (win32 parity: no maximize button).
   void CreateRegularAbility(int64_t view_id,
                             int64_t request_id,
                             double width,
                             double height,
-                            const std::string& title);
+                            const std::string& title,
+                            int32_t archetype);
   // First Regular window → rebind the EntryAbility's main window surface to
   // `view_id` instead of spawning a sibling RegularWindowAbility.
   void BindEntryAbilityToView(int64_t view_id,

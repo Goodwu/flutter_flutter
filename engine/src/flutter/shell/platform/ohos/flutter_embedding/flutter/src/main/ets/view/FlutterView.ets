@@ -1133,6 +1133,7 @@ export class FlutterView {
     if (this.uiContext !== undefined && this.autofillUiContext === undefined) {
       this.applyAutofillUiContext(this.uiContext);
     }
+    FlutterManager.getInstance().decorateTitleButtons(this.id);
     Log.d(TAG, "uiContext init and sendSettings finished.");
   }
 
