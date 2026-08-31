@@ -242,16 +242,20 @@ export struct FlutterPage {
   /** True when the engine runs in HCPP mode; drives Stack z-order. */
   @State hybridCompositionEnabled: boolean = false;
 
+  // hcppOnly: true=仅 HCPP wrapper / false=仅纹理 wrapper / undefined=全部(非 HCPP 态原语义)。
   @Builder
-  buildPlatformViewLayer() {
+  buildPlatformViewLayer(hcppOnly?: boolean) {
     ForEach(this.rootDvModel!!, (child: ESObject) => {
-      DynamicView({
-        model: child as DVModel,
-        params: child.params,
-        events: child.events,
-        children: child.children,
-        customBuilder: child.builder
-      })
+      if (hcppOnly === undefined ||
+        ((child.params as Record<string, ESObject>)['hcpp'] === true) === hcppOnly) {
+        DynamicView({
+          model: child as DVModel,
+          params: child.params,
+          events: child.events,
+          children: child.children,
+          customBuilder: child.builder
+        })
+      }
     }, (child: ESObject) => `${child.id_}`)
   }
 
@@ -299,10 +303,12 @@ export struct FlutterPage {
   defaultPage() {
     Stack() {
       // HCPP z-order: background slice (bottom) < DISPLAY nodes < overlay slice (top).
+      // 仅 HCPP(DISPLAY)节点进 surface 之上的合成层序。
       if (this.hybridCompositionEnabled) {
+        this.buildPlatformViewLayer(false)
         this.buildFlutterSurfaceLayer()
         Text("").id("unfocus-xcomponent-node").focusable(true)
-        this.buildPlatformViewLayer()
+        this.buildPlatformViewLayer(true)
         this.buildOverlayLayer()
         this.buildOverlayBlock()
       } else {
@@ -356,11 +362,12 @@ export struct FlutterPage {
   mouseWheelPage() {
     Stack() {
       // HCPP z-order 与 defaultPage 完全一致：
-      // background slice (bottom) < unfocus Text < DISPLAY nodes < overlay slice < overlay Block。
+      // texture PVs < background slice (bottom) < unfocus Text < DISPLAY nodes < overlay slice < overlay Block。
       if (this.hybridCompositionEnabled) {
+        this.buildPlatformViewLayer(false)
         this.buildFlutterSurfaceLayer()
         Text("").id("unfocus-xcomponent-node").focusable(true)
-        this.buildPlatformViewLayer()
+        this.buildPlatformViewLayer(true)
         this.buildOverlayLayer()
         this.buildOverlayBlock()
       } else {

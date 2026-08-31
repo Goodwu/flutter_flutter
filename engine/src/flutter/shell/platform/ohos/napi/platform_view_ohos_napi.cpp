@@ -53,6 +53,8 @@ double PlatformViewOHOSNapi::display_density_pixels = 1.0;
 
 constexpr int TOUCH_UP_PERFORMANCE_SECTION = 3000;  // 3s
 
+constexpr int64_t kInjectedDeviceBias = 1LL << 40;
+
 napi_env PlatformViewOHOSNapi::env_;
 std::vector<std::string> PlatformViewOHOSNapi::system_languages;
 
@@ -895,7 +897,7 @@ napi_value PlatformViewOHOSNapi::nativeDispatchTouchToEngine(
     pd.Clear();
     pd.change =
         static_cast<PointerData::Change>(TouchGetInt(env, item, "change"));
-    pd.device = TouchGetInt(env, item, "device");
+    pd.device = TouchGetInt(env, item, "device") + kInjectedDeviceBias;
     pd.embedder_id = TouchGetInt64(env, item, "embedder_id");
     pd.physical_x = TouchGetDouble(env, item, "physical_x");
     pd.physical_y = TouchGetDouble(env, item, "physical_y");
