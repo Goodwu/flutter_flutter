@@ -43,5 +43,21 @@ export default function FlutterEngineCacheTest() {
       }
       done();
     })
+
+    it('contains returns false for unknown id', 0, () => {
+      const r = flutterEngineCache.contains('non-existent-id-12345');
+      expect(r).assertEqual(false);
+    });
+
+    it('get returns null for unknown id', 0, () => {
+      const r = flutterEngineCache.get('non-existent-id-12345');
+      expect(r).assertNull();
+    });
+
+    it('getInstance returns same instance on second call', 0, () => {
+      const a = FlutterEngineCache.getInstance();
+      const b = FlutterEngineCache.getInstance();
+      expect(a === b).assertEqual(true);
+    });
   })
 }

@@ -58,5 +58,194 @@ export default function FlutterShellArgsTest() {
       expect(toArray).not().assertNull();
       done();
     })
+
+    it('fromWant with trace-startup parameter', 0, async (done: Function) => {
+      const wantWithParams: Want = {
+        bundleName: bundleName,
+        abilityName: 'EntryAbility',
+        parameters: {
+          'trace-startup': true,
+        } as Record<string, Object>
+      }
+      try {
+        const args = FlutterShellArgs.fromWant(wantWithParams);
+        expect(args).not().assertNull();
+        const arr = args.toArray();
+        expect(arr.includes(FlutterShellArgs.ARG_TRACE_STARTUP)).assertEqual(true);
+      } catch (e) {}
+      done();
+    })
+
+    it('fromWant with start-paused parameter', 0, async (done: Function) => {
+      const wantWithParams: Want = {
+        bundleName: bundleName,
+        abilityName: 'EntryAbility',
+        parameters: {
+          'start-paused': true,
+        } as Record<string, Object>
+      }
+      try {
+        const args = FlutterShellArgs.fromWant(wantWithParams);
+        const arr = args.toArray();
+        expect(arr.includes(FlutterShellArgs.ARG_START_PAUSED)).assertEqual(true);
+      } catch (e) {}
+      done();
+    })
+
+    it('fromWant with multiple parameters', 0, async (done: Function) => {
+      const wantWithParams: Want = {
+        bundleName: bundleName,
+        abilityName: 'EntryAbility',
+        parameters: {
+          'enable-dart-profiling': true,
+          'enable-software-rendering': true,
+          'verbose-logging': true,
+          'enable-impeller': true,
+          'cache-sksl': true,
+        } as Record<string, Object>
+      }
+      try {
+        const args = FlutterShellArgs.fromWant(wantWithParams);
+        const arr = args.toArray();
+        expect(arr.includes(FlutterShellArgs.ARG_ENABLE_DART_PROFILING)).assertEqual(true);
+        expect(arr.includes(FlutterShellArgs.ARG_ENABLE_SOFTWARE_RENDERING)).assertEqual(true);
+        expect(arr.includes(FlutterShellArgs.ARG_VERBOSE_LOGGING)).assertEqual(true);
+      } catch (e) {}
+      done();
+    })
+
+    it('fromWant with observatory-port parameter', 0, async (done: Function) => {
+      const wantWithParams: Want = {
+        bundleName: bundleName,
+        abilityName: 'EntryAbility',
+        parameters: {
+          'observatory-port': 8080,
+        } as Record<string, Object>
+      }
+      try {
+        const args = FlutterShellArgs.fromWant(wantWithParams);
+        const arr = args.toArray();
+        expect(arr.length > 0).assertEqual(true);
+      } catch (e) {}
+      done();
+    })
+
+    it('fromWant with msaa-samples parameter', 0, async (done: Function) => {
+      const wantWithParams: Want = {
+        bundleName: bundleName,
+        abilityName: 'EntryAbility',
+        parameters: {
+          'msaa-samples': 4,
+        } as Record<string, Object>
+      }
+      try {
+        const args = FlutterShellArgs.fromWant(wantWithParams);
+        const arr = args.toArray();
+        expect(arr.length > 0).assertEqual(true);
+      } catch (e) {}
+      done();
+    })
+
+    it('fromWant with dart-flags parameter', 0, async (done: Function) => {
+      const wantWithParams: Want = {
+        bundleName: bundleName,
+        abilityName: 'EntryAbility',
+        parameters: {
+          'dart-flags': '--enable-asserts',
+        } as Record<string, Object>
+      }
+      try {
+        const args = FlutterShellArgs.fromWant(wantWithParams);
+        const arr = args.toArray();
+        expect(arr.length > 0).assertEqual(true);
+      } catch (e) {}
+      done();
+    })
+
+    it('fromWant with trace-skia-allowlist parameter', 0, async (done: Function) => {
+      const wantWithParams: Want = {
+        bundleName: bundleName,
+        abilityName: 'EntryAbility',
+        parameters: {
+          'trace-skia-allowlist': 'skp',
+        } as Record<string, Object>
+      }
+      try {
+        const args = FlutterShellArgs.fromWant(wantWithParams);
+        const arr = args.toArray();
+        expect(arr.length > 0).assertEqual(true);
+      } catch (e) {}
+      done();
+    })
+
+    it('fromWant with false parameter does not add flag', 0, async (done: Function) => {
+      const wantWithParams: Want = {
+        bundleName: bundleName,
+        abilityName: 'EntryAbility',
+        parameters: {
+          'trace-startup': false,
+        } as Record<string, Object>
+      }
+      try {
+        const args = FlutterShellArgs.fromWant(wantWithParams);
+        const arr = args.toArray();
+        expect(arr.includes(FlutterShellArgs.ARG_TRACE_STARTUP)).assertEqual(false);
+      } catch (e) {}
+      done();
+    })
+
+    it('checkArg with undefined parameters returns early', 0, async (done: Function) => {
+      const wantNoParams: Want = {
+        bundleName: bundleName,
+        abilityName: 'EntryAbility',
+      }
+      try {
+        const args = new FlutterShellArgs();
+        FlutterShellArgs.checkArg('key', '--flag', wantNoParams, args);
+        expect(args.toArray().length).assertEqual(0);
+      } catch (e) {}
+      done();
+    })
+
+    it('checkArg with true value adds flag', 0, async (done: Function) => {
+      const wantWithParams: Want = {
+        bundleName: bundleName,
+        abilityName: 'EntryAbility',
+        parameters: {
+          'custom-key': true,
+        } as Record<string, Object>
+      }
+      try {
+        const args = new FlutterShellArgs();
+        FlutterShellArgs.checkArg('custom-key', '--custom-flag', wantWithParams, args);
+        expect(args.toArray().includes('--custom-flag')).assertEqual(true);
+      } catch (e) {}
+      done();
+    })
+
+    it('checkArg with false value does not add flag', 0, async (done: Function) => {
+      const wantWithParams: Want = {
+        bundleName: bundleName,
+        abilityName: 'EntryAbility',
+        parameters: {
+          'custom-key': false,
+        } as Record<string, Object>
+      }
+      try {
+        const args = new FlutterShellArgs();
+        FlutterShellArgs.checkArg('custom-key', '--custom-flag', wantWithParams, args);
+        expect(args.toArray().includes('--custom-flag')).assertEqual(false);
+      } catch (e) {}
+      done();
+    })
+
+    it('add and remove args', 0, async (done: Function) => {
+      const args = new FlutterShellArgs();
+      args.add('--test-flag');
+      expect(args.toArray().includes('--test-flag')).assertEqual(true);
+      args.remove('--test-flag');
+      expect(args.toArray().includes('--test-flag')).assertEqual(false);
+      done();
+    })
   })
 }

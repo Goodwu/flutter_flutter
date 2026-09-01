@@ -250,5 +250,9 @@ export default function FlutterEnginePreloadTest() {
       }
       done();
     })
+
+    it('predrawEngine static method exists', 0, () => {
+      expect(typeof FlutterEnginePreload.predrawEngine).assertEqual('function');
+    });
   })
 }

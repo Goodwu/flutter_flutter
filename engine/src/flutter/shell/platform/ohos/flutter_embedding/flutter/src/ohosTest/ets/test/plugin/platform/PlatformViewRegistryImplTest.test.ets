@@ -33,5 +33,17 @@ export default function PlatformViewRegistryImplTest() {
       expect(result).assertTrue();
       done();
     })
+
+    it('TestPlatformViewRegistryImplRegisterViewFactoryTwiceReturnsFalse', 0, async (done: Function) => {
+      const platformViewFactory: PlatformViewFactory = platformViewRegistryImpl.getFactory('test2');
+      expect(platformViewFactory).not().assertNull();
+      // First registration should succeed
+      const result1 = platformViewRegistryImpl.registerViewFactory('test2', platformViewFactory);
+      expect(result1).assertTrue();
+      // Second registration of same type should fail (covers if branch at line 36)
+      const result2 = platformViewRegistryImpl.registerViewFactory('test2', platformViewFactory);
+      expect(result2).assertEqual(false);
+      done();
+    })
   })
 }
