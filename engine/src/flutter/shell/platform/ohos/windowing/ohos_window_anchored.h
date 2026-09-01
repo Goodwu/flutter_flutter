@@ -14,8 +14,10 @@ namespace flutter {
 /// Positioner-anchored sub-window (tooltip / popup), the OHOS analogue of
 /// win32's HostWindowTooltip. The window keeps the size it was born with
 /// (explicit request size, else the min constraint — see
-/// OHOSWindow::GetSubWindowBirthSize) and is placed by the Dart positioner;
-/// the ETS host (AnchoredWindowHost) anchors it to its trigger widget.
+/// OHOSWindow::GetSubWindowBirthSize) unless the Dart positioner's
+/// constraint adjustment (resizeX/resizeY) shrinks it to stay on screen;
+/// the ETS host (AnchoredWindowHost) anchors it to its trigger widget and
+/// applies the reduced size at placement.
 class OHOSWindowAnchored : public OHOSWindow {
  public:
   using OHOSWindow::OHOSWindow;

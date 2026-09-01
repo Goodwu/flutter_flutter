@@ -4,7 +4,7 @@
 * found in the LICENSE_KHZG file.
 */
 
-import flutter from 'libflutter.so';
+import flutter, { WindowPositionResult as NativeWindowPositionResult } from 'libflutter.so';
 import common from '@ohos.app.ability.common';
 import Log from '../../util/Log';
 import resourceManager from '@ohos.resourceManager';
@@ -69,9 +69,7 @@ export interface HybridCompositionHandler {
   onEndFrameHybrid(): void;
 }
 
-/** Result holder for a computed window position; native populates it by
- * invoking its `set` method (InvokeJsMethod). All fields are LOGICAL px. */
-export class WindowPositionResult {
+export class WindowPositionResult implements NativeWindowPositionResult {
   left: number = 0;
   top: number = 0;
   width: number = 0;

@@ -38,6 +38,10 @@ class TestSubWindowHost extends SubWindowHost {
     this.closeHost();
   }
 
+  closeForPolicyForTest(reason: string): void {
+    this.closeForPolicy(reason);
+  }
+
   closeHostForCascadeForTest(ability: UIAbility): void {
     this.closeHostForCascade(ability);
   }
@@ -51,6 +55,24 @@ class TestSubWindowHost extends SubWindowHost {
 class BaseHookSubWindowHost extends SubWindowHost {
   constructor(ctx: WindowHostContext, viewId: number, parentViewId: number, w: number, h: number) {
     super(ctx, viewId, parentViewId, WindowArchetype.POPUP, w, h);
+  }
+}
+
+/** Counts base policy-hook invocations out of the windowEvent listener. */
+class DeactivationSpyHost extends SubWindowHost {
+  activatedCalls: number = 0;
+  deactivatedCalls: number = 0;
+
+  constructor(ctx: WindowHostContext, viewId: number, parentViewId: number, w: number, h: number) {
+    super(ctx, viewId, parentViewId, WindowArchetype.POPUP, w, h);
+  }
+
+  protected onSubWindowActivated(): void {
+    this.activatedCalls += 1;
+  }
+
+  protected onSubWindowDeactivated(): void {
+    this.deactivatedCalls += 1;
   }
 }
 
@@ -258,6 +280,62 @@ export default function subWindowHostTest() {
         done();
       });
 
+    it('offers the deactivate-policy hooks only on ACTIVE/INACTIVE', Level.LEVEL0,
+      async (done: Function) => {
+        const fake = new FakeWindow();
+        const stage = new FakeWindowStage();
+        stage.subWindow = fake as ESObject as window.Window;
+        const ctx = makeCtx(stage);
+        ctx.parentAbilityFor = new FakeAbility() as ESObject as UIAbility;
+        ctx.engine = new Object() as ESObject as FlutterEngine;
+        const fv = new FakeFlutterView();
+        ctx.flutterViews.set('16', fv as ESObject as FlutterView);
+        const host: DeactivationSpyHost = new DeactivationSpyHost(ctx, 16, 9, 100, 80);
+        host.attach();
+        await sleep(150);
+        // Lifecycle kinds other than ACTIVE/INACTIVE leave the hooks
+        // untouched (WINDOW_DESTROYED takes the separate handleOsClosed
+        // path, covered by its own test above).
+        fake.windowEventCb?.(window.WindowEventType.WINDOW_SHOWN);
+        expect(host.activatedCalls).assertEqual(0);
+        expect(host.deactivatedCalls).assertEqual(0);
+        fake.windowEventCb?.(window.WindowEventType.WINDOW_ACTIVE);
+        expect(host.activatedCalls).assertEqual(1);
+        expect(host.deactivatedCalls).assertEqual(0);
+        fake.windowEventCb?.(window.WindowEventType.WINDOW_INACTIVE);
+        expect(host.deactivatedCalls).assertEqual(1);
+        // Focus transitions close nothing by themselves — not even via the
+        // BASE hooks, which only push the activation flag (next test).
+        expect(fake.destroyCount).assertEqual(0);
+        expect(ctx.removedHosts.length).assertEqual(0);
+        done();
+      });
+
+    it('pushes the activation flag on ACTIVE/INACTIVE via the base hooks',
+      Level.LEVEL0, async (done: Function) => {
+        const fake = new FakeWindow();
+        const stage = new FakeWindowStage();
+        stage.subWindow = fake as ESObject as window.Window;
+        const ctx = makeCtx(stage);
+        ctx.parentAbilityFor = new FakeAbility() as ESObject as UIAbility;
+        ctx.engine = new Object() as ESObject as FlutterEngine;
+        const fv = new FakeFlutterView();
+        ctx.flutterViews.set('17', fv as ESObject as FlutterView);
+        // No hook override: the BASE hooks run — the dialog path, which
+        // relies on them entirely for its Dart `isActivated` reporting.
+        const host: BaseHookSubWindowHost = new BaseHookSubWindowHost(ctx, 17, 9, 100, 80);
+        host.attach();
+        await sleep(150);
+        fake.windowEventCb?.(window.WindowEventType.WINDOW_ACTIVE);
+        fake.windowEventCb?.(window.WindowEventType.WINDOW_INACTIVE);
+        expect(ctx.activated.length).assertEqual(2);
+        expect(ctx.activated[0][0]).assertEqual(17);
+        expect(ctx.activated[0][1]).assertEqual(1);
+        expect(ctx.activated[1][0]).assertEqual(17);
+        expect(ctx.activated[1][1]).assertEqual(0);
+        done();
+      });
+
     it('runs the base configureAfterShow hook when not overridden', Level.LEVEL0,
       async (done: Function) => {
         const fake = new FakeWindow();
@@ -423,6 +501,46 @@ export default function subWindowHostTest() {
       host.closeHostForCascadeForTest(ability);
       expect(fake.destroyCount).assertEqual(1);
       expect(ctx.restoredForegrounds.length).assertEqual(0);
+    });
+  });
+
+  describe('SubWindowHost.closeForPolicy', () => {
+    it('runs the full OS-closed chain and removes the sub-window', Level.LEVEL0, () => {
+      const ctx = new FakeHostContext();
+      const fv = new FakeFlutterView();
+      ctx.flutterViews.set('32', fv as ESObject as FlutterView);
+      const fake = new FakeWindow();
+      const host: TestSubWindowHost = new TestSubWindowHost(ctx, 32, 0, 100, 80);
+      host.subWindow = fake as ESObject as window.Window;
+      host.closeForPolicyForTest('policy-test');
+      // Dart-visible destroyed flow + view detach + host bookkeeping drop...
+      expect(fv.detachCalls).assertEqual(1);
+      expect(ctx.removedHosts.includes('32')).assertTrue();
+      // ...and the OS sub-window removed with the parent foreground restored.
+      expect(fake.destroyCount).assertEqual(1);
+      expect(ctx.restoredForegrounds.includes('32')).assertTrue();
+    });
+
+    it('is one-shot across repeated triggers', Level.LEVEL0, () => {
+      const ctx = new FakeHostContext();
+      const fv = new FakeFlutterView();
+      ctx.flutterViews.set('33', fv as ESObject as FlutterView);
+      const fake = new FakeWindow();
+      const host: TestSubWindowHost = new TestSubWindowHost(ctx, 33, 0, 100, 80);
+      host.subWindow = fake as ESObject as window.Window;
+      host.closeForPolicyForTest('policy-test');
+      // Teardown fires extra INACTIVEs (a focused window losing focus while
+      // being destroyed); a second trigger must not re-enter destroyWindow.
+      host.closeForPolicyForTest('policy-test-again');
+      expect(fake.destroyCount).assertEqual(1);
+      expect(fv.detachCalls).assertEqual(1);
+    });
+
+    it('tolerates a policy close with no sub-window', Level.LEVEL0, () => {
+      const ctx = new FakeHostContext();
+      const host: TestSubWindowHost = new TestSubWindowHost(ctx, 34, 0, 100, 80);
+      host.closeForPolicyForTest('policy-test'); // closeHost no-ops gracefully
+      expect(ctx.removedHosts.includes('34')).assertTrue();
     });
   });
 
