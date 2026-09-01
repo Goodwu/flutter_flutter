@@ -4,7 +4,6 @@
  * found in the LICENSE_HW file.
  */
 
-#include "flutter/shell/platform/ohos/ohos_surface_software.h"
 #include <fcntl.h>
 #include <gtest/gtest.h>
 #include <string.h>
@@ -12,6 +11,7 @@
 #include <unistd.h>
 #include <memory>
 #include "flutter/shell/platform/ohos/context/ohos_context.h"
+#include "flutter/shell/platform/ohos/ohos_surface_software.h"
 #include "flutter/shell/platform/ohos/test_stubs/ace_graphic_ndk_stub.h"
 #include "flutter/shell/platform/ohos/test_stubs/libc_wrapper_stub.h"
 #include "flutter/shell/platform/ohos/types.h"
@@ -39,13 +39,13 @@ fml::RefPtr<OHOSNativeWindow> MakeWindow(OHNativeWindow* handle) {
 }
 
 constexpr int kUtFdSize = 4 << 20;
-constexpr char kUtFdPath[] = "/data/local/tmp/.ohos_surface_sw_ut_fd";
-constexpr char kStubFallbackFdPath[] =
-    "/data/local/tmp/.stub_graphic_buffer_fd";
 
 int TestBackingFd() {
   static const int kFd = [] {
-    int fd = static_cast<int>(::syscall(SYS_openat, AT_FDCWD, kUtFdPath,
+    char ut_fd_path[4096];
+    snprintf(ut_fd_path, sizeof(ut_fd_path), "%s/.ohos_surface_sw_ut_fd",
+             GetUtTmpDir());
+    int fd = static_cast<int>(::syscall(SYS_openat, AT_FDCWD, ut_fd_path,
                                         O_CREAT | O_RDWR | O_TRUNC, 0600));
     if (fd >= 0 && ::ftruncate(fd, kUtFdSize) != 0) {
       fd = -1;
@@ -56,7 +56,11 @@ int TestBackingFd() {
 }
 
 int StubFallbackOpen(const char* path, int /*flags*/) {
-  return ::strcmp(path, kStubFallbackFdPath) == 0 ? TestBackingFd() : -1;
+  // 与 ace_graphic_ndk_stub 的回退路径同源(都经 GetUtTmpDir 拼接),
+  // 两边必须一致才能匹配。
+  char expect[4096];
+  snprintf(expect, sizeof(expect), "%s/.stub_graphic_buffer_fd", GetUtTmpDir());
+  return ::strcmp(path, expect) == 0 ? TestBackingFd() : -1;
 }
 
 class StubBackingFdGuard {
@@ -79,13 +83,12 @@ bool MappableFdSourceAvailable() {
   return false;
 }
 
-}
+}  // namespace
 
 TEST(OHOSSurfaceSoftware, SupportsRgba8888) {
   SkColorType color_type = kUnknown_SkColorType;
   SkAlphaType alpha_type = kUnknown_SkAlphaType;
-  EXPECT_TRUE(
-      GetSkColorType(kPixelFmtRgba8888, &color_type, &alpha_type));
+  EXPECT_TRUE(GetSkColorType(kPixelFmtRgba8888, &color_type, &alpha_type));
   EXPECT_EQ(color_type, kRGBA_8888_SkColorType);
   EXPECT_EQ(alpha_type, kPremul_SkAlphaType);
 }
@@ -94,8 +97,7 @@ TEST(OHOSSurfaceSoftware, RejectsOtherFormats) {
   SkColorType color_type;
   SkAlphaType alpha_type;
   EXPECT_FALSE(GetSkColorType(0, &color_type, &alpha_type));
-  EXPECT_FALSE(GetSkColorType(kPixelFmtRgba8888 + 1, &color_type,
-                              &alpha_type));
+  EXPECT_FALSE(GetSkColorType(kPixelFmtRgba8888 + 1, &color_type, &alpha_type));
 }
 
 TEST(OHOSSurfaceSoftware, IsValidAlwaysTrue) {
@@ -248,5 +250,5 @@ TEST(OHOSSurfaceSoftware, PresentBackingStoreSkipsUnknownBufferFormat) {
   EXPECT_TRUE(presented);
 }
 
-}
-}
+}  // namespace testing
+}  // namespace flutter

@@ -4,13 +4,8 @@
  * found in the LICENSE_HW file.
  */
 
-#include "deviceinfo.h"
-#include "qos/qos.h"
+import abilityTest from './Ability.test';
 
-extern "C" {
-
-int OH_QoS_SetThreadQoS(QoS_Level /*level*/) {
-  return 0;
+export default function testsuite() {
+  abilityTest();
 }
-
-}  // extern "C"

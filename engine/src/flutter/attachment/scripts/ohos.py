@@ -192,9 +192,7 @@ def engineConfig(buildInfo, args):
       LTO + unixCommand + "--no-goma " + "--no-prebuilt-dart-sdk " + "--full-dart-sdk " +
       "--embedder-for-target " + "--disable-desktop-embeddings " + "--no-build-embedder-examples " +
       "--ohos-api-int %s " % args.ohos_api_int + "--verbose " +
-      ("--llvm18 " if args.llvm18 else "") +
-      UNUSE_BISHENG +
-      args.gn_extra_param.replace("\\", ""),
+      ("--llvm18 " if args.llvm18 else "") + UNUSE_BISHENG + args.gn_extra_param.replace("\\", ""),
       checkCode=False,
       timeout=600,
   )
@@ -207,6 +205,7 @@ def engineCompile(buildInfo):
     command += "flutter/build/archives:archive_win_gen_snapshot "
   if not IS_WINDOWS:
     command += "flutter/shell/platform/ohos:flutter_ohos_unittests "
+    command += "flutter/shell/platform/ohos:flutter_ohos_app_test "
   runCommand(command)
 
 
@@ -331,8 +330,12 @@ def addParseParam(parser):
   )
   parser.add_argument("--host-cpu", type=str, choices=['x64', 'arm64'], default="x64")
   parser.add_argument("--unoptimized", action="store_true", help="Build unoptimized version.")
-  parser.add_argument("--unuse-bisheng", action="store_true", help="Build without BiSheng compiler.")
-  parser.add_argument("--llvm18", action="store_true", help="Use LLVM 18 instead of default LLVM 15 (BiSheng).")
+  parser.add_argument(
+      "--unuse-bisheng", action="store_true", help="Build without BiSheng compiler."
+  )
+  parser.add_argument(
+      "--llvm18", action="store_true", help="Use LLVM 18 instead of default LLVM 15 (BiSheng)."
+  )
 
 
 def updateCode(args):

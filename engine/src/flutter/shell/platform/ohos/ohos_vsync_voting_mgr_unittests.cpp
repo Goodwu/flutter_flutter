@@ -17,6 +17,7 @@
 #include <cstring>
 #include <thread>
 #include "flutter/shell/platform/ohos/napi/platform_view_ohos_napi.h"
+#include "flutter/shell/platform/ohos/test_stubs/libc_wrapper_stub.h"
 #include "gtest/gtest.h"
 
 namespace flutter {
@@ -72,7 +73,7 @@ int FakeSetExpectedFrameRange(OH_NativeVSync* nativeVsync,
   return g_fake_range.return_value;
 }
 
-}
+}  // namespace
 
 TEST_F(OhosVsyncVotingMgrTest, SingletonReturnsSameInstance) {
   auto mgr2 = OhosVsyncVotingMgr::GetInstance();
@@ -643,9 +644,6 @@ TEST_F(OhosVsyncVotingMgrTest, ParseFramesCfgWithNullHandleProvider) {
 void SetRawFileStubContent(const char* data, size_t size);
 void SetRawFileStubOpenFail(bool fail);
 
-void SetNativeVsyncDlopenRedirect(int mode);
-int GetAndResetDlopenRedirectCount();
-
 TEST_F(OhosVsyncVotingMgrTest, AnimationVoteWinsWhenTouchVoteStale) {
   int64_t now = fml::TimePoint::Now().ToEpochDelta().ToMilliseconds();
   mgr_->VoteTouchValue(VVMTouchType::TOUCH_TYPE_UP, now - 5000);
@@ -744,10 +742,10 @@ TEST_F(OhosVsyncVotingMgrTest, VotingBySelfSkipsRangeWhenRateUnchanged) {
 }
 
 TEST_F(OhosVsyncVotingMgrTest, CtorDlopenFailureDisablesAllVoting) {
-  SetNativeVsyncDlopenRedirect(1);
+  ::ScopedDlopenRedirect redirect("libnative_vsync",
+                                  ::DlopenRedirectMode::kFailOpen);
   OhosVsyncVotingMgr::ResetInstance();
   auto mgr = OhosVsyncVotingMgr::GetInstance();
-  SetNativeVsyncDlopenRedirect(0);
   ASSERT_NE(mgr, nullptr);
   EXPECT_GT(GetAndResetDlopenRedirectCount(), 0);
   EXPECT_EQ(mgr->lib_native_vsync_handle_, nullptr);
@@ -777,10 +775,10 @@ TEST_F(OhosVsyncVotingMgrTest, CtorDlopenFailureDisablesAllVoting) {
 }
 
 TEST_F(OhosVsyncVotingMgrTest, CtorDlsymFailureClearsHandle) {
-  SetNativeVsyncDlopenRedirect(2);
+  ::ScopedDlopenRedirect redirect("libnative_vsync",
+                                  ::DlopenRedirectMode::kWrongLib);
   OhosVsyncVotingMgr::ResetInstance();
   auto mgr = OhosVsyncVotingMgr::GetInstance();
-  SetNativeVsyncDlopenRedirect(0);
   ASSERT_NE(mgr, nullptr);
   EXPECT_GT(GetAndResetDlopenRedirectCount(), 0);
   EXPECT_EQ(mgr->lib_native_vsync_handle_, nullptr);

@@ -33,17 +33,25 @@ void DispatchAxisEventCB(OH_NativeXComponent* component,
                          ArkUI_UIInputEvent_Type type);
 void DispatchHoverEventCB(OH_NativeXComponent* component, bool isHover);
 int32_t FindAccessibilityNodeInfosByTextCallback(
-    int64_t elementId, const char* text, int32_t requestId,
+    int64_t elementId,
+    const char* text,
+    int32_t requestId,
     ArkUI_AccessibilityElementInfoList* elementList);
 int32_t FindFocusedAccessibilityNodeCallback(
-    int64_t elementId, ArkUI_AccessibilityFocusType focusType,
-    int32_t requestId, ArkUI_AccessibilityElementInfo* elementinfo);
+    int64_t elementId,
+    ArkUI_AccessibilityFocusType focusType,
+    int32_t requestId,
+    ArkUI_AccessibilityElementInfo* elementinfo);
 int32_t FindNextFocusAccessibilityNodeCallback(
-    int64_t elementId, ArkUI_AccessibilityFocusMoveDirection direction,
-    int32_t requestId, ArkUI_AccessibilityElementInfo* elementinfo);
+    int64_t elementId,
+    ArkUI_AccessibilityFocusMoveDirection direction,
+    int32_t requestId,
+    ArkUI_AccessibilityElementInfo* elementinfo);
 int32_t ExecuteAccessibilityActionCallback(
-    int64_t elementId, ArkUI_Accessibility_ActionType action,
-    ArkUI_AccessibilityActionArguments* actionArguments, int32_t requestId);
+    int64_t elementId,
+    ArkUI_Accessibility_ActionType action,
+    ArkUI_AccessibilityActionArguments* actionArguments,
+    int32_t requestId);
 int32_t ClearFocusedFocusAccessibilityNodeCallback();
 int32_t GetAccessibilityNodeCursorPositionCallback(int64_t elementId,
                                                    int32_t requestId,
@@ -120,7 +128,7 @@ TEST_F(XComponentAdapterTest, IsSubViewIdNonDigitContentRejected) {
   EXPECT_FALSE(XComponentBase::IsSubViewId("abc", &out));
   // Digits then a trailing letter: strtoll would stop, *end != '\0'.
   EXPECT_FALSE(XComponentBase::IsSubViewId("12a", &out));
-  EXPECT_FALSE(XComponentBase::IsSubViewId("-1", &out));  // '-' is not a digit
+  EXPECT_FALSE(XComponentBase::IsSubViewId("-1", &out));   // '-' is not a digit
   EXPECT_FALSE(XComponentBase::IsSubViewId("1 2", &out));  // space
 }
 
@@ -263,13 +271,15 @@ TEST_F(XComponentAdapterTest, PreDrawOnPreloadedSurfaceShortCircuits) {
 TEST_F(XComponentAdapterTest, AdapterSetNativeXComponentCreatesAndReuses) {
   XComponentAdapter* adapter = XComponentAdapter::GetInstance();
   std::string id = "ut_setnative";
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
   adapter->SetNativeXComponent(id, comp);
   XComponentBase* base = adapter->GetXcomponentBase(id);
   ASSERT_NE(base, nullptr);
   EXPECT_EQ(base->nativeXComponent_, comp);
 
-  static char comp2_storage; auto comp2 = reinterpret_cast<OH_NativeXComponent*>(&comp2_storage);
+  static char comp2_storage;
+  auto comp2 = reinterpret_cast<OH_NativeXComponent*>(&comp2_storage);
   adapter->SetNativeXComponent(id, comp2);
   EXPECT_EQ(adapter->GetXcomponentBase(id), base);
   EXPECT_EQ(base->nativeXComponent_, comp2);
@@ -277,7 +287,8 @@ TEST_F(XComponentAdapterTest, AdapterSetNativeXComponentCreatesAndReuses) {
 
 TEST_F(XComponentAdapterTest, BaseSetNativeXComponentBindsAllCallbacks) {
   XComponentBase xc("ut_bindcb");
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
   EXPECT_NO_FATAL_FAILURE(xc.SetNativeXComponent(comp));
   EXPECT_EQ(xc.nativeXComponent_, comp);
   EXPECT_NE(xc.callback_.OnSurfaceCreated, nullptr);
@@ -370,20 +381,18 @@ mouseWheelEvent MakeWheel(int64_t shell_holder, const char* type) {
   event.timestamp = 100;
   return event;
 }
-}
+}  // namespace
 
 TEST_F(XComponentAdapterTest, OnMouseWheelUnknownIdIsNoOp) {
   XComponentAdapter* adapter = XComponentAdapter::GetInstance();
-  EXPECT_NO_FATAL_FAILURE(
-      Wheel("ut_nowheel", MakeWheel(0, "actionUpdate")));
+  EXPECT_NO_FATAL_FAILURE(Wheel("ut_nowheel", MakeWheel(0, "actionUpdate")));
 }
 
 TEST_F(XComponentAdapterTest, MouseWheelNotAttachedSkips) {
   XComponentAdapter* adapter = XComponentAdapter::GetInstance();
   XComponentBase* base = RegisterBase("ut_wheel1");
   base->shellholderId_ = "0";
-  EXPECT_NO_FATAL_FAILURE(
-      Wheel("ut_wheel1", MakeWheel(0, "actionUpdate")));
+  EXPECT_NO_FATAL_FAILURE(Wheel("ut_wheel1", MakeWheel(0, "actionUpdate")));
 }
 
 TEST_F(XComponentAdapterTest, MouseWheelAttachedWithoutSurfaceSkips) {
@@ -391,8 +400,7 @@ TEST_F(XComponentAdapterTest, MouseWheelAttachedWithoutSurfaceSkips) {
   XComponentBase* base = RegisterBase("ut_wheel2");
   base->shellholderId_ = "0";
   base->is_engine_attached_ = true;
-  EXPECT_NO_FATAL_FAILURE(
-      Wheel("ut_wheel2", MakeWheel(0, "actionUpdate")));
+  EXPECT_NO_FATAL_FAILURE(Wheel("ut_wheel2", MakeWheel(0, "actionUpdate")));
 }
 
 TEST_F(XComponentAdapterTest, MouseWheelForeignShellHolderIgnored) {
@@ -401,8 +409,7 @@ TEST_F(XComponentAdapterTest, MouseWheelForeignShellHolderIgnored) {
   base->shellholderId_ = "0";
   base->is_engine_attached_ = true;
   base->is_surface_present_ = true;
-  EXPECT_NO_FATAL_FAILURE(
-      Wheel("ut_wheel3", MakeWheel(77, "actionUpdate")));
+  EXPECT_NO_FATAL_FAILURE(Wheel("ut_wheel3", MakeWheel(77, "actionUpdate")));
 }
 
 TEST_F(XComponentAdapterTest, MouseWheelNonActionUpdateResetsScroll) {
@@ -412,8 +419,7 @@ TEST_F(XComponentAdapterTest, MouseWheelNonActionUpdateResetsScroll) {
   base->is_engine_attached_ = true;
   base->is_surface_present_ = true;
   g_scrollDistance = 12.5;
-  EXPECT_NO_FATAL_FAILURE(
-      Wheel("ut_wheel4", MakeWheel(0, "actionEnd")));
+  EXPECT_NO_FATAL_FAILURE(Wheel("ut_wheel4", MakeWheel(0, "actionEnd")));
   EXPECT_EQ(g_scrollDistance, 0.0);
 }
 
@@ -425,15 +431,15 @@ TEST_F(XComponentAdapterTest, MouseWheelLeftButtonActiveSuppressesScroll) {
   base->is_surface_present_ = true;
   g_isMouseLeftActive = true;
   g_scrollDistance = 5.0;
-  EXPECT_NO_FATAL_FAILURE(
-      Wheel("ut_wheel5", MakeWheel(0, "actionUpdate")));
+  EXPECT_NO_FATAL_FAILURE(Wheel("ut_wheel5", MakeWheel(0, "actionUpdate")));
   EXPECT_EQ(g_scrollDistance, 5.0);
 }
 
 TEST_F(XComponentAdapterTest, SurfaceCreatedCbRoutesToMatching) {
   XComponentAdapter* adapter = XComponentAdapter::GetInstance();
   XComponentBase* base = RegisterBase("ut_surf_cb");
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
   base->nativeXComponent_ = comp;
   EXPECT_NO_FATAL_FAILURE(OnSurfaceCreatedCB(comp, nullptr));
   EXPECT_EQ(base->window_, nullptr);
@@ -442,8 +448,10 @@ TEST_F(XComponentAdapterTest, SurfaceCreatedCbRoutesToMatching) {
 TEST_F(XComponentAdapterTest, SurfaceChangedCbOnlyTouchesMatching) {
   XComponentAdapter* adapter = XComponentAdapter::GetInstance();
   XComponentBase* base = RegisterBase("ut_surf_cb2");
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
-  static char other_storage; auto other = reinterpret_cast<OH_NativeXComponent*>(&other_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char other_storage;
+  auto other = reinterpret_cast<OH_NativeXComponent*>(&other_storage);
   base->nativeXComponent_ = other;
   EXPECT_NO_FATAL_FAILURE(OnSurfaceChangedCB(comp, nullptr));
 }
@@ -452,8 +460,10 @@ TEST_F(XComponentAdapterTest, SurfaceDestroyedCbDeletesOnlyMatching) {
   XComponentAdapter* adapter = XComponentAdapter::GetInstance();
   XComponentBase* match = RegisterBase("ut_surf_del");
   XComponentBase* other = RegisterBase("ut_surf_keep");
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
-  static char other_comp_storage; auto other_comp = reinterpret_cast<OH_NativeXComponent*>(&other_comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char other_comp_storage;
+  auto other_comp = reinterpret_cast<OH_NativeXComponent*>(&other_comp_storage);
   match->nativeXComponent_ = comp;
   other->nativeXComponent_ = other_comp;
   EXPECT_NO_FATAL_FAILURE(OnSurfaceDestroyedCB(comp, nullptr));
@@ -465,7 +475,8 @@ TEST_F(XComponentAdapterTest, SurfaceDestroyedCbTwoPassMainAndOverlay) {
   XComponentAdapter* adapter = XComponentAdapter::GetInstance();
   XComponentBase* main = RegisterBase("ut_two_main");
   XComponentBase* overlay = RegisterBase("ut_two_main__overlay");
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
   main->nativeXComponent_ = comp;
   overlay->nativeXComponent_ = comp;
   EXPECT_NO_FATAL_FAILURE(OnSurfaceDestroyedCB(comp, nullptr));
@@ -475,7 +486,8 @@ TEST_F(XComponentAdapterTest, SurfaceDestroyedCbTwoPassMainAndOverlay) {
 
 TEST_F(XComponentAdapterTest, OnSurfaceChangedUpdatesSizeWhenNotAttached) {
   XComponentBase xc("ut_size_na");
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
   EXPECT_NO_FATAL_FAILURE(xc.OnSurfaceChanged(comp, nullptr));
 }
 
@@ -483,7 +495,8 @@ TEST_F(XComponentAdapterTest, OnSurfaceCreatedReplacesExistingWindow) {
   XComponentBase xc("ut_dup_window");
   int first = 0;
   xc.window_ = &first;
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
   EXPECT_NO_FATAL_FAILURE(xc.OnSurfaceCreated(comp, nullptr));
 }
 
@@ -492,7 +505,8 @@ TEST_F(XComponentAdapterTest, OnSurfaceDestroyedUnreferencesAndClearsWindow) {
   int dummy = 0;
   xc.window_ = &dummy;
   xc.is_engine_attached_ = false;
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
   EXPECT_NO_FATAL_FAILURE(xc.OnSurfaceDestroyed(comp, &dummy));
   EXPECT_EQ(xc.window_, nullptr);
 }
@@ -500,14 +514,16 @@ TEST_F(XComponentAdapterTest, OnSurfaceDestroyedUnreferencesAndClearsWindow) {
 TEST_F(XComponentAdapterTest, OnSurfaceDestroyedWithNullWindowIsSafe) {
   XComponentBase xc("ut_null_win");
   xc.window_ = nullptr;
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
   EXPECT_NO_FATAL_FAILURE(xc.OnSurfaceDestroyed(comp, nullptr));
   EXPECT_EQ(xc.window_, nullptr);
 }
 
 TEST_F(XComponentAdapterTest, TouchNotAttachedOrNoSurfaceGuard) {
   XComponentBase xc("ut_touch_guard");
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
   EXPECT_NO_FATAL_FAILURE(xc.OnDispatchTouchEvent(comp, nullptr));
 
   xc.is_engine_attached_ = true;
@@ -516,7 +532,8 @@ TEST_F(XComponentAdapterTest, TouchNotAttachedOrNoSurfaceGuard) {
 
 TEST_F(XComponentAdapterTest, DispatchMouseCbGuardWhenNotAttached) {
   XComponentBase xc("ut_mouse_guard");
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
   EXPECT_NO_FATAL_FAILURE(xc.OnDispatchMouseEvent(comp, nullptr));
 
   xc.is_engine_attached_ = true;
@@ -525,14 +542,16 @@ TEST_F(XComponentAdapterTest, DispatchMouseCbGuardWhenNotAttached) {
 
 TEST_F(XComponentAdapterTest, MouseLeaveGuards) {
   XComponentBase xc("ut_leave_guard");
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
   EXPECT_NO_FATAL_FAILURE(xc.OnDispatchMouseLeaveEvent(comp));
 }
 
 TEST_F(XComponentAdapterTest, DispatchAxisCbOnlyRoutesAxisType) {
   XComponentAdapter* adapter = XComponentAdapter::GetInstance();
   XComponentBase* base = RegisterBase("ut_axis");
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
   base->nativeXComponent_ = comp;
   EXPECT_NO_FATAL_FAILURE(
       DispatchAxisEventCB(comp, nullptr, ARKUI_UIINPUTEVENT_TYPE_TOUCH));
@@ -542,7 +561,8 @@ TEST_F(XComponentAdapterTest, DispatchAxisCbOnlyRoutesAxisType) {
 
 TEST_F(XComponentAdapterTest, AxisNotAttachedGuard) {
   XComponentBase xc("ut_axis_na");
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
   ArkUI_UIInputEvent* event = nullptr;
   EXPECT_NO_FATAL_FAILURE(
       xc.OnDispatchAxisEvent(comp, event, ARKUI_UIINPUTEVENT_TYPE_AXIS));
@@ -550,7 +570,8 @@ TEST_F(XComponentAdapterTest, AxisNotAttachedGuard) {
 
 TEST_F(XComponentAdapterTest, AxisAttachedWithoutSurfaceGuard) {
   XComponentBase xc("ut_axis_nosurf");
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
   ArkUI_UIInputEvent* event = nullptr;
   xc.is_engine_attached_ = true;
   EXPECT_NO_FATAL_FAILURE(
@@ -560,7 +581,8 @@ TEST_F(XComponentAdapterTest, AxisAttachedWithoutSurfaceGuard) {
 TEST_F(XComponentAdapterTest, DispatchHoverCbNeedsLeaveAndMatchingComponent) {
   XComponentAdapter* adapter = XComponentAdapter::GetInstance();
   XComponentBase* base = RegisterBase("ut_hover");
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
   base->nativeXComponent_ = comp;
   EXPECT_NO_FATAL_FAILURE(DispatchHoverEventCB(comp, true));
   EXPECT_NO_FATAL_FAILURE(DispatchHoverEventCB(comp, false));
@@ -598,18 +620,15 @@ TEST_F(XComponentAdapterTest, A11yBaseMethodsWithoutShellHolderFail) {
             ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
   EXPECT_EQ(xc.FindAccessibilityNodeInfosByText(0, "t", 1, nullptr),
             ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
-  EXPECT_EQ(
-      xc.FindFocusedAccessibilityNode(
-          0, ARKUI_ACCESSIBILITY_NATIVE_FOCUS_TYPE_INPUT, 1, nullptr),
-      ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
-  EXPECT_EQ(xc.FindNextFocusAccessibilityNode(
-                0, ARKUI_ACCESSIBILITY_NATIVE_DIRECTION_FORWARD, 1,
-                nullptr),
+  EXPECT_EQ(xc.FindFocusedAccessibilityNode(
+                0, ARKUI_ACCESSIBILITY_NATIVE_FOCUS_TYPE_INPUT, 1, nullptr),
             ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
-  EXPECT_EQ(
-      xc.ExecuteAccessibilityAction(
-          0, ARKUI_ACCESSIBILITY_NATIVE_ACTION_TYPE_CLICK, nullptr, 1),
-      ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
+  EXPECT_EQ(xc.FindNextFocusAccessibilityNode(
+                0, ARKUI_ACCESSIBILITY_NATIVE_DIRECTION_FORWARD, 1, nullptr),
+            ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
+  EXPECT_EQ(xc.ExecuteAccessibilityAction(
+                0, ARKUI_ACCESSIBILITY_NATIVE_ACTION_TYPE_CLICK, nullptr, 1),
+            ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
   EXPECT_EQ(xc.ClearFocusedFocusAccessibilityNode(0),
             ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
   int32_t index = -1;
@@ -618,27 +637,22 @@ TEST_F(XComponentAdapterTest, A11yBaseMethodsWithoutShellHolderFail) {
 }
 
 TEST_F(XComponentAdapterTest, A11yCallbacksFailWithoutCurrentXComponent) {
-  EXPECT_EQ(
-      FindAccessibilityNodeInfosByTextCallback(0, "t", 1, nullptr),
-      ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
-  EXPECT_EQ(
-      FindFocusedAccessibilityNodeCallback(
-          0, ARKUI_ACCESSIBILITY_NATIVE_FOCUS_TYPE_INPUT, 1, nullptr),
-      ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
-  EXPECT_EQ(FindNextFocusAccessibilityNodeCallback(
-                0, ARKUI_ACCESSIBILITY_NATIVE_DIRECTION_FORWARD, 1,
-                nullptr),
+  EXPECT_EQ(FindAccessibilityNodeInfosByTextCallback(0, "t", 1, nullptr),
             ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
-  EXPECT_EQ(
-      ExecuteAccessibilityActionCallback(
-          0, ARKUI_ACCESSIBILITY_NATIVE_ACTION_TYPE_CLICK, nullptr, 1),
-      ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
+  EXPECT_EQ(FindFocusedAccessibilityNodeCallback(
+                0, ARKUI_ACCESSIBILITY_NATIVE_FOCUS_TYPE_INPUT, 1, nullptr),
+            ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
+  EXPECT_EQ(FindNextFocusAccessibilityNodeCallback(
+                0, ARKUI_ACCESSIBILITY_NATIVE_DIRECTION_FORWARD, 1, nullptr),
+            ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
+  EXPECT_EQ(ExecuteAccessibilityActionCallback(
+                0, ARKUI_ACCESSIBILITY_NATIVE_ACTION_TYPE_CLICK, nullptr, 1),
+            ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
   EXPECT_EQ(ClearFocusedFocusAccessibilityNodeCallback(),
             ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
   int32_t index = -1;
-  EXPECT_EQ(
-      GetAccessibilityNodeCursorPositionCallback(0, 1, &index),
-      ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
+  EXPECT_EQ(GetAccessibilityNodeCursorPositionCallback(0, 1, &index),
+            ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
 }
 
 TEST_F(XComponentAdapterTest, A11yCallbacksRouteToCurrentXComponent) {
@@ -654,7 +668,8 @@ TEST_F(XComponentAdapterTest, OnSurfaceCreatedOverlayStashedWithoutA11y) {
   XComponentAdapter* adapter = XComponentAdapter::GetInstance();
   RegisterBase("ut_stash_main");
   XComponentBase* overlay = RegisterBase("ut_stash_main__overlay");
-  static char comp_storage; auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
   overlay->nativeXComponent_ = comp;
   EXPECT_NO_FATAL_FAILURE(OnSurfaceCreatedCB(comp, nullptr));
   EXPECT_EQ(PendingOverlayCount(), 1u);
@@ -669,9 +684,8 @@ TEST_F(XComponentAdapterTest, ExportRegistersEmptyIdBase) {
   EXPECT_NO_FATAL_FAILURE(adapter->Export(env, exports));
 }
 
-#if !defined(OHOS_X64_UNITTEST)
-
-TEST_F(XComponentAdapterTest, ResolveSubViewRoutingControllerlessHolderStaysImplicit) {
+TEST_F(XComponentAdapterTest,
+       ResolveSubViewRoutingControllerlessHolderStaysImplicit) {
   Settings settings;
   settings.ohos_rendering_api = OHOSRenderingAPI::kSoftware;
   auto holder = std::make_unique<OHOSShellHolder>(
@@ -748,8 +762,7 @@ TEST_F(XComponentAdapterTest, PendingOverlayFlushDeliversToPlatformView) {
   adapter->StoreHcppOverlayPendingWindow("ut_main_f__overlay", &dummy_window);
   EXPECT_EQ(PendingOverlayCount(), 1u);
 
-  EXPECT_NO_FATAL_FAILURE(
-      adapter->FlushHcppOverlayPendingWindows("ut_main_f"));
+  EXPECT_NO_FATAL_FAILURE(adapter->FlushHcppOverlayPendingWindows("ut_main_f"));
   EXPECT_EQ(PendingOverlayCount(), 0u);
 }
 
@@ -767,8 +780,8 @@ TEST_F(XComponentAdapterTest, MouseWheelActionUpdateDispatchesScroll) {
   base->is_engine_attached_ = true;
   base->is_surface_present_ = true;
   g_scrollDistance = 5.0;
-  Wheel("ut_wheel6", MakeWheel(reinterpret_cast<int64_t>(holder.get()),
-                               "actionUpdate"));
+  Wheel("ut_wheel6",
+        MakeWheel(reinterpret_cast<int64_t>(holder.get()), "actionUpdate"));
   EXPECT_EQ(g_scrollDistance, 3.0);
 }
 
@@ -788,8 +801,8 @@ TEST_F(XComponentAdapterTest, MouseWheelSubViewRoutesWithSubViewId) {
   base->is_sub_view_ = true;
   base->sub_view_id_ = 3;
   g_scrollDistance = 5.0;
-  Wheel("3", MakeWheel(reinterpret_cast<int64_t>(holder.get()),
-                       "actionUpdate"));
+  Wheel("3",
+        MakeWheel(reinterpret_cast<int64_t>(holder.get()), "actionUpdate"));
   EXPECT_EQ(g_scrollDistance, 3.0);
 }
 
@@ -805,9 +818,8 @@ TEST_F(XComponentAdapterTest, TouchSubViewRoutesWithSubViewId) {
   xc.is_surface_present_ = true;
   xc.is_sub_view_ = true;
   xc.sub_view_id_ = 4;
-  EXPECT_NO_FATAL_FAILURE(
-      xc.OnDispatchTouchEvent(reinterpret_cast<OH_NativeXComponent*>(0x1),
-                              nullptr));
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchTouchEvent(
+      reinterpret_cast<OH_NativeXComponent*>(0x1), nullptr));
 }
 
 TEST_F(XComponentAdapterTest, AxisSubViewRoutesWithSubViewId) {
@@ -837,12 +849,9 @@ TEST_F(XComponentAdapterTest, TouchDroppedAsDuplicateUpReachesProcessor) {
   xc.shellholderId_ = std::to_string(reinterpret_cast<int64_t>(holder.get()));
   xc.is_engine_attached_ = true;
   xc.is_surface_present_ = true;
-  EXPECT_NO_FATAL_FAILURE(
-      xc.OnDispatchTouchEvent(reinterpret_cast<OH_NativeXComponent*>(0x1),
-                              nullptr));
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchTouchEvent(
+      reinterpret_cast<OH_NativeXComponent*>(0x1), nullptr));
 }
-
-#endif  // !defined(OHOS_X64_UNITTEST)
 
 }  // namespace testing
 }  // namespace flutter
