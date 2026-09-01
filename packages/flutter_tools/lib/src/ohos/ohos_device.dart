@@ -326,6 +326,11 @@ class OhosDevice extends Device {
     if (debuggingOptions.debuggingEnabled && debuggingOptions.startPaused) {
       cmd.addAll(<String>['--pb', 'start-paused', 'true']);
     }
+    // Pass the initial route to the OHOS ability via Want parameters.
+    // FlutterAbility.getInitialRoute() reads the "route" key from launchWant.parameters.
+    if (route != null) {
+      cmd.addAll(<String>['--ps', 'route', route]);
+    }
     final String result = (await runHdcCheckedAsync(cmd)).stdout;
     // This invocation returns 0 even when it fails.
     if (result.toLowerCase().contains('error')) {
