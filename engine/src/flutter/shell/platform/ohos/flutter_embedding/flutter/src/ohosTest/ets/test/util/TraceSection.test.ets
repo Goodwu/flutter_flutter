@@ -6,6 +6,7 @@
 
 import { describe, it, expect, Level } from '@ohos/hypium';
 import { TraceSection } from '../../../../main/ets/util/TraceSection';
+import Any from '../../../../main/ets/plugin/common/Any';
 
 function repeatChar(ch: string, n: number): string {
   let s: string = '';
@@ -17,6 +18,14 @@ function repeatChar(ch: string, n: number): string {
 
 export default function traceSectionTest() {
   describe('TraceSection.begin', () => {
+    it('crops names over 124 to exactly 124 + ellipsis', Level.LEVEL1, () => {
+      const longName = repeatChar('C', 130);
+      // cropSectionName is private; verify the exact crop through the class object
+      // (TraceSection.ets:27-29 truncates to 124 code units then appends "...").
+      const cropped: string = (TraceSection as Any).cropSectionName(longName);
+      expect(cropped).assertEqual(longName.substring(0, 124) + '...');
+    });
+
     it('returns a positive taskId', Level.LEVEL1, () => {
       const id = TraceSection.begin('short');
       expect(id).assertLarger(0);

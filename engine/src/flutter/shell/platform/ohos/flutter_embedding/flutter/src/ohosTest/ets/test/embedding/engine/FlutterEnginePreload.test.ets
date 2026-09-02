@@ -29,6 +29,7 @@ import {
   seedPreloadFlutterNapi,
   stubPreloadNativeOps
 } from './CoveragePierceHelpers';
+import Any from '../../../../../main/ets/plugin/common/Any';
 
 function ensureLoaderInitialized(context: common.Context): FlutterLoader {
   const loader: FlutterLoader = FlutterInjector.getInstance().getFlutterLoader();
@@ -111,10 +112,27 @@ export default function FlutterEnginePreloadTest() {
     it('preLoadFlutterNapi_with_cached_engine_id', 0, async (done: Function) => {
       console.info("uitest: preLoadFlutterNapi_with_cached_engine_id begin");
       context = getContext() as common.UIAbilityContext;
+      let getFlutterNapiCalls = 0;
+      const fakeNapi: ESObject = {
+        isAttached: (): boolean => true,
+        dispatchPlatformMessage: (): void => {},
+        runBundleAndSnapshotFromLibrary: (): void => {},
+      };
+      const mockEngine: Any = {
+        getFlutterNapi: (): ESObject => {
+          getFlutterNapiCalls++;
+          return fakeNapi;
+        },
+      };
+      const cache = FlutterEngineCache.getInstance();
+      cache.put('test_cached_engine', mockEngine as Any as FlutterEngine);
       const params: Record<string, Object> = {
-        'cachedEngineId': 'test_cached_engine'
+        'cached_engine_id': 'test_cached_engine'
       };
       const result = FlutterEnginePreload.preLoadFlutterNapi(context, 'test_bundle', params);
+      expect(getFlutterNapiCalls).assertEqual(1);
+      expect((result as ESObject) === fakeNapi).assertEqual(true);
+      cache.remove('test_cached_engine');
       done();
     })
 
@@ -122,7 +140,7 @@ export default function FlutterEnginePreloadTest() {
       console.info("uitest: preLoadFlutterNapi_with_cached_engine_group_id begin");
       context = getContext() as common.UIAbilityContext;
       const params: Record<string, Object> = {
-        'cachedEngineGroupId': 'test_cached_engine_group'
+        'cached_engine_group_id': 'test_cached_engine_group'
       };
       const result = FlutterEnginePreload.preLoadFlutterNapi(context, 'test_bundle', params);
       done();

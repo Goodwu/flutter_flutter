@@ -46,6 +46,7 @@ import FlutterRendererTest from './embedding/engine/renderer/FlutterRendererTest
 import TouchEventProcessorTest from './embedding/ohos/TouchEventProcessorTest.test';
 import TouchEventProcessorMockTest from './embedding/ohos/TouchEventProcessorMock.test';
 import TouchEventTrackerTest from './embedding/ohos/TouchEventTrackerTest.test';
+import ohosTouchProcessorTest from './embedding/ohos/OhosTouchProcessor.test';
 import WindowInfoRepositoryCallbackAdapterWrapperTest
   from './embedding/ohos/WindowInfoRepositoryCallbackAdapterWrapperTest.test';
 import FlutterEngineTest from './embedding/engine/FlutterEngineTest.test';
@@ -56,6 +57,7 @@ import FlutterEngineGroupCacheTest from './embedding/engine/FlutterEngineGroupCa
 import FlutterEngineGroupTest from './embedding/engine/FlutterEngineGroupTest.test';
 import FlutterNapiTest from './embedding/engine/FlutterNapiTest.test';
 import FlutterNapiHybridTest from './embedding/engine/FlutterNapiHybrid.test';
+import FlutterNapiStateTest from './embedding/engine/FlutterNapiStateTest.test';
 import FlutterOverlaySurfaceTest from './embedding/engine/FlutterOverlaySurfaceTest.test';
 import FlutterShellArgsTest from './embedding/engine/FlutterShellArgsTest.test';
 import BinaryMessengerTest from './plugin/common/BinaryMessengerTest.test';
@@ -86,6 +88,7 @@ import textEditingDeltaTest from './plugin/editing/TextEditingDelta.test';
 import ohosAutoFillHelperTest from './plugin/editing/OhosAutoFillHelper.test';
 import TextInputPluginTest from './plugin/editing/TextInputPlugin.test';
 import textInputPluginPrivatesTest from './plugin/editing/TextInputPluginPrivates.test';
+import textInputPluginStateTest from './plugin/editing/TextInputPluginStateTest.test';
 import flutterTextFieldUiTest from './plugin/editing/FlutterTextFieldUiTest.test';
 import systemChannelTest from './embedding/engine/systemchannels/SystemChannelTest.test';
 import platformViewFactoryTest from './plugin/platform/PlatformViewFactoryTest.test';
@@ -130,6 +133,7 @@ import keyboardManagerTest from './embedding/ohos/KeyboardManager.test';
 import TextUtilsTest from './plugin/editing/TextUtils.test';
 import FlutterEnginePreloadTest from './embedding/engine/FlutterEnginePreload.test';
 import FlutterPluginRegistryTest from './app/FlutterPluginRegistry.test';
+import flutterPluginBindingTest from './embedding/engine/plugins/FlutterPlugin.test';
 import FlutterCallbackInformationTest from './view/FlutterCallbackInformation.test';
 import FlutterViewHybridTest from './view/FlutterViewHybrid.test';
 import windowArchetypeTest from './embedding/ohos/windowing/WindowArchetype.test';
@@ -182,6 +186,7 @@ export default function testsuite() {
   TouchEventProcessorTest();
   TouchEventProcessorMockTest();
   TouchEventTrackerTest();
+  ohosTouchProcessorTest();
   WindowInfoRepositoryCallbackAdapterWrapperTest();
   FlutterEngineTest();
   FlutterEngineHybridTest();
@@ -191,6 +196,7 @@ export default function testsuite() {
   FlutterEngineGroupTest();
   FlutterNapiTest();
   FlutterNapiHybridTest();
+  FlutterNapiStateTest();
   FlutterOverlaySurfaceTest();
   FlutterShellArgsTest();
   BinaryMessengerTest();
@@ -222,6 +228,7 @@ export default function testsuite() {
   ohosAutoFillHelperTest();
   TextInputPluginTest();
   textInputPluginPrivatesTest();
+  textInputPluginStateTest();
   LocalizationPluginTest();
   json5ToJsonTest();
   methodChannelTest();
@@ -260,6 +267,7 @@ export default function testsuite() {
   TextUtilsTest();
   FlutterEnginePreloadTest();
   FlutterPluginRegistryTest();
+  flutterPluginBindingTest();
   FlutterCallbackInformationTest();
   FlutterViewHybridTest();
   windowArchetypeTest();

@@ -6,8 +6,8 @@
 
 import { describe, it, expect, Level, MockKit, when } from '@ohos/hypium';
 import Any from '../../../../../main/ets/plugin/common/Any';
-import JSONMethodCodec from '../../../../../main/ets/plugin/common/JSONMethodCodec';
 import JSONMessageCodec from '../../../../../main/ets/plugin/common/JSONMessageCodec';
+import JSONMethodCodec from '../../../../../main/ets/plugin/common/JSONMethodCodec';
 import MethodCall from '../../../../../main/ets/plugin/common/MethodCall';
 import StringUtils from '../../../../../main/ets/util/StringUtils';
 

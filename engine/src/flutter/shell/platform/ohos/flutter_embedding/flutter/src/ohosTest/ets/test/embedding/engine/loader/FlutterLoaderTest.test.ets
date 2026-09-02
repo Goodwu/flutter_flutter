@@ -107,5 +107,68 @@ export default function FlutterLoaderTest() {
       loader.ensureInitializationComplete(null);
       expect(recording.lastShellArgs.indexOf(HCPP_SHELL_ARG) >= 0).assertFalse();
     })
+
+    it('getLookupKeyForAsset_without_package', 0, () => {
+      const loader: FlutterLoader = makeLoader();
+      loader.startInitialization(getContext());
+      const result: string = loader.getLookupKeyForAsset('fonts/foo.ttf');
+      expect(result.indexOf('fonts/foo.ttf') >= 0).assertTrue();
+      expect(result).assertEqual(loader.flutterApplicationInfo!.flutterAssetsDir + '/fonts/foo.ttf');
+    })
+
+    it('getLookupKeyForAsset_with_package', 0, () => {
+      const loader: FlutterLoader = makeLoader();
+      loader.startInitialization(getContext());
+      const result: string = loader.getLookupKeyForAsset('fonts/foo.ttf', 'my_pkg');
+      expect(result.indexOf('packages/my_pkg/fonts/foo.ttf') >= 0).assertTrue();
+    })
+
+    it('fullAssetPathFrom_uninitialized_returns_empty', 0, () => {
+      const loader: FlutterLoader = makeLoader();
+      expect(loader.fullAssetPathFrom('fonts/foo.ttf')).assertEqual("");
+    })
+
+    it('fullAssetPathFrom_initialized_joins_assets_dir', 0, () => {
+      const loader: FlutterLoader = makeLoader();
+      loader.startInitialization(getContext());
+      const result: string = loader.fullAssetPathFrom('fonts/foo.ttf');
+      expect(result).assertEqual(loader.flutterApplicationInfo!.flutterAssetsDir + '/fonts/foo.ttf');
+    })
+
+    it('ensureInitializationComplete_debug_mode_pushes_debug_args', 0, () => {
+      const loader: FlutterLoader = makeLoader();
+      loader.startInitialization(getContext());
+      loader.flutterApplicationInfo!.isDebugMode = true;
+      const recording: RecordingFlutterNapi = new RecordingFlutterNapi();
+      loader.flutterNapi = recording as Any as FlutterNapi;
+      loader.initialized = false;
+      loader.ensureInitializationComplete(null);
+      expect(recording.lastShellArgs.indexOf('--enable-checked-mode') >= 0).assertTrue();
+    })
+
+    it('ensureInitializationComplete_profile_mode_pushes_vmservice', 0, () => {
+      const loader: FlutterLoader = makeLoader();
+      loader.startInitialization(getContext());
+      // The vmservice arg is only pushed in the non-debug branch, so force that
+      // path regardless of the HAP's actual build mode (test HAP is a debug build).
+      loader.flutterApplicationInfo!.isDebugMode = false;
+      loader.flutterApplicationInfo!.isProfile = true;
+      const recording: RecordingFlutterNapi = new RecordingFlutterNapi();
+      loader.flutterNapi = recording as Any as FlutterNapi;
+      loader.initialized = false;
+      loader.ensureInitializationComplete(null);
+      expect(recording.lastShellArgs.indexOf('--aot-vmservice-shared-library-name=libvmservice_snapshot.so') >= 0).assertTrue();
+    })
+
+    it('ensureInitializationComplete_domain_network_policy', 0, () => {
+      const loader: FlutterLoader = makeLoader();
+      loader.startInitialization(getContext());
+      loader.flutterApplicationInfo!.domainNetworkPolicy = 'example.com';
+      const recording: RecordingFlutterNapi = new RecordingFlutterNapi();
+      loader.flutterNapi = recording as Any as FlutterNapi;
+      loader.initialized = false;
+      loader.ensureInitializationComplete(null);
+      expect(recording.lastShellArgs.indexOf('--domain-network-policy=example.com') >= 0).assertTrue();
+    })
   })
 }

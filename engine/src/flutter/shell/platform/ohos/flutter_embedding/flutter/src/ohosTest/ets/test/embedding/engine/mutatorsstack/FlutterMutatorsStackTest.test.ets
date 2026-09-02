@@ -13,8 +13,10 @@
  * limitations under the License.
  */
 
-import { FlutterMutatorsStack } from '../../../../../../main/ets/embedding/engine/mutatorsstack/FlutterMutatorsStack';
+import { FlutterMutatorsStack, FlutterMutator } from '../../../../../../main/ets/embedding/engine/mutatorsstack/FlutterMutatorsStack';
 import { describe, expect, it } from '@ohos/hypium';
+import matrix4 from '@ohos.matrix4';
+import Any from '../../../../../../main/ets/plugin/common/Any';
 export default function FlutterMutatorsStackTest() {
   describe('FlutterMutatorsStackTest', () => {
     it('TestPushClipPath', 0, async (done: Function) => {
