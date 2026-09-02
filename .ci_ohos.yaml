@@ -113,12 +113,6 @@ preparation_steps:
     args: ["flutter_flutter"]
     required: true
 
-  - name: Prepare Tester
-    script: ci/scripts/prepare_tester.sh
-    description: Prepare Tester project and sync to target branch
-    args: ["main"]
-    required: true
-
 # Compilation steps - executed in order
 compilation_steps:
   - name: Pack Flutter
@@ -187,10 +181,16 @@ compilation_steps:
     args: ["flutter_flutter/engine"]
     required: true
 
-  - name: Compile Tester
-    script: ci/scripts/compile_tester.sh
-    description: Compiling Tester
+  - name: Compile Hello World
+    script: ci/scripts/compile_hello_world.sh
+    description: "Compiling the hello_world example (ArkTS unit test entry: lib/main_ohos.dart)"
     args: ["flutter_flutter/engine"]
+    required: true
+
+  - name: Prepare Tests
+    script: ci/scripts/prepare_tests.sh
+    description: Clone testcases, generate PR info, move tests to archive, and collect hello_world flutter_assets + native libs into resource/ for unit test
+    args: ["https://gitcode.com/CPF-Flutter/tests.git", "unit", "oh-3.44.9-dev"]
     required: true
 
   - name: Upload to cloud

@@ -58,7 +58,7 @@ export class SubWindowHost extends FlutterWindowHost {
     const parentAbilityResolved: UIAbility = parentAbility;
     // Window name must be unique; use the viewId.
     windowStage.createSubWindow('flutter-' + this.viewIdStr, (err, subWindow) => {
-      if ((err && err.code) || !subWindow) {
+      if (err?.code || !subWindow) {
         Log.e(TAG, `createSubWindow failed: ${JSON.stringify(err)}`);
         this.failAttach('createSubWindow');
         return;

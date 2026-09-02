@@ -49,7 +49,50 @@ export default function sensitiveContentPluginTest() {
     it('returnsEarlyForUnknownValue', Level.LEVEL1, () => {
       const plugin: SensitiveContentPlugin = createPlugin();
       plugin.setContentSensitivity(999);
+      // unknown values default to NOT_SENSITIVE_CONTENT_SENSITIVITY
       expect(plugin.getContentSensitivity()).assertEqual(NOT_SENSITIVE_CONTENT_SENSITIVITY);
+    });
+  });
+
+  describe('SensitiveContentPlugin.setContentSensitivity.sensitive', () => {
+    it('handlesSENSITIVE_CONTENT_SENSITIVITY (window NAPI may fail)', Level.LEVEL1, () => {
+      const plugin: SensitiveContentPlugin = createPlugin();
+      let threw = false;
+      try {
+        plugin.setContentSensitivity(SENSITIVE_CONTENT_SENSITIVITY);
+      } catch (e) {
+        threw = true;
+      }
+      // The plugin itself shouldn't throw - NAPI failures are caught internally
+      expect(threw).assertEqual(false);
+    });
+  });
+
+  describe('SensitiveContentPlugin.setContentSensitivity.transitions', () => {
+    it('handlesSENSITIVE_then_NOT_SENSITIVE', Level.LEVEL1, () => {
+      const plugin: SensitiveContentPlugin = createPlugin();
+      plugin.setContentSensitivity(SENSITIVE_CONTENT_SENSITIVITY);
+      // After the first call, currentContentSensitivity may or may not have
+      // been updated (depends on NAPI). Just verify no throw on second call.
+      let threw = false;
+      try {
+        plugin.setContentSensitivity(NOT_SENSITIVE_CONTENT_SENSITIVITY);
+      } catch (e) {
+        threw = true;
+      }
+      expect(threw).assertEqual(false);
+    });
+
+    it('handlesNOT_SENSITIVE_then_SENSITIVE', Level.LEVEL1, () => {
+      const plugin: SensitiveContentPlugin = createPlugin();
+      plugin.setContentSensitivity(NOT_SENSITIVE_CONTENT_SENSITIVITY);
+      let threw = false;
+      try {
+        plugin.setContentSensitivity(SENSITIVE_CONTENT_SENSITIVITY);
+      } catch (e) {
+        threw = true;
+      }
+      expect(threw).assertEqual(false);
     });
   });
 
@@ -57,6 +100,18 @@ export default function sensitiveContentPluginTest() {
     it('destroysWithoutCrash', Level.LEVEL1, () => {
       const plugin: SensitiveContentPlugin = createPlugin();
       plugin.destroy();
+    });
+
+    it('canBeCalledMultipleTimes', Level.LEVEL1, () => {
+      const plugin: SensitiveContentPlugin = createPlugin();
+      plugin.destroy();
+      let threw = false;
+      try {
+        plugin.destroy();
+      } catch (e) {
+        threw = true;
+      }
+      expect(threw).assertEqual(false);
     });
   });
 }
