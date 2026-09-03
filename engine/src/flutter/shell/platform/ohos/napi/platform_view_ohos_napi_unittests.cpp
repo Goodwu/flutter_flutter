@@ -17,7 +17,8 @@
 //   - napi_create_int64/double/int32/get_boolean (stubbed below, matching real
 //     N-API null-env behavior) return napi_invalid_arg → every per-argument
 //     `if (status != napi_ok)` error branch is taken.
-//   - InvokeJsMethod's chain (napi_get_reference_value / napi_get_named_property
+//   - InvokeJsMethod's chain (napi_get_reference_value /
+//   napi_get_named_property
 //     / napi_call_function) resolves to the shared stubs in
 //     ohos_touch_processor_unittests.cpp, which return napi_ok → the
 //     "InvokeJsMethod <name> fail" LOG branch is NOT reachable in this
@@ -33,14 +34,14 @@
 // (real env + callback_info + ForView hit) is device-only (Class 3).
 
 #include <gtest/gtest.h>
-#include "flutter/shell/platform/ohos/test_stubs/ace_napi_stub.h"
-#include "flutter/shell/platform/ohos/test_stubs/libc_wrapper_stub.h"
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
+#include "flutter/shell/platform/ohos/test_stubs/ace_napi_stub.h"
+#include "flutter/shell/platform/ohos/test_stubs/libc_wrapper_stub.h"
 
 #define private public
 #include "flutter/lib/ui/plugins/callback_cache.h"
@@ -56,8 +57,8 @@
 namespace flutter {
 namespace testing {
 
-// ===== Windowing JS-callout methods (null env → arg-marshaling error path) ====
-// Each call below covers: napi_open_handle_scope / napi_close_handle_scope
+// ===== Windowing JS-callout methods (null env → arg-marshaling error path)
+// ==== Each call below covers: napi_open_handle_scope / napi_close_handle_scope
 // (shared stubs, napi_ok) and every `if (status != napi_ok)` per-argument error
 // branch inside the method (null-env stubs → napi_invalid_arg).
 
@@ -186,10 +187,11 @@ TEST_F(PlatformViewOHOSNapiTest, LTPODispatchHighFrameRateNullEnv) {
       nullptr);
 }
 
-// ===== ETS → C++ native callbacks (null env → napi_get_cb_info error path) ====
-// File-scope napi_get_cb_info stub returns napi_invalid_arg for env == nullptr
-// so these natives take the `ret != napi_ok` early-return without entering
-// real libnapi. The JS-invocation success path is device-only (Class 3).
+// ===== ETS → C++ native callbacks (null env → napi_get_cb_info error path)
+// ==== File-scope napi_get_cb_info stub returns napi_invalid_arg for env ==
+// nullptr so these natives take the `ret != napi_ok` early-return without
+// entering real libnapi. The JS-invocation success path is device-only (Class
+// 3).
 
 // nativeHandleOsWindowClosed: napi_get_cb_info fails → DLOG + return nullptr.
 TEST_F(PlatformViewOHOSNapiTest, HandleOsWindowClosedNullEnv) {
@@ -241,7 +243,7 @@ inline napi_env FakeNapiEnv() {
   return reinterpret_cast<napi_env>(0xF00D);
 }
 
-}
+}  // namespace
 
 TEST_F(PlatformViewOHOSNapiTest, EmptySupportedLocalesReturnsDefault) {
   PlatformViewOHOSNapi facade(nullptr);
@@ -336,8 +338,8 @@ TEST_F(PlatformViewOHOSNapiTest, ComputeResolvedLocalesFallbackFirst) {
   SystemLanguagesGuard guard;
   PlatformViewOHOSNapi facade(nullptr);
   PlatformViewOHOSNapi::system_languages = {"ja-Jpan-JP"};
-  auto result = facade.FlutterViewComputePlatformResolvedLocales(
-      {"ko", "KR", "Hang"});
+  auto result =
+      facade.FlutterViewComputePlatformResolvedLocales({"ko", "KR", "Hang"});
   ASSERT_NE(result, nullptr);
   ASSERT_EQ(result->size(), 3u);
   EXPECT_EQ((*result)[0], "ko");
@@ -391,8 +393,8 @@ TEST_F(PlatformViewOHOSNapiTest, PlatformMessageCalloutsComplete) {
                fml::MallocMapping::Copy(payload, payload + 7)));
     facade.FlutterViewHandlePlatformMessage(
         7, std::make_unique<PlatformMessage>(
-               "unittest/ch",
-               fml::MallocMapping::Copy(payload, payload + 7), nullptr));
+               "unittest/ch", fml::MallocMapping::Copy(payload, payload + 7),
+               nullptr));
     facade.FlutterViewHandlePlatformMessage(
         8, std::make_unique<PlatformMessage>("unittest/ch", nullptr));
     facade.FlutterViewOnFirstFrame(true);
@@ -462,52 +464,59 @@ TEST_F(PlatformViewOHOSNapiTest, NativeGetSystemLanguages) {
   EXPECT_EQ(PlatformViewOHOSNapi::nativeGetSystemLanguages(nullptr, nullptr),
             nullptr);
 
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeGetSystemLanguages(FakeNapiEnv(), nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeGetSystemLanguages(FakeNapiEnv(), nullptr),
+      nullptr);
   EXPECT_TRUE(PlatformViewOHOSNapi::system_languages.empty());
 
   StubNapiSetValuetype(napi_string);
   StubNapiSetString("zh-Hans");
   StubNapiSetArrayLength(2);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeGetSystemLanguages(FakeNapiEnv(), nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeGetSystemLanguages(FakeNapiEnv(), nullptr),
+      nullptr);
   ASSERT_EQ(PlatformViewOHOSNapi::system_languages.size(), 2u);
   EXPECT_EQ(PlatformViewOHOSNapi::system_languages[0], "zh-Hans");
   EXPECT_EQ(PlatformViewOHOSNapi::system_languages[1], "zh-Hans");
 
   StubNapiFailArrayLength(kStubFailure);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeGetSystemLanguages(FakeNapiEnv(), nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeGetSystemLanguages(FakeNapiEnv(), nullptr),
+      nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::system_languages.size(), 2u);
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativeLoadDartDeferredLibrary) {
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeLoadDartDeferredLibrary(nullptr, nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeLoadDartDeferredLibrary(nullptr, nullptr),
+      nullptr);
   StubNapiFailArrayLength(kStubFailure);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeLoadDartDeferredLibrary(FakeNapiEnv(), nullptr),
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeLoadDartDeferredLibrary(FakeNapiEnv(),
+                                                                nullptr),
             nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeLoadDartDeferredLibrary(FakeNapiEnv(), nullptr),
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeLoadDartDeferredLibrary(FakeNapiEnv(),
+                                                                nullptr),
             nullptr);
   StubNapiSetValuetype(napi_string);
   StubNapiSetString("/nonexistent_unit_test_lib.so");
   StubNapiSetArrayLength(1);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeLoadDartDeferredLibrary(FakeNapiEnv(), nullptr),
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeLoadDartDeferredLibrary(FakeNapiEnv(),
+                                                                nullptr),
             nullptr);
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativeDeferredComponentInstallFailure) {
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeDeferredComponentInstallFailure(nullptr, nullptr),
-      nullptr);
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeDeferredComponentInstallFailure(FakeNapiEnv(), nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeDeferredComponentInstallFailure(
+                nullptr, nullptr),
+            nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeDeferredComponentInstallFailure(
+                FakeNapiEnv(), nullptr),
+            nullptr);
   StubNapiSetValuetype(napi_string);
   StubNapiSetString("install failed");
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeDeferredComponentInstallFailure(FakeNapiEnv(), nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeDeferredComponentInstallFailure(
+                FakeNapiEnv(), nullptr),
+            nullptr);
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativeRunBundleAndSnapshotFromLibrary) {
@@ -535,19 +544,15 @@ TEST_F(PlatformViewOHOSNapiTest, NativeRunBundleAndSnapshotFromLibrary) {
 
 TEST_F(PlatformViewOHOSNapiTest, NativeSpawn) {
   EXPECT_EQ(PlatformViewOHOSNapi::nativeSpawn(nullptr, nullptr), nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeSpawn(FakeNapiEnv(), nullptr),
-            nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeSpawn(FakeNapiEnv(), nullptr), nullptr);
   StubNapiSetValuetype(napi_string);
   StubNapiSetString("main");
   StubNapiFailStringUtf8(kStubFailure, 2);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeSpawn(FakeNapiEnv(), nullptr),
-            nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeSpawn(FakeNapiEnv(), nullptr), nullptr);
   StubNapiFailStringUtf8(kStubFailure, 4);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeSpawn(FakeNapiEnv(), nullptr),
-            nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeSpawn(FakeNapiEnv(), nullptr), nullptr);
   StubNapiFailArrayLength(kStubFailure);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeSpawn(FakeNapiEnv(), nullptr),
-            nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeSpawn(FakeNapiEnv(), nullptr), nullptr);
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativeSpawnAsync) {
@@ -603,8 +608,7 @@ TEST_F(PlatformViewOHOSNapiTest, NativeUpdateRefreshRateFullPaths) {
   EXPECT_EQ(PlatformViewOHOSNapi::nativeUpdateRefreshRate(env, nullptr),
             nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::display_refresh_rate, 60);
-  EXPECT_EQ(PlatformViewOHOSNapi::all_refresh_rates->size(),
-            before->size());
+  EXPECT_EQ(PlatformViewOHOSNapi::all_refresh_rates->size(), before->size());
 
   StubNapiSetInt32Value(165);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeUpdateRefreshRate(env, nullptr),
@@ -711,18 +715,15 @@ TEST_F(PlatformViewOHOSNapiTest, NativeSetTextureBackGroundColorParseStages) {
   napi_env env = FakeNapiEnv();
   StubNapiSetCbArgc(3);
   StubNapiFailInt64OnCall(1);
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeSetTextureBackGroundColor(env, nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeSetTextureBackGroundColor(env, nullptr),
+            nullptr);
   StubNapiFailInt64OnCall(2);
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeSetTextureBackGroundColor(env, nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeSetTextureBackGroundColor(env, nullptr),
+            nullptr);
   StubNapiFailInt64OnCall(0);
   StubNapiFailUint32OnCall(1);
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeSetTextureBackGroundColor(env, nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeSetTextureBackGroundColor(env, nullptr),
+            nullptr);
   StubNapiFailUint32OnCall(0);
 }
 
@@ -769,15 +770,18 @@ TEST_F(PlatformViewOHOSNapiTest, NativeTextUtilsIsEmojiFullPaths) {
   StubNapiSetCbArgc(1);
 
   StubNapiFailInt64OnCall(1);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmoji(env, nullptr), nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmoji(env, nullptr),
+            nullptr);
   StubNapiFailInt64OnCall(0);
 
   StubNapiSetInt64Value(0x1F600);
   StubNapiFailGetBooleanOnCall(1);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmoji(env, nullptr), nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmoji(env, nullptr),
+            nullptr);
   StubNapiFailGetBooleanOnCall(0);
 
-  EXPECT_NO_FATAL_FAILURE(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmoji(env, nullptr));
+  EXPECT_NO_FATAL_FAILURE(
+      PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmoji(env, nullptr));
   StubNapiSetInt64Value(0);
 }
 
@@ -786,15 +790,21 @@ TEST_F(PlatformViewOHOSNapiTest, NativeTextUtilsIsEmojiModifierFullPaths) {
   StubNapiSetCbArgc(1);
 
   StubNapiFailInt64OnCall(1);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmojiModifier(env, nullptr), nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmojiModifier(env, nullptr),
+      nullptr);
   StubNapiFailInt64OnCall(0);
 
   StubNapiSetInt64Value(0x1F3FB);
   StubNapiFailGetBooleanOnCall(1);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmojiModifier(env, nullptr), nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmojiModifier(env, nullptr),
+      nullptr);
   StubNapiFailGetBooleanOnCall(0);
 
-  EXPECT_NO_FATAL_FAILURE(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmojiModifier(env, nullptr));
+  EXPECT_NO_FATAL_FAILURE(
+      PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmojiModifier(env,
+                                                                  nullptr));
   StubNapiSetInt64Value(0);
 }
 
@@ -803,15 +813,21 @@ TEST_F(PlatformViewOHOSNapiTest, NativeTextUtilsIsEmojiModifierBaseFullPaths) {
   StubNapiSetCbArgc(1);
 
   StubNapiFailInt64OnCall(1);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmojiModifierBase(env, nullptr), nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmojiModifierBase(
+                env, nullptr),
+            nullptr);
   StubNapiFailInt64OnCall(0);
 
   StubNapiSetInt64Value(0x1F4AA);
   StubNapiFailGetBooleanOnCall(1);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmojiModifierBase(env, nullptr), nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmojiModifierBase(
+                env, nullptr),
+            nullptr);
   StubNapiFailGetBooleanOnCall(0);
 
-  EXPECT_NO_FATAL_FAILURE(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmojiModifierBase(env, nullptr));
+  EXPECT_NO_FATAL_FAILURE(
+      PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmojiModifierBase(env,
+                                                                      nullptr));
   StubNapiSetInt64Value(0);
 }
 
@@ -820,15 +836,21 @@ TEST_F(PlatformViewOHOSNapiTest, NativeTextUtilsIsVariationSelectorFullPaths) {
   StubNapiSetCbArgc(1);
 
   StubNapiFailInt64OnCall(1);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsVariationSelector(env, nullptr), nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsVariationSelector(
+                env, nullptr),
+            nullptr);
   StubNapiFailInt64OnCall(0);
 
   StubNapiSetInt64Value(0xFE0F);
   StubNapiFailGetBooleanOnCall(1);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsVariationSelector(env, nullptr), nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsVariationSelector(
+                env, nullptr),
+            nullptr);
   StubNapiFailGetBooleanOnCall(0);
 
-  EXPECT_NO_FATAL_FAILURE(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsVariationSelector(env, nullptr));
+  EXPECT_NO_FATAL_FAILURE(
+      PlatformViewOHOSNapi::nativeFlutterTextUtilsIsVariationSelector(env,
+                                                                      nullptr));
   StubNapiSetInt64Value(0);
 }
 
@@ -837,15 +859,21 @@ TEST_F(PlatformViewOHOSNapiTest, NativeTextUtilsIsRegionalIndicatorFullPaths) {
   StubNapiSetCbArgc(1);
 
   StubNapiFailInt64OnCall(1);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsRegionalIndicator(env, nullptr), nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsRegionalIndicator(
+                env, nullptr),
+            nullptr);
   StubNapiFailInt64OnCall(0);
 
   StubNapiSetInt64Value(0x1F1FA);
   StubNapiFailGetBooleanOnCall(1);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsRegionalIndicator(env, nullptr), nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsRegionalIndicator(
+                env, nullptr),
+            nullptr);
   StubNapiFailGetBooleanOnCall(0);
 
-  EXPECT_NO_FATAL_FAILURE(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsRegionalIndicator(env, nullptr));
+  EXPECT_NO_FATAL_FAILURE(
+      PlatformViewOHOSNapi::nativeFlutterTextUtilsIsRegionalIndicator(env,
+                                                                      nullptr));
   StubNapiSetInt64Value(0);
 }
 
@@ -875,12 +903,11 @@ TEST_F(PlatformViewOHOSNapiTest, NativeSetFontWeightScaleParseStages) {
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativePrefetchDefaultFontManagerRuns) {
+  EXPECT_EQ(PlatformViewOHOSNapi::nativePrefetchDefaultFontManager(
+                FakeNapiEnv(), nullptr),
+            nullptr);
   EXPECT_EQ(
-      PlatformViewOHOSNapi::nativePrefetchDefaultFontManager(FakeNapiEnv(),
-                                                             nullptr),
-      nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativePrefetchDefaultFontManager(nullptr,
-                                                                   nullptr),
+      PlatformViewOHOSNapi::nativePrefetchDefaultFontManager(nullptr, nullptr),
       nullptr);
 }
 
@@ -947,27 +974,25 @@ TEST_F(PlatformViewOHOSNapiTest, NativeSetPipVisibleFullPaths) {
       PlatformViewOHOSNapi::nativeSetPipVisible(env, nullptr));
 }
 
-#define NAPO_BRAKE_TAIL2(fn, argc_v, fail_setup, clear_setup)                 \
-  do {                                                                        \
-    napi_env env_ = FakeNapiEnv();                                            \
-    StubNapiSetCbArgc(argc_v);                                                \
-    fail_setup;                                                               \
-    EXPECT_EQ(fn(env_, nullptr), nullptr);                                    \
-    clear_setup;                                                              \
+#define NAPO_BRAKE_TAIL2(fn, argc_v, fail_setup, clear_setup) \
+  do {                                                        \
+    napi_env env_ = FakeNapiEnv();                            \
+    StubNapiSetCbArgc(argc_v);                                \
+    fail_setup;                                               \
+    EXPECT_EQ(fn(env_, nullptr), nullptr);                    \
+    clear_setup;                                              \
   } while (0)
 
 TEST_F(PlatformViewOHOSNapiTest, NativeA11yStateChangeBrakeTail) {
   napi_env env = FakeNapiEnv();
   StubNapiSetCbArgc(2);
   StubNapiFailInt64OnCall(1);
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeAccessibilityStateChange(env, nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeAccessibilityStateChange(env, nullptr),
+            nullptr);
   StubNapiFailInt64OnCall(0);
   StubNapiFailBoolOnCall(1);
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeAccessibilityStateChange(env, nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeAccessibilityStateChange(env, nullptr),
+            nullptr);
   StubNapiFailBoolOnCall(0);
 }
 
@@ -1013,18 +1038,15 @@ TEST_F(PlatformViewOHOSNapiTest, NativeSetExternalNativeImagePtrStages) {
   napi_env env = FakeNapiEnv();
   StubNapiSetCbArgc(3);
   StubNapiFailInt64OnCall(1);
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeSetExternalNativeImagePtr(env, nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeSetExternalNativeImagePtr(env, nullptr),
+            nullptr);
   StubNapiFailInt64OnCall(2);
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeSetExternalNativeImagePtr(env, nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeSetExternalNativeImagePtr(env, nullptr),
+            nullptr);
   StubNapiFailInt64OnCall(0);
   StubNapiSetBigintLossless(false);
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeSetExternalNativeImagePtr(env, nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeSetExternalNativeImagePtr(env, nullptr),
+            nullptr);
   StubNapiSetBigintLossless(true);
 }
 
@@ -1048,13 +1070,11 @@ TEST_F(PlatformViewOHOSNapiTest, NativeMarkTextureFrameAvailableStages) {
   napi_env env = FakeNapiEnv();
   StubNapiSetCbArgc(2);
   StubNapiFailInt64OnCall(1);
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeMarkTextureFrameAvailable(env, nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeMarkTextureFrameAvailable(env, nullptr),
+            nullptr);
   StubNapiFailInt64OnCall(2);
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeMarkTextureFrameAvailable(env, nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeMarkTextureFrameAvailable(env, nullptr),
+            nullptr);
   StubNapiFailInt64OnCall(0);
 }
 
@@ -1070,19 +1090,19 @@ TEST_F(PlatformViewOHOSNapiTest, NativeDispatchTouchToEngineStages) {
             nullptr);
 
   StubNapiSetArrayLength(1);
-  StubNapiSetInt32Value(static_cast<int32_t>(
-      flutter::PointerData::DeviceKind::kMouse));
+  StubNapiSetInt32Value(
+      static_cast<int32_t>(flutter::PointerData::DeviceKind::kMouse));
   StubNapiSetInt64Value(reinterpret_cast<int64_t>(g_fake_holder_storage));
   EXPECT_NO_FATAL_FAILURE(
       PlatformViewOHOSNapi::nativeDispatchTouchToEngine(env, nullptr));
 
-  StubNapiSetInt32Value(static_cast<int32_t>(
-      flutter::PointerData::Change::kDown));
+  StubNapiSetInt32Value(
+      static_cast<int32_t>(flutter::PointerData::Change::kDown));
   EXPECT_NO_FATAL_FAILURE(
       PlatformViewOHOSNapi::nativeDispatchTouchToEngine(env, nullptr));
 
-  StubNapiSetInt32Value(static_cast<int32_t>(
-      flutter::PointerData::Change::kUp));
+  StubNapiSetInt32Value(
+      static_cast<int32_t>(flutter::PointerData::Change::kUp));
   EXPECT_NO_FATAL_FAILURE(
       PlatformViewOHOSNapi::nativeDispatchTouchToEngine(env, nullptr));
 
@@ -1097,20 +1117,16 @@ TEST_F(PlatformViewOHOSNapiTest, NativeAnimationVotingFullPaths) {
   StubNapiSetDoubleValue(1.5);
 
   StubNapiFailInt32OnCall(1);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeAnimationVoting(env, nullptr),
-            nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeAnimationVoting(env, nullptr), nullptr);
   StubNapiFailInt32OnCall(0);
   StubNapiFailDoubleOnCall(1);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeAnimationVoting(env, nullptr),
-            nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeAnimationVoting(env, nullptr), nullptr);
   StubNapiFailDoubleOnCall(0);
 
   StubNapiSetInt32Value(0);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeAnimationVoting(env, nullptr),
-            nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeAnimationVoting(env, nullptr), nullptr);
   StubNapiSetInt32Value(99);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeAnimationVoting(env, nullptr),
-            nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeAnimationVoting(env, nullptr), nullptr);
   StubNapiSetInt32Value(0);
   StubNapiSetDoubleValue(0);
 }
@@ -1208,16 +1224,15 @@ TEST_F(PlatformViewOHOSNapiTest, NativeUnicodePredicatesInt64FailLegs) {
   EXPECT_EQ(PlatformViewOHOSNapi::nativeUnicodeIsEmoji(env, nullptr), nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeUnicodeIsEmojiModifier(env, nullptr),
             nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeUnicodeIsEmojiModifierBase(env,
-                                                                  nullptr),
-            nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeUnicodeIsVariationSelector(env,
-                                                                  nullptr),
-            nullptr);
   EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeUnicodeIsRegionalIndicatorSymbol(env,
-                                                                  nullptr),
+      PlatformViewOHOSNapi::nativeUnicodeIsEmojiModifierBase(env, nullptr),
       nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeUnicodeIsVariationSelector(env, nullptr),
+      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeUnicodeIsRegionalIndicatorSymbol(
+                env, nullptr),
+            nullptr);
   StubNapiFailInt64OnCall(0);
   StubNapiSetInt64Value(0x1F600);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeUnicodeIsEmoji(env, nullptr), nullptr);
@@ -1263,14 +1278,12 @@ TEST_F(PlatformViewOHOSNapiTest, NativeLoadDartDeferredLibraryStages) {
 }
 
 TEST_F(PlatformViewOHOSNapiTest, InitNotifyPageChangedLoaderAllPaths) {
-  EXPECT_NO_FATAL_FAILURE(
-      PlatformViewOHOSNapi::InitNotifyPageChangedLoader());
+  EXPECT_NO_FATAL_FAILURE(PlatformViewOHOSNapi::InitNotifyPageChangedLoader());
   ASSERT_NE(PlatformViewOHOSNapi::ability_runtime_loader_, nullptr);
 
   PlatformViewOHOSNapi::notify_page_changed_func_ = nullptr;
   UpdateDlopenForceFail(true);
-  EXPECT_NO_FATAL_FAILURE(
-      PlatformViewOHOSNapi::InitNotifyPageChangedLoader());
+  EXPECT_NO_FATAL_FAILURE(PlatformViewOHOSNapi::InitNotifyPageChangedLoader());
   EXPECT_EQ(PlatformViewOHOSNapi::notify_page_changed_func_, nullptr);
   UpdateDlopenForceFail(false);
 }
@@ -1284,13 +1297,15 @@ TEST_F(PlatformViewOHOSNapiTest, NativeInvokeEmptyResponseCallbackStages) {
   napi_env env = FakeNapiEnv();
   StubNapiSetCbArgc(2);
   StubNapiFailInt64OnCall(1);
-  EXPECT_EQ(PlatformViewOHOSNapi::
-                nativeInvokePlatformMessageEmptyResponseCallback(env, nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeInvokePlatformMessageEmptyResponseCallback(
+          env, nullptr),
+      nullptr);
   StubNapiFailInt64OnCall(2);
-  EXPECT_EQ(PlatformViewOHOSNapi::
-                nativeInvokePlatformMessageEmptyResponseCallback(env, nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeInvokePlatformMessageEmptyResponseCallback(
+          env, nullptr),
+      nullptr);
   StubNapiFailInt64OnCall(0);
 }
 
@@ -1307,33 +1322,40 @@ TEST_F(PlatformViewOHOSNapiTest, NativeTextureEntryPointsNullEnv) {
             nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeNotifyTextureResizing(nullptr, nullptr),
             nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeSetExternalNativeImage(nullptr, nullptr),
-            nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeSetExternalNativeImagePtr(nullptr, nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeSetExternalNativeImage(nullptr, nullptr),
+      nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeSetExternalNativeImagePtr(nullptr, nullptr),
+      nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeResetExternalTexture(nullptr, nullptr),
             nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeMarkTextureFrameAvailable(nullptr, nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeMarkTextureFrameAvailable(nullptr, nullptr),
+      nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeRegisterPixelMap(nullptr, nullptr),
             nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeSetTextureBackGroundPixelMap(nullptr, nullptr),
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeSetTextureBackGroundPixelMap(nullptr,
+                                                                     nullptr),
             nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeSetTextureBackGroundColor(nullptr, nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeSetTextureBackGroundColor(nullptr, nullptr),
+      nullptr);
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativeHolderGatedEntryPointsNullEnv) {
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeIsHybridCompositionEnabled(nullptr, nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeIsHybridCompositionEnabled(nullptr, nullptr),
+      nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeDispatchTouchToEngine(nullptr, nullptr),
             nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeEnableFrameCache(nullptr, nullptr),
             nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeSetPipVisible(nullptr, nullptr),
             nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeNotifyLowMemoryWarning(nullptr, nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeNotifyLowMemoryWarning(nullptr, nullptr),
+      nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeCheckAndReloadFont(nullptr, nullptr),
             nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeDestroy(nullptr, nullptr), nullptr);
@@ -1343,26 +1365,31 @@ TEST_F(PlatformViewOHOSNapiTest, NativeHolderGatedEntryPointsNullEnv) {
             nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeSetSemanticsEnabled(nullptr, nullptr),
             nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeAccessibilityStateChange(nullptr, nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeAccessibilityStateChange(nullptr, nullptr),
+      nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeAccessibilityAnnounce(nullptr, nullptr),
             nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeAccessibilityOnTap(nullptr, nullptr),
             nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeAccessibilityOnLongPress(nullptr, nullptr),
-            nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeAccessibilityOnTooltip(nullptr, nullptr),
-            nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeSetFlutterNavigationAction(nullptr, nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeAccessibilityOnLongPress(nullptr, nullptr),
+      nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeAccessibilityOnTooltip(nullptr, nullptr),
+      nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeSetFlutterNavigationAction(nullptr, nullptr),
+      nullptr);
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativeDispatchPlatformMessage) {
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeDispatchPlatformMessage(nullptr, nullptr),
-            nullptr);
   EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeDispatchPlatformMessage(FakeNapiEnv(), nullptr),
+      PlatformViewOHOSNapi::nativeDispatchPlatformMessage(nullptr, nullptr),
       nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeDispatchPlatformMessage(FakeNapiEnv(),
+                                                                nullptr),
+            nullptr);
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativeDispatchPlatformMessageParseStages) {
@@ -1409,9 +1436,9 @@ TEST_F(PlatformViewOHOSNapiTest, NativeDispatchEmptyPlatformMessageGuards) {
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativeDispatchTouchToEngineEmptyPacket) {
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeDispatchTouchToEngine(FakeNapiEnv(),
-                                                              nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeDispatchTouchToEngine(FakeNapiEnv(), nullptr),
+      nullptr);
 }
 
 TEST_F(PlatformViewOHOSNapiTest, PlatformMessageMarshalingNullEnvErrors) {
@@ -1420,8 +1447,8 @@ TEST_F(PlatformViewOHOSNapiTest, PlatformMessageMarshalingNullEnvErrors) {
   EXPECT_NO_FATAL_FAILURE({
     facade.FlutterViewHandlePlatformMessage(
         7, std::make_unique<PlatformMessage>(
-               "unittest/ch",
-               fml::MallocMapping::Copy(payload, payload + 7), nullptr));
+               "unittest/ch", fml::MallocMapping::Copy(payload, payload + 7),
+               nullptr));
     facade.FlutterViewHandlePlatformMessage(
         8, std::make_unique<PlatformMessage>("unittest/ch", nullptr));
     facade.FlutterViewHandlePlatformMessageResponse(9, nullptr);
@@ -1443,9 +1470,9 @@ TEST_F(PlatformViewOHOSNapiTest, NativeInvokePlatformMessageResponseCallback) {
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativeNotifyPageChangedLowApiLevel) {
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeNotifyPageChanged(FakeNapiEnv(),
-                                                          nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeNotifyPageChanged(FakeNapiEnv(), nullptr),
+      nullptr);
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativeWindowingCallbacksArgCount) {
@@ -1462,20 +1489,20 @@ TEST_F(PlatformViewOHOSNapiTest, NativeWindowingCallbacksArgCount) {
 
 TEST_F(PlatformViewOHOSNapiTest, NativeLookupCallbackInformation) {
   constexpr int64_t kHandle = 0;
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeLookupCallbackInformation(
-                FakeNapiEnv(), nullptr),
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeLookupCallbackInformation(FakeNapiEnv(),
+                                                                  nullptr),
             nullptr);
   DartCallbackCache::cache_[kHandle] = {"utCb", "UtClass", "/ut/lib"};
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeLookupCallbackInformation(
-                FakeNapiEnv(), nullptr),
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeLookupCallbackInformation(FakeNapiEnv(),
+                                                                  nullptr),
             nullptr);
   StubNapiFailReference(kStubFailure);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeLookupCallbackInformation(
-                FakeNapiEnv(), nullptr),
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeLookupCallbackInformation(FakeNapiEnv(),
+                                                                  nullptr),
             nullptr);
   StubNapiFailCallFunction(kStubFailure);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeLookupCallbackInformation(
-                FakeNapiEnv(), nullptr),
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeLookupCallbackInformation(FakeNapiEnv(),
+                                                                  nullptr),
             nullptr);
   DartCallbackCache::cache_.erase(kHandle);
 }
@@ -1493,26 +1520,27 @@ TEST_F(PlatformViewOHOSNapiTest, NativeLookupCallbackInformationBigInt) {
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativeFlutterTextUtilsNullEnv) {
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmoji(nullptr, nullptr),
-            nullptr);
   EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmojiModifier(nullptr, nullptr),
+      PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmoji(nullptr, nullptr),
       nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmojiModifier(
+                nullptr, nullptr),
+            nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmojiModifierBase(
                 nullptr, nullptr),
             nullptr);
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeFlutterTextUtilsIsVariationSelector(nullptr, nullptr),
-      nullptr);
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeFlutterTextUtilsIsRegionalIndicator(nullptr, nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsVariationSelector(
+                nullptr, nullptr),
+            nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsRegionalIndicator(
+                nullptr, nullptr),
+            nullptr);
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativeFlutterTextUtilsLiveEnv) {
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmoji(FakeNapiEnv(), nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmoji(FakeNapiEnv(),
+                                                                nullptr),
+            nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeFlutterTextUtilsIsEmojiModifier(
                 FakeNapiEnv(), nullptr),
             nullptr);
@@ -1528,11 +1556,10 @@ TEST_F(PlatformViewOHOSNapiTest, NativeFlutterTextUtilsLiveEnv) {
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativeUnicodePredicatesLiveEnv) {
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeUnicodeIsEmoji(FakeNapiEnv(), nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeUnicodeIsEmoji(FakeNapiEnv(), nullptr),
+            nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeUnicodeIsEmojiModifier(FakeNapiEnv(),
-                                                              nullptr),
+                                                               nullptr),
             nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeUnicodeIsEmojiModifierBase(
                 FakeNapiEnv(), nullptr),
@@ -1555,7 +1582,7 @@ TEST_F(PlatformViewOHOSNapiTest, NativeEncodeDecodeUtf8) {
 
 TEST_F(PlatformViewOHOSNapiTest, NativeNoOpEntryPoints) {
   EXPECT_EQ(PlatformViewOHOSNapi::nativeUpdateOhosAssetManager(FakeNapiEnv(),
-                                                              nullptr),
+                                                               nullptr),
             nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeGetPixelMap(FakeNapiEnv(), nullptr),
             nullptr);
@@ -1577,8 +1604,9 @@ TEST_F(PlatformViewOHOSNapiTest, NativePrefetchFramesCfgDrivesSwitchState) {
   OhosVsyncVotingMgr::ResetInstance();
   ASSERT_EQ(OhosVsyncVotingMgr::GetInstance()->CheckVotingSwitchState(),
             LTPOSwitchState::LTPO_SWITCH_NOT_INIT);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativePrefetchFramesCfg(FakeNapiEnv(), nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativePrefetchFramesCfg(FakeNapiEnv(), nullptr),
+      nullptr);
   EXPECT_NE(OhosVsyncVotingMgr::GetInstance()->CheckVotingSwitchState(),
             LTPOSwitchState::LTPO_SWITCH_NOT_INIT);
   OhosVsyncVotingMgr::ResetInstance();
@@ -1586,17 +1614,17 @@ TEST_F(PlatformViewOHOSNapiTest, NativePrefetchFramesCfgDrivesSwitchState) {
 
 TEST_F(PlatformViewOHOSNapiTest, NativeCheckLTPOSwitchState) {
   OhosVsyncVotingMgr::ResetInstance();
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeCheckLTPOSwitchState(FakeNapiEnv(),
-                                                            nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeCheckLTPOSwitchState(FakeNapiEnv(), nullptr),
+      nullptr);
   EXPECT_EQ(OhosVsyncVotingMgr::GetInstance()->CheckVotingSwitchState(),
             LTPOSwitchState::LTPO_SWITCH_NOT_INIT);
   OhosVsyncVotingMgr::ResetInstance();
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativeLTPODispatchHighFrameRateZeroHolder) {
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeLTPODispatchHighFrameRate(
-                FakeNapiEnv(), nullptr),
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeLTPODispatchHighFrameRate(FakeNapiEnv(),
+                                                                  nullptr),
             nullptr);
 }
 
@@ -1612,8 +1640,8 @@ TEST_F(PlatformViewOHOSNapiTest, XComponentAttachUpdateCurrentAndDetach) {
   EXPECT_TRUE(base->is_engine_attached_);
   EXPECT_EQ(base->shellholderId_, "0");
 
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeUpdateCurrentXComponentId(
-                FakeNapiEnv(), nullptr),
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeUpdateCurrentXComponentId(FakeNapiEnv(),
+                                                                  nullptr),
             nullptr);
   EXPECT_EQ(adapter->current_xcomponent_id_, "ut_napi_xc");
 
@@ -1642,13 +1670,12 @@ TEST_F(PlatformViewOHOSNapiTest, XComponentPreDrawAndMouseWheelGuards) {
   EXPECT_EQ(
       PlatformViewOHOSNapi::nativeXComponentPreDraw(FakeNapiEnv(), nullptr),
       nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeXComponentDispatchMouseWheel(
-                nullptr, nullptr),
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeXComponentDispatchMouseWheel(nullptr,
+                                                                     nullptr),
             nullptr);
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeXComponentDispatchMouseWheel(FakeNapiEnv(),
-                                                              nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeXComponentDispatchMouseWheel(
+                FakeNapiEnv(), nullptr),
+            nullptr);
 }
 
 TEST_F(PlatformViewOHOSNapiTest, XComponentMouseWheelFullParseRegistered) {
@@ -1693,8 +1720,8 @@ TEST_F(PlatformViewOHOSNapiTest,
     StubNapiFailCallFunction(kStubFailure);
     facade.FlutterViewHandlePlatformMessage(
         7, std::make_unique<PlatformMessage>(
-               "unittest/reach",
-               fml::MallocMapping::Copy(payload, payload + 7), nullptr));
+               "unittest/reach", fml::MallocMapping::Copy(payload, payload + 7),
+               nullptr));
     StubNapiFailCallFunction(kStubFailure);
     facade.FlutterViewHandlePlatformMessage(
         8, std::make_unique<PlatformMessage>("unittest/reach", nullptr));
@@ -1734,9 +1761,9 @@ TEST_F(PlatformViewOHOSNapiTest,
 TEST_F(PlatformViewOHOSNapiTest, NotifyPageChangedLoaderDirectInit) {
   EXPECT_NO_FATAL_FAILURE(PlatformViewOHOSNapi::InitNotifyPageChangedLoader());
   ASSERT_NE(PlatformViewOHOSNapi::ability_runtime_loader_, nullptr);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeNotifyPageChanged(FakeNapiEnv(),
-                                                          nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeNotifyPageChanged(FakeNapiEnv(), nullptr),
+      nullptr);
 }
 
 TEST_F(PlatformViewOHOSNapiTest, SoftwareRenderingEnabledGateBothSides) {
@@ -1746,8 +1773,8 @@ TEST_F(PlatformViewOHOSNapiTest, SoftwareRenderingEnabledGateBothSides) {
   EXPECT_NO_FATAL_FAILURE(OhosMain::NativeInit(FakeNapiEnv(), nullptr));
   StubNapiReset();
   EXPECT_FALSE(OhosMain::Get().GetSettings().enable_software_rendering);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeGetIsSoftwareRenderingEnabled(
-                nullptr, nullptr),
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeGetIsSoftwareRenderingEnabled(nullptr,
+                                                                      nullptr),
             nullptr);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeGetIsSoftwareRenderingEnabled(
                 FakeNapiEnv(), nullptr),
@@ -1764,13 +1791,11 @@ TEST_F(PlatformViewOHOSNapiTest, HandleOsWindowClosedTearsDownSeededWindow) {
       std::make_unique<OHOSWindow>(&controller, params,
                                    FlutterWindowCreationRequest{}));
   ASSERT_EQ(controller.windows_.count(reinterpret_cast<void*>(1)), 1u);
-  EXPECT_EQ(PlatformViewOHOSNapi::nativeHandleOsWindowClosed(FakeNapiEnv(),
-                                                             nullptr),
-            nullptr);
+  EXPECT_EQ(
+      PlatformViewOHOSNapi::nativeHandleOsWindowClosed(FakeNapiEnv(), nullptr),
+      nullptr);
   EXPECT_EQ(controller.windows_.count(reinterpret_cast<void*>(1)), 0u);
 }
-
-#if !defined(OHOS_X64_UNITTEST)
 
 TEST_F(PlatformViewOHOSNapiTest, NativeDispatchEmptyPlatformMessageFullChain) {
   Settings settings;
@@ -1782,10 +1807,9 @@ TEST_F(PlatformViewOHOSNapiTest, NativeDispatchEmptyPlatformMessageFullChain) {
   StubNapiSetValuetype(napi_string);
   StubNapiSetString("ut_channel");
   StubNapiSetInt64Value(reinterpret_cast<int64_t>(holder.get()));
-  EXPECT_EQ(
-      PlatformViewOHOSNapi::nativeDispatchEmptyPlatformMessage(FakeNapiEnv(),
-                                                               nullptr),
-      nullptr);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeDispatchEmptyPlatformMessage(
+                FakeNapiEnv(), nullptr),
+            nullptr);
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativeFontHolderTails) {
@@ -1906,8 +1930,6 @@ TEST_F(PlatformViewOHOSNapiTest, NativeMiscHolderTails) {
   EXPECT_EQ(PlatformViewOHOSNapi::nativeSetViewportMetrics(env, nullptr),
             nullptr);
 }
-
-#endif  // !defined(OHOS_X64_UNITTEST)
 
 }  // namespace testing
 }  // namespace flutter

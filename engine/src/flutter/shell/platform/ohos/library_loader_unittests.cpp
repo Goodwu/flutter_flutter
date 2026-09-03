@@ -7,15 +7,17 @@
 #include <ace/xcomponent/native_interface_xcomponent.h>
 #include <gtest/gtest.h>
 #include <napi/native_api.h>
-#include "flutter/shell/platform/ohos/test_stubs/ace_napi_stub.h"
-#include "flutter/shell/platform/ohos/test_stubs/unittest_x64/ace_ndk_stub.h"
 #include <string>
+#include "flutter/shell/platform/ohos/test_stubs/ace_napi_stub.h"
 
-#ifndef OHOS_X64_UNITTEST
 namespace {
 int32_t g_fail_get_id_next = 0;
 
 constexpr int32_t kXcompError = OH_NATIVEXCOMPONENT_RESULT_BAD_PARAMETER;
+
+void StubXcompFailNextGetXComponentId(int32_t ret) {
+  g_fail_get_id_next = ret;
+}
 
 napi_env FakeEnv() {
   return reinterpret_cast<napi_env>(0x1);
@@ -59,7 +61,7 @@ TEST(LibraryLoaderTest, InitToleratesNapiPropertyLookupFailure) {
   EXPECT_EQ(result, exports);
 }
 
-}
+}  // namespace
 
 extern "C" int32_t OH_NativeXComponent_GetXComponentId(
     OH_NativeXComponent* /*component*/,
@@ -77,12 +79,6 @@ extern "C" int32_t OH_NativeXComponent_GetXComponentId(
   return OH_NATIVEXCOMPONENT_RESULT_SUCCESS;
 }
 
-extern "C" void StubXcompFailNextGetXComponentId(int32_t ret) {
-  g_fail_get_id_next = ret;
-}
-#endif  // !OHOS_X64_UNITTEST
-
 namespace flutter {
-namespace testing {
-}
-}
+namespace testing {}
+}  // namespace flutter
