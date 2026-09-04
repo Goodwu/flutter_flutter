@@ -24,6 +24,7 @@
 #include "ohos_shell_holder.h"
 #include "shell/common/shell.h"
 #include "types.h"
+#include "ohos_logging.h"
 namespace flutter {
 const int32_t OHOS_API_VERSION = OH_GetSdkApiVersion();
 
@@ -197,8 +198,8 @@ void XComponentAdapter::StoreHcppOverlayPendingWindow(
     void* window) {
   std::lock_guard<std::mutex> lock(hcpp_overlay_pending_mutex_);
   hcpp_overlay_pending_windows_[overlay_id] = window;
-  LOGI("HCPP overlay window stashed (owner not ready) id=%{public}s",
-       overlay_id.c_str());
+  FML_LOG(INFO) << "HCPP overlay window stashed (owner not ready) id="
+                << overlay_id;
 }
 
 void XComponentAdapter::ClearHcppOverlayPendingWindow(
@@ -228,8 +229,8 @@ void XComponentAdapter::FlushHcppOverlayPendingWindows(
   auto platform_view = main->shellholder_ptr_->GetPlatformView();
   if (platform_view) {
     platform_view->SetHybridCompositionOverlayWindow(pending);
-    LOGI("HCPP overlay window delivered (pending flush) main=%{public}s",
-         main_id.c_str());
+    FML_LOG(INFO) << "HCPP overlay window delivered (pending flush) main="
+                  << main_id;
   }
 }
 
@@ -750,7 +751,8 @@ XComponentBase::GetArkUIAccessibilityServiceProvider(
     LOGE("OH_ArkUI_AccessibilityProviderRegisterCallback is failed");
     return nullptr;
   }
-  LOGI("XComponentBase::GetArkUIAccessibilityServiceProvider -> finished");
+  FML_LOG(INFO)
+      << "XComponentBase::GetArkUIAccessibilityServiceProvider -> finished";
   return provider;
 }
 
@@ -785,9 +787,9 @@ XComponentBase::GetArkUIAccessibilityServiceProviderWithInstance(
     LOGE("OH_ArkUI_AccessibilityProviderRegisterCallback is failed");
     return nullptr;
   }
-  LOGI(
-      "XComponentBase::GetArkUIAccessibilityServiceProviderWithInstance -> "
-      "finished");
+  FML_LOG(INFO)
+      << "XComponentBase::GetArkUIAccessibilityServiceProviderWithInstance -> "
+         "finished";
   return provider;
 }
 
@@ -870,7 +872,7 @@ void XComponentBase::OnSurfaceCreated(OH_NativeXComponent* component,
       // been created yet (shell still starting up) and pushes it on embedder
       // creation, so an early overlay surface is no longer dropped.
       platform_view->SetHybridCompositionOverlayWindow(window);
-      LOGI("HCPP overlay window registered id=%{public}s", id_.c_str());
+      FML_LOG(INFO) << "HCPP overlay window registered id=" << id_;
     } else {
       // The owning engine's platform view is not reachable yet (shell still
       // creating, or the main XComponent has not attached). Stash the window;
@@ -899,6 +901,8 @@ void XComponentBase::OnSurfaceCreated(OH_NativeXComponent* component,
   if (ret) {
     LOGE("SetNativeWindowOpt failed:%{public}d", ret);
   }
+  LOGI("XComponent SurfaceCreated window=%{public}p engine_attached=%{public}d",
+       window, is_engine_attached_);
 
   provider_ = GetArkUIAccessibilityServiceProvider(nativeXComponent_);
 
@@ -970,10 +974,10 @@ void XComponentBase::OnSurfaceDestroyed(OH_NativeXComponent* component,
     auto platform_view = GetOverlayOwnerPlatformView(id_);
     if (platform_view) {
       platform_view->ClearHybridCompositionOverlayWindowSync();
-      LOGI("HCPP overlay window cleared id=%{public}s", id_.c_str());
+      FML_LOG(INFO) << "HCPP overlay window cleared id=" << id_;
     } else {
-      LOGI("HCPP overlay destroy: owning engine gone, skip clear id=%{public}s",
-           id_.c_str());
+      FML_LOG(INFO) << "HCPP overlay destroy: owning engine gone, skip clear id="
+                    << id_;
     }
     // The overlay surface is gone; drop any stashed pending window (one
     // delivered earlier this session is not affected — the embedder holds
@@ -1012,7 +1016,7 @@ void XComponentBase::OnSurfaceDestroyed(OH_NativeXComponent* component,
     LOGE("OnSurfaceDestroyed with null window!");
   }
   window_ = nullptr;
-  LOGD("XComponentManger::OnSurfaceDestroyed");
+  LOGI("XComponent destroyed, id=%{public}s", shellholderId_.c_str());
 }
 
 void XComponentBase::OnDispatchTouchEvent(OH_NativeXComponent* component,

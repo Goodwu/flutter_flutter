@@ -52,10 +52,14 @@ SurfaceFrame::SurfaceFrame(sk_sp<SkSurface> surface,
 bool SurfaceFrame::Encode() {
   TRACE_EVENT0("flutter", "SurfaceFrame::Encode");
   if (encoded_) {
+    FML_LOG(WARNING) << "SurfaceFrame::Submit already submitted";
     return false;
   }
 
   encoded_ = PerformEncode();
+  if (!submitted_) {
+    FML_LOG(ERROR) << "SurfaceFrame::Submit failed";
+ 	}
 
   return encoded_;
 }
@@ -89,24 +93,27 @@ sk_sp<SkSurface> SurfaceFrame::SkiaSurface() const {
 
 bool SurfaceFrame::PerformEncode() {
   if (encode_callback_ == nullptr) {
+    FML_LOG(ERROR) << "SurfaceFrame::PerformEncode submit_callback is null";
     return false;
   }
 
   if (encode_callback_(*this, Canvas())) {
     return true;
   }
-
+  FML_LOG(ERROR) << "SurfaceFrame::PerformEncode submit_callback failed";
   return false;
 }
 
 bool SurfaceFrame::PerformSubmit() {
   if (submit_callback_ == nullptr) {
+    FML_LOG(ERROR) << "SurfaceFrame::PerformSubmit submit_callback is null";
     return false;
   }
 
   if (submit_callback_(*this)) {
     return true;
   }
+  FML_LOG(ERROR) << "SurfaceFrame::PerformSubmit submit_callback failed";
 
   return false;
 }
