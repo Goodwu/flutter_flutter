@@ -2,6 +2,7 @@
   global:
     FlutterOhosRunAllTests;
     FlutterOhosWriteCoverageProfile;
+    FlutterOhosCopyLiveLog;
     kDartVmSnapshotData;
     kDartVmSnapshotInstructions;
     kDartIsolateSnapshotData;

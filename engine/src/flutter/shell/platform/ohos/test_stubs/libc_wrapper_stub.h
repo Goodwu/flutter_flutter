@@ -17,6 +17,7 @@ using FstatFunc = int (*)(int fd, struct stat* st);
 
 void UpdateOpenFunc(OpenFunc func);
 void UpdateFstatFunc(FstatFunc func);
+int __real_fstat(int fd, struct stat* st);
 void UpdateDlopenForceFail(int force_fail);
 }
 

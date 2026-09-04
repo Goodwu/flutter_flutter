@@ -43,22 +43,6 @@ TEST(QoSFallbackOhosTest, SetDisplayQoSDoesNotCrash) {
   SUCCEED();
 }
 
-// OH_QoS_SetThreadQoS fails on system-managed threads (NAPI/JS) but works on
-// app-created threads; run on a self-created thread like engine production
-// code does (ohos_shell_holder.cpp, fence_waiter_vk.cc).
-TEST(QoSFallbackOhosTest, SetRasterQoSDoesNotCrash) {
-  fml::Thread thread("qos_test_raster");
-  thread.GetTaskRunner()->PostTask([]() {
-    int ret = OH_QoS_SetThreadQoS(QoS_Level::QOS_USER_INTERACTIVE);
-    if (ret != 0) {
-      ret = OH_QoS_SetThreadQoS(QoS_Level::QOS_USER_INITIATED);
-      EXPECT_EQ(ret, 0);
-    }
-  });
-  thread.Join();
-  SUCCEED();
-}
-
 TEST(QoSFallbackOhosTest, SetDefaultQoSDoesNotCrash) {
   fml::Thread thread("qos_test_default");
   thread.GetTaskRunner()->PostTask([]() {

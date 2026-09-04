@@ -11,9 +11,15 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#include <atomic>
+#include <cerrno>
+#include <cstdio>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <string_view>
+#include <thread>
 #include <vector>
 
 #include "napi/native_api.h"
@@ -53,9 +59,40 @@ std::string SandboxToRealPath(const std::string& sandboxPath) {
   return std::string(kRealPrefix) + sandboxPath.substr(strlen(kSandboxPrefix));
 }
 
+std::mutex g_live_mu;
+std::string g_live_output;
+std::atomic<void*> g_test_so_handle{nullptr};
+
+void ResetLiveOutput() {
+  std::lock_guard<std::mutex> lock(g_live_mu);
+  g_live_output.clear();
+}
+
+void AppendLiveOutput(std::string_view chunk) {
+  if (chunk.empty()) {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(g_live_mu);
+  g_live_output.append(chunk.data(), chunk.size());
+}
+
+std::string CopyLiveOutput() {
+  std::lock_guard<std::mutex> lock(g_live_mu);
+  return g_live_output;
+}
+
+std::string CopyLiveOutputForUi() {
+  std::lock_guard<std::mutex> lock(g_live_mu);
+  constexpr size_t kMaxUiBytes = 96 * 1024;
+  if (g_live_output.size() <= kMaxUiBytes) {
+    return g_live_output;
+  }
+  return "[live tail " + std::to_string(kMaxUiBytes) + " / " +
+         std::to_string(g_live_output.size()) + " bytes]\n" +
+         g_live_output.substr(g_live_output.size() - kMaxUiBytes);
+}
+
 // ── stdout/stderr 捕获(RAII) ─────────────────────────────
-// 测试 so 的 gtest 输出走进程级 stdout/stderr,重定向到内存文件,
-// 作用域结束自动恢复。仅应在 worker 线程使用。
 class OutputCapture {
  public:
   OutputCapture() {
@@ -64,8 +101,6 @@ class OutputCapture {
       LOG_ERROR("memfd_create failed: %{public}s", strerror(errno));
       return;
     }
-    // fd 表打满时 dup 会失败;此时绝不能继续 dup2,否则原 stdout/stderr
-    // 被永久绑到 memfd 上且无法恢复(之后所有输出静默丢失)。
     origStdout_ = dup(STDOUT_FILENO);
     origStderr_ = dup(STDERR_FILENO);
     if (origStdout_ < 0 || origStderr_ < 0) {
@@ -97,8 +132,6 @@ class OutputCapture {
   }
 
   std::string ReadBack() {
-    // fd 1/2 此刻指向 memfd(全缓冲),必须先把 stdio 缓冲区刷进 memfd,
-    // 否则缓冲区里的尾部字节(~4KB)读不回来。
     fflush(stdout);
     fflush(stderr);
     std::string content;
@@ -133,6 +166,9 @@ class TestLibrary {
     // app_test_export.map),测试桩不会进入全局命名空间污染引擎的
     // dlsym 解析(debug 下曾致 hiappevent 用例失败)。
     handle_ = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
+    if (handle_ != nullptr) {
+      g_test_so_handle.store(handle_, std::memory_order_release);
+    }
     if (handle_ == nullptr) {
       const char* err = dlerror();
       error_ = (err != nullptr) ? err : "dlopen failed";
@@ -187,19 +223,20 @@ RunResult RunTestsWorker(const std::string& soPath,
       "RunTestsWorker: soPath=%{public}s filesDir=%{public}s filter=%{public}s",
       soPath.c_str(), filesDir.c_str(), gtestFilter.c_str());
 
-  std::string output =
-      "Loading .so: " + soPath + "\nfilesDir: " + filesDir + "\n";
+  ResetLiveOutput();
+  AppendLiveOutput("Loading .so: " + soPath + "\nfilesDir: " + filesDir + "\n");
   if (!gtestFilter.empty()) {
-    output += "gtest_filter: " + gtestFilter + "\n";
+    AppendLiveOutput("gtest_filter: " + gtestFilter + "\n");
   }
 
   TestLibrary library(soPath);
   if (!library.IsValid()) {
     LOG_ERROR("load test library failed: %{public}s", library.Error().c_str());
     // -2 表示原生侧基建失败(dlopen/dlsym/捕获器),区别于 -1 的"未测试"。
-    return RunResult{-2, output + library.Error() + "\n", "", 0};
+    AppendLiveOutput(library.Error() + "\n");
+    return RunResult{-2, CopyLiveOutput(), "", 0};
   }
-  output += "dlopen success.\n";
+  AppendLiveOutput("dlopen success.\n");
 
   // 覆盖率数据准备:先删旧文件;真实路径仅供显示和 hdc pull。
   std::string coverageLog;
@@ -215,44 +252,46 @@ RunResult RunTestsWorker(const std::string& soPath,
         "[coverage] WARNING: coverage unavailable (no export or empty "
         "filesDir)\n";
   }
+  AppendLiveOutput(coverageLog);
 
-  OutputCapture capture;
-  if (!capture.IsValid()) {
-    return RunResult{-2, output + "failed to create output capture\n",
-                     profrawPath, 0};
+  int exitCode = -2;
+  {
+    OutputCapture capture;
+    if (!capture.IsValid()) {
+      AppendLiveOutput("failed to create output capture\n");
+      return RunResult{-2, CopyLiveOutput(), profrawPath, 0};
+    }
+
+    char filterArg[kMaxFilterLength + 32] = {0};
+    if (!gtestFilter.empty()) {
+      snprintf(filterArg, sizeof(filterArg), "--gtest_filter=%s",
+               gtestFilter.c_str());
+    }
+    char* argv[] = {const_cast<char*>("flutter_ohos_unittests"), filterArg,
+                    nullptr};
+    const int argc = gtestFilter.empty() ? 1 : 2;
+
+    LOG_INFO("Running tests: argc=%{public}d", argc);
+    exitCode = library.RunFunc()(argc, argv);
+    LOG_INFO("Tests exited with code: %{public}d", exitCode);
+    AppendLiveOutput(capture.ReadBack());
   }
-
-  // --gtest_filter 需手动解析:so 内 InitGoogleTest 不解析命令行参数。
-  char filterArg[kMaxFilterLength + 32] = {0};
-  if (!gtestFilter.empty()) {
-    snprintf(filterArg, sizeof(filterArg), "--gtest_filter=%s",
-             gtestFilter.c_str());
-  }
-  char* argv[] = {const_cast<char*>("flutter_ohos_unittests"), filterArg,
-                  nullptr};
-  const int argc = gtestFilter.empty() ? 1 : 2;
-
-  LOG_INFO("Running tests: argc=%{public}d", argc);
-  const int exitCode = library.RunFunc()(argc, argv);
-  LOG_INFO("Tests exited with code: %{public}d", exitCode);
 
   size_t profrawSize = 0;
   if (library.CoverageFunc() != nullptr && !filesDir.empty()) {
     // App 不能 exit(),atexit 钩子不会触发,覆盖率必须手动写盘。
     const int writeResult = library.CoverageFunc()(sandboxProfraw.c_str());
-    coverageLog +=
-        "[coverage] write returned " + std::to_string(writeResult) + "\n";
     struct stat st = {};
     if (stat(sandboxProfraw.c_str(), &st) == 0) {
       profrawSize = static_cast<size_t>(st.st_size);
-      coverageLog += "[coverage] profraw size: " + std::to_string(profrawSize) +
-                     " bytes\n";
     }
+    LOG_INFO("coverage write returned %{public}d profraw size %{public}zu",
+             writeResult, profrawSize);
   }
 
-  output = coverageLog + "\n" + output + capture.ReadBack();
-  output +=
-      "\n--- Tests exited with code: " + std::to_string(exitCode) + " ---\n";
+  AppendLiveOutput("\n--- Tests exited with code: " + std::to_string(exitCode) +
+                   " ---\n");
+  std::string output = CopyLiveOutput();
   // 输出上限:MB 级输出会在 JS 侧多份拷贝并让 Text 一次性布局,卡主线程。
   // 头 4K(环境信息)+ 尾部(失败详情与总结)保留,中间截断。
   constexpr size_t kMaxOutputBytes = 512 * 1024;
@@ -263,6 +302,14 @@ RunResult RunTestsWorker(const std::string& soPath,
         output.substr(output.size() - (kMaxOutputBytes - kHeadBytes));
     output = "[output truncated: total " + std::to_string(output.size()) +
              " bytes, head 4K + tail retained]\n" + head + "\n......\n" + tail;
+  }
+  if (!filesDir.empty()) {
+    const std::string dump_path = filesDir + "/gtest_output.txt";
+    FILE* dump = fopen(dump_path.c_str(), "w");
+    if (dump != nullptr) {
+      fwrite(output.data(), 1, output.size(), dump);
+      fclose(dump);
+    }
   }
   return RunResult{exitCode, output, profrawPath, profrawSize};
 }
@@ -326,10 +373,26 @@ std::string GetStringArg(napi_env env, napi_value value, size_t maxLength) {
   return result;
 }
 
+std::atomic<bool> g_tests_running{false};
+
 void RunTestsExecute(napi_env env, void* data) {
   auto* context = static_cast<AsyncRunContext*>(data);
-  context->result =
-      RunTestsWorker(context->soPath, context->filesDir, context->filter);
+  bool expected = false;
+  if (!g_tests_running.compare_exchange_strong(expected, true)) {
+    context->result =
+        RunResult{-3, "tests already running in this process\n", "", 0};
+    return;
+  }
+  try {
+    std::thread worker([&] {
+      context->result =
+          RunTestsWorker(context->soPath, context->filesDir, context->filter);
+    });
+    worker.join();
+  } catch (...) {
+    context->result = RunResult{-2, "failed to start test thread\n", "", 0};
+  }
+  g_tests_running.store(false);
 }
 
 void RunTestsComplete(napi_env env, napi_status status, void* data) {
@@ -412,6 +475,26 @@ napi_value CheckBinary(napi_env env, napi_callback_info info) {
   return object;
 }
 
+napi_value GetLiveOutput(napi_env env, napi_callback_info /*info*/) {
+  std::string text = CopyLiveOutputForUi();
+  void* test_so = g_test_so_handle.load(std::memory_order_acquire);
+  if (test_so != nullptr) {
+    using CopyLiveFn = int (*)(char*, int);
+    auto copy_live =
+        reinterpret_cast<CopyLiveFn>(dlsym(test_so, "FlutterOhosCopyLiveLog"));
+    if (copy_live != nullptr) {
+      std::vector<char> buf(96 * 1024);
+      const int n = copy_live(buf.data(), static_cast<int>(buf.size()));
+      if (n > 0) {
+        text.append(buf.data(), static_cast<size_t>(n));
+      }
+    }
+  }
+  napi_value result = nullptr;
+  napi_create_string_utf8(env, text.c_str(), text.size(), &result);
+  return result;
+}
+
 napi_value GetSandboxPath(napi_env env, napi_callback_info callbackInfo) {
   // dladdr 直接取本模块(libentry.so)的加载路径,免去解析 /proc/self/maps。
   Dl_info info = {};
@@ -447,6 +530,8 @@ napi_value Init(napi_env env, napi_value exports) {
       {"getSandboxPath", nullptr, GetSandboxPath, nullptr, nullptr, nullptr,
        napi_default, nullptr},
       {"runTestsSo", nullptr, RunTestsSo, nullptr, nullptr, nullptr,
+       napi_default, nullptr},
+      {"getLiveOutput", nullptr, GetLiveOutput, nullptr, nullptr, nullptr,
        napi_default, nullptr},
   };
   napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);

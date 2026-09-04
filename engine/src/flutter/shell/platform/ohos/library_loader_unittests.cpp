@@ -8,16 +8,11 @@
 #include <gtest/gtest.h>
 #include <napi/native_api.h>
 #include <string>
+#include "flutter/shell/platform/ohos/test_stubs/ace_graphic_ndk_stub.h"
 #include "flutter/shell/platform/ohos/test_stubs/ace_napi_stub.h"
 
 namespace {
-int32_t g_fail_get_id_next = 0;
-
 constexpr int32_t kXcompError = OH_NATIVEXCOMPONENT_RESULT_BAD_PARAMETER;
-
-void StubXcompFailNextGetXComponentId(int32_t ret) {
-  g_fail_get_id_next = ret;
-}
 
 napi_env FakeEnv() {
   return reinterpret_cast<napi_env>(0x1);
@@ -62,23 +57,3 @@ TEST(LibraryLoaderTest, InitToleratesNapiPropertyLookupFailure) {
 }
 
 }  // namespace
-
-extern "C" int32_t OH_NativeXComponent_GetXComponentId(
-    OH_NativeXComponent* /*component*/,
-    char* id,
-    uint64_t* size) {
-  if (g_fail_get_id_next != 0) {
-    int32_t ret = g_fail_get_id_next;
-    g_fail_get_id_next = 0;
-    return ret;
-  }
-  if (id != nullptr && size != nullptr && *size > 0) {
-    id[0] = '\0';
-    *size = 0;
-  }
-  return OH_NATIVEXCOMPONENT_RESULT_SUCCESS;
-}
-
-namespace flutter {
-namespace testing {}
-}  // namespace flutter

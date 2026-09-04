@@ -13,9 +13,7 @@ namespace testing {
 
 TEST(OhosEnvironmentGL, CreatesValidDisplay) {
   auto environment = fml::MakeRefCounted<OhosEnvironmentGL>();
-  if (environment->Display() == EGL_NO_DISPLAY) {
-    GTEST_SKIP() << "EGL display unavailable on emulator";
-  }
+  ASSERT_NE(environment->Display(), EGL_NO_DISPLAY);
   EXPECT_TRUE(environment->IsValid());
 }
 
@@ -24,14 +22,10 @@ TEST(OhosEnvironmentGL, DisplayHandleIsStableAcrossInstances) {
   {
     auto environment = fml::MakeRefCounted<OhosEnvironmentGL>();
     first_display = environment->Display();
-    if (first_display == EGL_NO_DISPLAY) {
-      GTEST_SKIP() << "EGL display unavailable on emulator";
-    }
+    ASSERT_NE(first_display, EGL_NO_DISPLAY);
   }
   auto second = fml::MakeRefCounted<OhosEnvironmentGL>();
-  if (second->Display() == EGL_NO_DISPLAY) {
-    GTEST_SKIP() << "EGL display unavailable on emulator";
-  }
+  ASSERT_NE(second->Display(), EGL_NO_DISPLAY);
   EXPECT_EQ(second->Display(), first_display);
 }
 

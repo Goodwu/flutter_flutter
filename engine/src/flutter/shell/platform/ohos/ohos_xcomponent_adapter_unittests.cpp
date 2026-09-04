@@ -16,8 +16,10 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include "flutter/fml/log_settings.h"
 #include "flutter/shell/platform/ohos/napi/platform_view_ohos_napi.h"
 #include "flutter/shell/platform/ohos/ohos_shell_holder.h"
+#include "flutter/shell/platform/ohos/test_stubs/ace_graphic_ndk_stub.h"
 #include "flutter/shell/platform/ohos/test_stubs/ace_napi_stub.h"
 
 namespace flutter {
@@ -28,6 +30,8 @@ extern double g_scrollDistance;
 void OnSurfaceCreatedCB(OH_NativeXComponent* component, void* window);
 void OnSurfaceChangedCB(OH_NativeXComponent* component, void* window);
 void OnSurfaceDestroyedCB(OH_NativeXComponent* component, void* window);
+void DispatchTouchEventCB(OH_NativeXComponent* component, void* window);
+void DispatchMouseEventCB(OH_NativeXComponent* component, void* window);
 void DispatchAxisEventCB(OH_NativeXComponent* component,
                          ArkUI_UIInputEvent* event,
                          ArkUI_UIInputEvent_Type type);
@@ -222,6 +226,14 @@ TEST_F(XComponentAdapterTest, AttachCreatesBaseAndAttachesEngine) {
   ASSERT_NE(base, nullptr);
   EXPECT_TRUE(base->is_engine_attached_);
   EXPECT_EQ(base->shellholderId_, "0");
+  {
+    fml::ScopedSetLogSettings quiet({fml::kLogFatal});
+    std::string quiet_id = "ut_attach_quiet";
+    adapter->AttachFlutterEngine(quiet_id, holder_id);
+    XComponentBase* quiet_base = adapter->GetXcomponentBase(quiet_id);
+    ASSERT_NE(quiet_base, nullptr);
+    EXPECT_TRUE(quiet_base->is_engine_attached_);
+  }
 }
 
 TEST_F(XComponentAdapterTest, AttachTwiceReusesSameBase) {
@@ -329,6 +341,10 @@ TEST_F(XComponentAdapterTest, RegisteredUnattachedMainCountsAsOverlay) {
 TEST_F(XComponentAdapterTest, StoreAndClearPendingWindowRoundTrip) {
   XComponentAdapter* adapter = XComponentAdapter::GetInstance();
   int dummy = 0;
+  {
+    fml::ScopedSetLogSettings loud({fml::kLogInfo});
+    adapter->StoreHcppOverlayPendingWindow("ut_main_c__overlay", &dummy);
+  }
   adapter->StoreHcppOverlayPendingWindow("ut_main_c__overlay", &dummy);
   EXPECT_EQ(PendingOverlayCount(), 1u);
 
@@ -436,6 +452,7 @@ TEST_F(XComponentAdapterTest, MouseWheelLeftButtonActiveSuppressesScroll) {
 }
 
 TEST_F(XComponentAdapterTest, SurfaceCreatedCbRoutesToMatching) {
+  GraphicStubKnobGuard knob_guard;
   XComponentAdapter* adapter = XComponentAdapter::GetInstance();
   XComponentBase* base = RegisterBase("ut_surf_cb");
   static char comp_storage;
@@ -492,6 +509,7 @@ TEST_F(XComponentAdapterTest, OnSurfaceChangedUpdatesSizeWhenNotAttached) {
 }
 
 TEST_F(XComponentAdapterTest, OnSurfaceCreatedReplacesExistingWindow) {
+  GraphicStubKnobGuard knob_guard;
   XComponentBase xc("ut_dup_window");
   int first = 0;
   xc.window_ = &first;
@@ -659,8 +677,22 @@ TEST_F(XComponentAdapterTest, A11yCallbacksRouteToCurrentXComponent) {
   XComponentAdapter* adapter = XComponentAdapter::GetInstance();
   XComponentBase* base = RegisterBase("ut_a11y_route");
   adapter->SetCurrentXcomponentId("ut_a11y_route");
-  std::lock_guard<std::recursive_mutex> lock(adapter->xcomponentMap_mutex_);
+  ASSERT_EQ(adapter->GetCurrentXcomponent(), base);
+  EXPECT_EQ(FindAccessibilityNodeInfosByTextCallback(0, "t", 1, nullptr),
+            ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
+  EXPECT_EQ(FindFocusedAccessibilityNodeCallback(
+                0, ARKUI_ACCESSIBILITY_NATIVE_FOCUS_TYPE_INPUT, 1, nullptr),
+            ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
+  EXPECT_EQ(FindNextFocusAccessibilityNodeCallback(
+                0, ARKUI_ACCESSIBILITY_NATIVE_DIRECTION_FORWARD, 1, nullptr),
+            ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
+  EXPECT_EQ(ExecuteAccessibilityActionCallback(
+                0, ARKUI_ACCESSIBILITY_NATIVE_ACTION_TYPE_CLICK, nullptr, 1),
+            ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
   EXPECT_EQ(ClearFocusedFocusAccessibilityNodeCallback(),
+            ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
+  int32_t index = -1;
+  EXPECT_EQ(GetAccessibilityNodeCursorPositionCallback(0, 1, &index),
             ARKUI_ACCESSIBILITY_NATIVE_RESULT_FAILED);
 }
 
@@ -682,6 +714,13 @@ TEST_F(XComponentAdapterTest, ExportRegistersEmptyIdBase) {
   napi_env env = reinterpret_cast<napi_env>(0xF00D);
   napi_value exports = reinterpret_cast<napi_value>(0x1);
   EXPECT_NO_FATAL_FAILURE(adapter->Export(env, exports));
+  StubNapiFailUnwrap(napi_generic_failure);
+  EXPECT_FALSE(adapter->Export(env, exports));
+  StubNapiFailNamedProperty(napi_generic_failure);
+  EXPECT_FALSE(adapter->Export(env, exports));
+  StubNapiReset();
+  StubXcompFailNextGetXComponentId(OH_NATIVEXCOMPONENT_RESULT_BAD_PARAMETER);
+  EXPECT_FALSE(adapter->Export(env, exports));
 }
 
 TEST_F(XComponentAdapterTest,
@@ -851,6 +890,278 @@ TEST_F(XComponentAdapterTest, TouchDroppedAsDuplicateUpReachesProcessor) {
   xc.is_surface_present_ = true;
   EXPECT_NO_FATAL_FAILURE(xc.OnDispatchTouchEvent(
       reinterpret_cast<OH_NativeXComponent*>(0x1), nullptr));
+}
+
+TEST_F(XComponentAdapterTest, SurfaceLifecycleWithLiveHolder) {
+  Settings settings;
+  settings.ohos_rendering_api = OHOSRenderingAPI::kSoftware;
+  auto holder = std::make_unique<OHOSShellHolder>(
+      settings, std::make_shared<PlatformViewOHOSNapi>(nullptr), nullptr);
+  ASSERT_TRUE(holder->IsValid());
+  static char window_storage;
+  void* window = &window_storage;
+  XComponentBase xc("ut_surface_lc");
+  xc.shellholderId_ = std::to_string(reinterpret_cast<int64_t>(holder.get()));
+  xc.is_engine_attached_ = true;
+  EXPECT_FALSE(xc.is_surface_present_);
+
+  g_graphic_stub.engaged = 1;
+  g_graphic_stub.geometry_width = 320;
+  g_graphic_stub.geometry_height = 240;
+
+  EXPECT_NO_FATAL_FAILURE(
+      xc.OnSurfaceCreated(reinterpret_cast<OH_NativeXComponent*>(0x1), window));
+  holder->WaitRasterTasksFinished();
+  EXPECT_EQ(xc.window_, window);
+  EXPECT_TRUE(xc.is_surface_present_);
+
+  EXPECT_NO_FATAL_FAILURE(
+      xc.OnSurfaceChanged(reinterpret_cast<OH_NativeXComponent*>(0x1), window));
+  holder->WaitRasterTasksFinished();
+  EXPECT_TRUE(xc.is_surface_present_);
+
+  EXPECT_NO_FATAL_FAILURE(xc.OnSurfaceDestroyed(
+      reinterpret_cast<OH_NativeXComponent*>(0x1), window));
+  EXPECT_FALSE(xc.is_surface_present_);
+  holder->WaitRasterTasksFinished();
+  g_graphic_stub.engaged = 0;
+}
+
+TEST_F(XComponentAdapterTest, MouseLeaveEventWithLiveHolder) {
+  Settings settings;
+  settings.ohos_rendering_api = OHOSRenderingAPI::kSoftware;
+  auto holder = std::make_unique<OHOSShellHolder>(
+      settings, std::make_shared<PlatformViewOHOSNapi>(nullptr), nullptr);
+  ASSERT_TRUE(holder->IsValid());
+  XComponentBase xc("ut_mouse_leave");
+  xc.shellholderId_ = std::to_string(reinterpret_cast<int64_t>(holder.get()));
+  xc.is_engine_attached_ = true;
+  xc.is_surface_present_ = true;
+  static char window_storage;
+  xc.window_ = &window_storage;
+  g_graphic_stub.engaged = 1;
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchMouseLeaveEvent(nullptr));
+  xc.is_engine_attached_ = false;
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchMouseLeaveEvent(nullptr));
+  xc.is_engine_attached_ = true;
+  xc.is_sub_view_ = true;
+  xc.sub_view_id_ = 7;
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchMouseLeaveEvent(nullptr));
+  holder->WaitRasterTasksFinished();
+  g_graphic_stub.engaged = 0;
+}
+
+TEST_F(XComponentAdapterTest, TouchMouseAxisWithLiveHolder) {
+  Settings settings;
+  settings.ohos_rendering_api = OHOSRenderingAPI::kSoftware;
+  auto holder = std::make_unique<OHOSShellHolder>(
+      settings, std::make_shared<PlatformViewOHOSNapi>(nullptr), nullptr);
+  ASSERT_TRUE(holder->IsValid());
+  XComponentBase xc("ut_input_live");
+  xc.shellholderId_ = std::to_string(reinterpret_cast<int64_t>(holder.get()));
+  xc.shellholder_ptr_ = holder.get();
+  xc.is_engine_attached_ = true;
+  xc.is_surface_present_ = true;
+  xc.width_ = 320;
+  xc.height_ = 240;
+  static char window_storage;
+  xc.window_ = &window_storage;
+  GraphicStubKnobGuard knob_guard;
+  auto* comp = reinterpret_cast<OH_NativeXComponent*>(0x1);
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchTouchEvent(comp, xc.window_));
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchMouseEvent(comp, xc.window_));
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchMouseLeaveEvent(comp));
+  EXPECT_NO_FATAL_FAILURE(
+      xc.OnDispatchAxisEvent(comp, nullptr, ARKUI_UIINPUTEVENT_TYPE_AXIS));
+  EXPECT_NO_FATAL_FAILURE(
+      xc.OnDispatchAxisEvent(comp, nullptr, ARKUI_UIINPUTEVENT_TYPE_TOUCH));
+
+  g_graphic_stub.touch_type = OH_NATIVEXCOMPONENT_DOWN;
+  g_graphic_stub.touch_id = 2;
+  g_graphic_stub.touch_num_points = 1;
+  g_graphic_stub.geometry_width = 40;
+  g_graphic_stub.geometry_height = 50;
+  g_stub_source_type = OH_NATIVEXCOMPONENT_SOURCE_TYPE_MOUSE;
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchTouchEvent(comp, xc.window_));
+  g_stub_source_type = OH_NATIVEXCOMPONENT_SOURCE_TYPE_TOUCHSCREEN;
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchTouchEvent(comp, xc.window_));
+  g_graphic_stub.touch_type = OH_NATIVEXCOMPONENT_MOVE;
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchTouchEvent(comp, xc.window_));
+  g_graphic_stub.touch_type = OH_NATIVEXCOMPONENT_UP;
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchTouchEvent(comp, xc.window_));
+  g_graphic_stub.touch_id = 3;
+  g_graphic_stub.touch_type = OH_NATIVEXCOMPONENT_DOWN;
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchTouchEvent(comp, xc.window_));
+  g_graphic_stub.touch_type = OH_NATIVEXCOMPONENT_CANCEL;
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchTouchEvent(comp, xc.window_));
+
+  g_graphic_stub.mouse_button = OH_NATIVEXCOMPONENT_LEFT_BUTTON;
+  g_graphic_stub.mouse_action = OH_NATIVEXCOMPONENT_MOUSE_PRESS;
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchMouseEvent(comp, xc.window_));
+  EXPECT_TRUE(g_isMouseLeftActive);
+  g_graphic_stub.mouse_action = OH_NATIVEXCOMPONENT_MOUSE_RELEASE;
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchMouseEvent(comp, xc.window_));
+  EXPECT_FALSE(g_isMouseLeftActive);
+  g_graphic_stub.mouse_button = OH_NATIVEXCOMPONENT_RIGHT_BUTTON;
+  g_graphic_stub.mouse_action = OH_NATIVEXCOMPONENT_MOUSE_MOVE;
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchMouseEvent(comp, xc.window_));
+}
+
+TEST_F(XComponentAdapterTest, A11yMethodsWithLiveHolder) {
+  Settings settings;
+  settings.ohos_rendering_api = OHOSRenderingAPI::kSoftware;
+  auto holder = std::make_unique<OHOSShellHolder>(
+      settings, std::make_shared<PlatformViewOHOSNapi>(nullptr), nullptr);
+  ASSERT_TRUE(holder->IsValid());
+  XComponentBase xc("ut_a11y_live");
+  xc.shellholderId_ = std::to_string(reinterpret_cast<int64_t>(holder.get()));
+  xc.shellholder_ptr_ = holder.get();
+  xc.is_engine_attached_ = true;
+  static char list_storage;
+  auto* list =
+      reinterpret_cast<ArkUI_AccessibilityElementInfoList*>(&list_storage);
+  EXPECT_NO_FATAL_FAILURE(xc.FindAccessibilityNodeInfosById(
+      0, ARKUI_ACCESSIBILITY_NATIVE_SEARCH_MODE_PREFETCH_CURRENT, 1, list));
+  EXPECT_NO_FATAL_FAILURE(xc.FindAccessibilityNodeInfosByText(0, "t", 1, list));
+  EXPECT_NO_FATAL_FAILURE(xc.FindFocusedAccessibilityNode(
+      0, ARKUI_ACCESSIBILITY_NATIVE_FOCUS_TYPE_INPUT, 1, nullptr));
+  EXPECT_NO_FATAL_FAILURE(xc.FindNextFocusAccessibilityNode(
+      0, ARKUI_ACCESSIBILITY_NATIVE_DIRECTION_FORWARD, 1, nullptr));
+  EXPECT_NO_FATAL_FAILURE(xc.ClearFocusedFocusAccessibilityNode(0));
+  int32_t index = -1;
+  EXPECT_NO_FATAL_FAILURE(xc.GetAccessibilityNodeCursorPosition(0, 1, &index));
+  EXPECT_NO_FATAL_FAILURE(xc.ExecuteAccessibilityAction(
+      0, ARKUI_ACCESSIBILITY_NATIVE_ACTION_TYPE_CLICK, nullptr, 1));
+}
+
+TEST_F(XComponentAdapterTest, AttachWithExistingWindowUsesLiveHolder) {
+  Settings settings;
+  settings.ohos_rendering_api = OHOSRenderingAPI::kSoftware;
+  auto holder = std::make_unique<OHOSShellHolder>(
+      settings, std::make_shared<PlatformViewOHOSNapi>(nullptr), nullptr);
+  ASSERT_TRUE(holder->IsValid());
+  XComponentAdapter* adapter = XComponentAdapter::GetInstance();
+  std::string id = "ut_attach_surf";
+  XComponentBase* base = RegisterBase(id);
+  static char window_storage;
+  base->window_ = &window_storage;
+  base->width_ = 200;
+  base->height_ = 100;
+  GraphicStubKnobGuard knob_guard;
+  g_graphic_stub.geometry_width = 200;
+  g_graphic_stub.geometry_height = 100;
+  std::string holder_id =
+      std::to_string(reinterpret_cast<int64_t>(holder.get()));
+  adapter->AttachFlutterEngine(id, holder_id);
+  holder->WaitRasterTasksFinished();
+  EXPECT_TRUE(base->is_engine_attached_);
+  EXPECT_TRUE(base->is_surface_present_);
+  adapter->DetachFlutterEngine(id);
+  holder->WaitRasterTasksFinished();
+  EXPECT_FALSE(base->is_engine_attached_);
+}
+
+TEST_F(XComponentAdapterTest, InputAndSurfaceNdkFailureEdges) {
+  Settings settings;
+  settings.ohos_rendering_api = OHOSRenderingAPI::kSoftware;
+  auto holder = std::make_unique<OHOSShellHolder>(
+      settings, std::make_shared<PlatformViewOHOSNapi>(nullptr), nullptr);
+  ASSERT_TRUE(holder->IsValid());
+  XComponentBase xc("ut_ndk_fail");
+  xc.shellholderId_ = std::to_string(reinterpret_cast<int64_t>(holder.get()));
+  xc.shellholder_ptr_ = holder.get();
+  xc.is_engine_attached_ = true;
+  xc.is_surface_present_ = true;
+  xc.width_ = 100;
+  xc.height_ = 80;
+  static char window_storage;
+  xc.window_ = &window_storage;
+  GraphicStubKnobGuard knob_guard;
+  auto* comp = reinterpret_cast<OH_NativeXComponent*>(0x1);
+
+  g_stub_graphic_fail_mask = kStubFailGetTouchEvent;
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchTouchEvent(comp, xc.window_));
+  g_stub_graphic_fail_mask = kStubFailGetTouchEventSourceType;
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchTouchEvent(comp, xc.window_));
+  g_stub_graphic_fail_mask = kStubFailGetMouseEvent;
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchMouseEvent(comp, xc.window_));
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchMouseLeaveEvent(comp));
+  g_stub_graphic_fail_mask = kStubFailGetTouchPointToolType;
+  EXPECT_NO_FATAL_FAILURE(xc.OnDispatchTouchEvent(comp, xc.window_));
+
+  g_stub_graphic_fail_mask =
+      kStubFailGetXComponentSize | kStubFailSetNeedSoftKeyboard |
+      kStubFailNativeObjectReference | kStubFailWindowHandleOpt;
+  EXPECT_NO_FATAL_FAILURE(xc.OnSurfaceCreated(comp, xc.window_));
+  g_stub_graphic_fail_mask = kStubFailGetXComponentSize;
+  EXPECT_NO_FATAL_FAILURE(xc.OnSurfaceChanged(comp, xc.window_));
+  g_stub_graphic_fail_mask = kStubFailNativeObjectUnreference;
+  int other_window = 0;
+  EXPECT_NO_FATAL_FAILURE(xc.OnSurfaceDestroyed(comp, &other_window));
+}
+
+TEST_F(XComponentAdapterTest, PreDrawWithLiveHolderLoadsOnce) {
+  Settings settings;
+  settings.ohos_rendering_api = OHOSRenderingAPI::kSoftware;
+  auto holder = std::make_unique<OHOSShellHolder>(
+      settings, std::make_shared<PlatformViewOHOSNapi>(nullptr), nullptr);
+  ASSERT_TRUE(holder->IsValid());
+  XComponentAdapter* adapter = XComponentAdapter::GetInstance();
+  std::string id = "ut_predraw_live";
+  XComponentBase* base = RegisterBase(id);
+  std::string holder_id =
+      std::to_string(reinterpret_cast<int64_t>(holder.get()));
+  adapter->PreDraw(id, holder_id, 320, 240);
+  EXPECT_TRUE(base->is_surface_preloaded_);
+  EXPECT_TRUE(base->is_engine_attached_);
+  adapter->PreDraw(id, holder_id, 320, 240);
+  EXPECT_TRUE(base->is_surface_preloaded_);
+  holder->WaitRasterTasksFinished();
+}
+
+TEST_F(XComponentAdapterTest, DispatchTouchAndMouseCbsRouteMatching) {
+  Settings settings;
+  settings.ohos_rendering_api = OHOSRenderingAPI::kSoftware;
+  auto holder = std::make_unique<OHOSShellHolder>(
+      settings, std::make_shared<PlatformViewOHOSNapi>(nullptr), nullptr);
+  ASSERT_TRUE(holder->IsValid());
+  XComponentAdapter* adapter = XComponentAdapter::GetInstance();
+  XComponentBase* match = RegisterBase("ut_cb_match");
+  XComponentBase* other = RegisterBase("ut_cb_other");
+  static char comp_storage;
+  auto comp = reinterpret_cast<OH_NativeXComponent*>(&comp_storage);
+  static char other_storage;
+  auto other_comp = reinterpret_cast<OH_NativeXComponent*>(&other_storage);
+  match->nativeXComponent_ = comp;
+  other->nativeXComponent_ = other_comp;
+  match->shellholderId_ =
+      std::to_string(reinterpret_cast<int64_t>(holder.get()));
+  match->shellholder_ptr_ = holder.get();
+  match->is_engine_attached_ = true;
+  match->is_surface_present_ = true;
+  GraphicStubKnobGuard knob_guard;
+  EXPECT_NO_FATAL_FAILURE(DispatchTouchEventCB(comp, nullptr));
+  EXPECT_NO_FATAL_FAILURE(DispatchMouseEventCB(comp, nullptr));
+  EXPECT_NO_FATAL_FAILURE(
+      DispatchAxisEventCB(comp, nullptr, ARKUI_UIINPUTEVENT_TYPE_AXIS));
+  EXPECT_NO_FATAL_FAILURE(DispatchHoverEventCB(comp, false));
+}
+
+TEST_F(XComponentAdapterTest, PreDrawUnknownIdCreatesBase) {
+  Settings settings;
+  settings.ohos_rendering_api = OHOSRenderingAPI::kSoftware;
+  auto holder = std::make_unique<OHOSShellHolder>(
+      settings, std::make_shared<PlatformViewOHOSNapi>(nullptr), nullptr);
+  ASSERT_TRUE(holder->IsValid());
+  XComponentAdapter* adapter = XComponentAdapter::GetInstance();
+  std::string id = "ut_predraw_new";
+  std::string holder_id =
+      std::to_string(reinterpret_cast<int64_t>(holder.get()));
+  adapter->PreDraw(id, holder_id, 64, 64);
+  XComponentBase* base = adapter->GetXcomponentBase(id);
+  ASSERT_NE(base, nullptr);
+  EXPECT_TRUE(base->is_surface_preloaded_);
+  holder->WaitRasterTasksFinished();
 }
 
 }  // namespace testing
