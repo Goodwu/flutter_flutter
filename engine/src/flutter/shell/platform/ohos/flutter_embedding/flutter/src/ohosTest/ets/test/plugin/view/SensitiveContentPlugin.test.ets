@@ -46,6 +46,23 @@ export default function sensitiveContentPluginTest() {
       expect(plugin.getContentSensitivity()).assertEqual(NOT_SENSITIVE_CONTENT_SENSITIVITY);
     });
 
+    it('appliesSensitiveLevel_doesNotCrash', Level.LEVEL1, () => {
+      // SENSITIVE != the default NOT_SENSITIVE level, so the early-return guard
+      // is skipped and the window privacy-mode toggle path executes.
+      const plugin: SensitiveContentPlugin = createPlugin();
+      let threw = false;
+      try {
+        plugin.setContentSensitivity(SENSITIVE_CONTENT_SENSITIVITY);
+      } catch (e) {
+        threw = true;
+      }
+      expect(threw).assertEqual(false);
+      // currentContentSensitivity is only assigned inside the async
+      // getLastWindow -> setWindowPrivacyMode promise (SensitiveContentPlugin.ets:66-68),
+      // so synchronously after the call the requested level must NOT be reflected yet.
+      expect(plugin.getContentSensitivity()).assertEqual(NOT_SENSITIVE_CONTENT_SENSITIVITY);
+    });
+
     it('returnsEarlyForUnknownValue', Level.LEVEL1, () => {
       const plugin: SensitiveContentPlugin = createPlugin();
       plugin.setContentSensitivity(999);

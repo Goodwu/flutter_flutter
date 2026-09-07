@@ -42,6 +42,16 @@ export class FakeWindowProperties {
   }
 }
 
+/** window.AvoidArea fake: system/navigation avoidance rects (height 0 default). */
+class FakeAvoidAreaRect {
+  height: number = 0;
+}
+
+class FakeAvoidArea {
+  topRect: FakeAvoidAreaRect = new FakeAvoidAreaRect();
+  bottomRect: FakeAvoidAreaRect = new FakeAvoidAreaRect();
+}
+
 /** Full fake of window.Window: every method the hosts can call, with
  * per-call recording and controllable failures. Cast to window.Window at
  * use sites via `fake as ESObject as window.Window`. */
@@ -52,6 +62,12 @@ export class FakeWindow {
   moveCalls: Array<Array<number>> = new Array<Array<number>>();
   titles: Array<string> = new Array<string>();
   maximizeCount: number = 0;
+  fullScreenLayoutCalls: Array<boolean> = new Array<boolean>();
+  windowStatus: window.WindowStatusType = window.WindowStatusType.UNDEFINED;
+  decorVisible: boolean = false;
+  titleButtonRect: window.Rect | null = null;
+  inFreeWindowMode: boolean = false;
+  avoidArea: FakeAvoidArea = new FakeAvoidArea();
   minimizeCount: number = 0;
   restoreCount: number = 0;
   fullscreenArgs: Array<boolean> = new Array<boolean>();
@@ -137,6 +153,33 @@ export class FakeWindow {
       return Promise.reject(new Error('minimize-rejected'));
     }
     return Promise.resolve();
+  }
+
+  setWindowLayoutFullScreen(useFullScreen: boolean): void {
+    this.fullScreenLayoutCalls.push(useFullScreen);
+  }
+
+  getWindowStatus(): window.WindowStatusType {
+    return this.windowStatus;
+  }
+
+  getWindowDecorVisible(): boolean {
+    return this.decorVisible;
+  }
+
+  getTitleButtonRect(): window.Rect {
+    return this.titleButtonRect as ESObject as window.Rect;
+  }
+
+  isInFreeWindowMode(): boolean {
+    return this.inFreeWindowMode;
+  }
+
+  setSpecificSystemBarEnabled(specificSystemBar: string, isVisible: boolean, enableAnimation?: boolean): void {
+  }
+
+  getWindowAvoidArea(type: window.AvoidAreaType): window.AvoidArea {
+    return this.avoidArea as ESObject as window.AvoidArea;
   }
 
   restore(): Promise<void> {
@@ -341,7 +384,9 @@ export class FakeWindowStage {
   createSubWindow(name: string, callback: Function): void {
     this.createSubWindowCount += 1;
     this.createSubWindowName = name;
-    const err = this.subWindowErr;
+    // SubWindowHost.ets:59 reads err.code unguarded, so the success arm must still
+    // hand back a code-bearing object (the real API never passes undefined here).
+    const err = this.subWindowErr ?? { code: 0 } as ESObject as BusinessError;
     callback(err, this.subWindow);
   }
 

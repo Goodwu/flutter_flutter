@@ -301,6 +301,17 @@ export default function FlutterManagerTest() {
       done();
     })
 
+    // NOTE: ensureParentRectListener / ensureSubWindowRectListener (and the
+    // throttled reanchor path) were removed by the upstream windowing-anchor
+    // refactor in oh-3.44.9-dev; the specs covering them are dropped here.
+
+    it('TestRemoveHostDoesNotThrow', 0, (done: Function) => {
+      // Numeric and non-numeric viewId removals (covers removeHost only).
+      flutterManager.removeHost('9302');
+      flutterManager.removeHost('oh_flutter_9302');
+      done();
+    })
+
     it('TestDragCallbacksAccessors', 0, async (done: Function) => {
       const enterCbs = flutterManager.getDragEnterCbs();
       const moveCbs = flutterManager.getDragMoveCbs();

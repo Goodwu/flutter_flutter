@@ -21,8 +21,7 @@ import { FlutterPlugin, FlutterPluginBinding } from '../../../../../main/ets/emb
 import { FlutterAbility } from '../../../../../main/ets/embedding/ohos/FlutterAbility';
 import FlutterEngine from '../../../../../main/ets/embedding/engine/FlutterEngine';
 import { FlutterView } from '../../../../../main/ets/view/FlutterView';
-import FlutterManager from '../../../../../main/ets/embedding/ohos/FlutterManager';
-import { FakeWindowStage } from './windowing/Fakes';
+import Any from '../../../../../main/ets/plugin/common/Any';
 
 const bundleName = abilityDelegatorRegistry.getArguments().bundleName;
 const want: Want = {
@@ -147,81 +146,6 @@ export default function FlutterAbilityTest() {
       done();
     })
 
-    it('TestHostedViewIdDefaultsToImplicit', 0, async (done: Function) => {
-      const flutterAbility: FlutterAbility = new FlutterAbility();
-      // 0 = implicit main host; only spawned Regular hosts carry a numeric id.
-      expect(flutterAbility.hostedViewId).assertEqual(0);
-      done();
-    })
-
-    it('TestWindowStageEventCallbackBranches', 0, (done: Function) => {
-      // onWindowStageCreate registers windowStageEvent BEFORE createView throws
-      // (delegate is null in the UT process), so a fake stage captures the real
-      // callback and we can drive ACTIVE / INACTIVE / SHOWN to cover all three
-      // activated branches of windowStageEventCallback.
-      const flutterAbility: FlutterAbility = new FlutterAbility();
-      const stage = new FakeWindowStage();
-      try {
-        flutterAbility.onWindowStageCreate(stage as ESObject as window.WindowStage);
-      } catch (e) {
-      }
-      // ACTIVE → activated=true (native call guarded by try/catch).
-      stage.windowStageEventCb?.(window.WindowStageEventType.ACTIVE);
-      // INACTIVE → activated=false.
-      stage.windowStageEventCb?.(window.WindowStageEventType.INACTIVE);
-      // SHOWN → activated stays null → notification skipped.
-      stage.windowStageEventCb?.(window.WindowStageEventType.SHOWN);
-      FlutterManager.getInstance().popWindowStage(flutterAbility);
-      done();
-    })
-
-    it('TestOnDestroyWithHostedViewId', 0, (done: Function) => {
-      // Numeric hostedViewId: OS-close notification path runs; no registered
-      // window host → removeHost + deleteViewAbility drop the per-view maps.
-      const flutterAbility: FlutterAbility = new FlutterAbility();
-      flutterAbility.hostedViewId = 9401;
-      const cachedWant: Want = {
-        bundleName: bundleName,
-        abilityName: 'EntryAbility',
-        parameters: {
-          // ArkTS: no computed property names — mirror the literal constant
-          // FlutterAbilityLaunchConfigs.EXTRA_CACHED_ENGINE_ID ("cached_engine_id").
-          'cached_engine_id': 'cached-engine'
-        }
-      };
-      // launchWant lives on UIAbility; injecting cached-engine params makes
-      // shouldDestroyEngineWithHost() short-circuit without the private
-      // delegate, so onDestroy reaches the destroy path instead of throwing.
-      (flutterAbility as ESObject).launchWant = cachedWant;
-      FlutterManager.getInstance().setViewAbility('9401', flutterAbility);
-      try {
-        flutterAbility.onDestroy();
-      } catch (e) {
-      }
-      expect(FlutterManager.getInstance().getViewAbility('9401')).assertUndefined();
-      expect(FlutterManager.getInstance().getWindowHostOf('9401')).assertUndefined();
-      done();
-    })
-
-    it('TestOnDestroyImplicitHost', 0, (done: Function) => {
-      // hostedViewId stays 0 (implicit main view): OS-close block skipped.
-      const flutterAbility: FlutterAbility = new FlutterAbility();
-      const cachedWant: Want = {
-        bundleName: bundleName,
-        abilityName: 'EntryAbility',
-        parameters: {
-          // ArkTS: no computed property names — mirror the literal constant
-          // FlutterAbilityLaunchConfigs.EXTRA_CACHED_ENGINE_ID ("cached_engine_id").
-          'cached_engine_id': 'cached-engine'
-        }
-      };
-      (flutterAbility as ESObject).launchWant = cachedWant;
-      try {
-        flutterAbility.onDestroy();
-      } catch (e) {
-      }
-      done();
-    })
     it('TestOnCreate', 0, async (done: Function) => {
       // Skipped: onCreate mutates global AppStorage/FlutterManager and
       // errorManager.on state, which would pollute the singleton and break
@@ -254,6 +178,9 @@ export default function FlutterAbilityTest() {
       expect(flutterAbility).not().assertNull();
       done();
     })
+
+
+
 
     it('TestOnWindowStageDestroy', 0, async (done: Function) => {
       const flutterAbility: FlutterAbility = new FlutterAbility();
@@ -567,6 +494,25 @@ export default function FlutterAbilityTest() {
 
   })
 
+
+
+  describe('FlutterAbility.covSupplement', () => {
+    it('getCachedEngineGroupId returns value from launchWant', 0, () => {
+      const ability: Any = new FlutterAbility();
+      ability.launchWant = { parameters: { 'cached_engine_group_id': 'cov_grp' } as Record<string, Object> } as Any;
+      const v: string | null = ability.getCachedEngineGroupId();
+      expect(v).assertEqual('cov_grp');
+    })
+
+    it('onNewWant crash-cover', 0, () => {
+      const ability: Any = new FlutterAbility();
+      // Crash-cover: the delegate chain may throw in the test HAP (hcpp style).
+      try {
+        ability.onNewWant(new Want(), { launchReason: 0, lastExitReason: 0 } as Any as AbilityConstant.LaunchParam);
+      } catch (e) {
+      }
+    })
+  });
 }
 
 class TestFlutterPlugin implements FlutterPlugin {

@@ -303,7 +303,9 @@ void _triggerTextInputIME() async {
   await Future.delayed(const Duration(milliseconds: 200));
   await SystemChannels.platform.invokeMethod(
     'SystemChrome.setEnabledSystemUIOverlays',
-    ['top', 'bottom'],
+    // The ArkTS handler whitelists "SystemUiOverlay.top"/"SystemUiOverlay.bottom";
+    // plain "top"/"bottom" makes it throw and kills the rest of this trigger chain.
+    ['SystemUiOverlay.top', 'SystemUiOverlay.bottom'],
   );
   await Future.delayed(const Duration(milliseconds: 200));
   await SystemChannels.platform.invokeMethod(
