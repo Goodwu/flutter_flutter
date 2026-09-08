@@ -480,6 +480,9 @@ export struct FlutterPage {
    */
   aboutToAppear() {
     this.flutterView = FlutterManager.getInstance().getFlutterView(this.viewId);
+    if (!this.flutterView) {
+      Log.e(TAG, "getFlutterView failed. viewId is " + this.viewId.toString());
+    }
     this.pushAutofillUiContext('FlutterPage.aboutToAppear');
     this.flutterView?.addFirstFrameListener(this)
     this.flutterView?.addFirstPreloadFrameListener(this)
@@ -498,7 +501,7 @@ export struct FlutterPage {
     this.flutterView?.setCheckAiBar(this.checkAiBar)
     this.flutterView?.enableFrameCache(this.enableFrameCacheForSmooth);
 
-    this.rootDvModel = this.flutterView!!.getDVModel().children
+    this.rootDvModel = this.flutterView?.getDVModel().children
 
     this.modifier = new StackModifier(
       this.shouldPauseWhenInvisible,
