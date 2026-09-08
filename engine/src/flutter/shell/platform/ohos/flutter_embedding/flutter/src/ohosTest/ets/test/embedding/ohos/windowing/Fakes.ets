@@ -40,6 +40,13 @@ export class FakeWindowProperties {
   setWindowRect(left: number, top: number, width: number, height: number): void {
     this.windowRect = new FakeRect(left, top, width, height) as ESObject as window.Rect;
   }
+
+  /** Simulate a decorated window (e.g. 2in1 title bar): outer frame inset of
+   * (w, h) around the 1000x800 content. */
+  setDecorInsets(w: number, h: number): void {
+    this.windowRect = new FakeRect(0, 0, 1000 + w, 800 + h) as ESObject as window.Rect;
+    this.drawableRect = new FakeRect(0, 0, 1000, 800) as ESObject as window.Rect;
+  }
 }
 
 /** window.AvoidArea fake: system/navigation avoidance rects (height 0 default). */
@@ -92,6 +99,8 @@ export class FakeWindow {
   /** getWindowProperties() call count (reanchor/positionAt probe). */
   propsReads: number = 0;
   offThrows: boolean = false;
+  /** getWindowProperties() throws synchronously. */
+  propsThrows: boolean = false;
 
   props: FakeWindowProperties = new FakeWindowProperties();
   destroyErr: BusinessError | undefined = undefined;
@@ -120,7 +129,23 @@ export class FakeWindow {
     if (this.rejectResize) {
       return Promise.reject(new Error('resize-rejected'));
     }
+    this.reflectOuterSize(w, h);
     return Promise.resolve();
+  }
+
+  /** WMS applying a resize: the OUTER frame takes the new size while the
+   * simulated decoration inset (windowRect − drawableRect) is kept — a real
+   * window's properties reflect the change (fireParentResize models the
+   * same for parent resizes). The funnel's skip-if-already-at-target check
+   * needs this: a props-static fake would swallow every second resize. */
+  reflectOuterSize(w: number, h: number): void {
+    const outer = this.props.windowRect;
+    const drawable = this.props.drawableRect;
+    const insetW = Math.max(0, Math.round(outer.width - drawable.width));
+    const insetH = Math.max(0, Math.round(outer.height - drawable.height));
+    this.props.setWindowRect(outer.left, outer.top, w, h);
+    this.props.drawableRect = new FakeRect(drawable.left, drawable.top,
+      Math.max(0, w - insetW), Math.max(0, h - insetH)) as ESObject as window.Rect;
   }
 
   showWindow(): Promise<void> {
@@ -274,6 +299,9 @@ export class FakeWindow {
   }
 
   getWindowProperties(): window.WindowProperties {
+    if (this.propsThrows) {
+      throw new Error('props-throws');
+    }
     this.propsReads += 1;
     return this.props as ESObject as window.WindowProperties;
   }

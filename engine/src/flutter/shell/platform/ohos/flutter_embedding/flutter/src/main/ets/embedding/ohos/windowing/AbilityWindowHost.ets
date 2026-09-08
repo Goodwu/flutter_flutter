@@ -40,7 +40,6 @@ export enum AbilityHostMode {
 export class AbilityWindowHost extends FlutterWindowHost {
   private readonly mode: AbilityHostMode;
   private readonly requestId: number;
-  private readonly title: string;
 
   constructor(ctx: WindowHostContext,
               viewId: number,
@@ -50,10 +49,9 @@ export class AbilityWindowHost extends FlutterWindowHost {
               height: number,
               title: string,
               archetype: WindowArchetype = WindowArchetype.REGULAR) {
-    super(ctx, viewId, 0, archetype, width, height);
+    super(ctx, viewId, 0, archetype, width, height, title);
     this.mode = mode;
     this.requestId = requestId;
-    this.title = title;
   }
 
   attach(): void {
@@ -71,9 +69,6 @@ export class AbilityWindowHost extends FlutterWindowHost {
     return this.mode === AbilityHostMode.ADOPTED;
   }
 
-  /** ADOPT: view 0's engine + XComponent (`pages/Index`) already exist —
-   * only preferred size + title are applied (a new FlutterView / stage
-   * reload would retire the adopted surface). */
   private attachAdopted(): void {
     const mainId = this.ctx.mainFlutterViewId();
     const mainAbility = mainId ? this.ctx.getViewAbility(mainId) : undefined;
@@ -88,22 +83,17 @@ export class AbilityWindowHost extends FlutterWindowHost {
       return;
     }
 
-    // Preferred size/title for the EntryAbility's main window; LOGICAL px
-    // ×DPR → the PHYSICAL px Window.resize() takes.
     const mainWin = windowStage.getMainWindowSync();
     if (this.requestedWidth > 0 && this.requestedHeight > 0) {
+      // Content-size semantics via resizeToContent: compensate the 2in1
+      // decoration so the drawable area equals the requested size.
       try {
         const dpr = this.ctx.densityPixels();
-        mainWin.resize(Math.round(this.requestedWidth * dpr), Math.round(this.requestedHeight * dpr));
+        this.resizeToContent(mainWin,
+          Math.round(this.requestedWidth * dpr), Math.round(this.requestedHeight * dpr),
+          'bindEntryAbilityToView');
       } catch (e) {
         Log.w(TAG, `bindEntryAbilityToView: resize failed: ${JSON.stringify(e)}`);
-      }
-    }
-    if (this.title && this.title.length > 0) {
-      try {
-        mainWin.setWindowTitle(this.title);
-      } catch (e) {
-        Log.w(TAG, `bindEntryAbilityToView: setWindowTitle failed: ${JSON.stringify(e)}`);
       }
     }
   }
@@ -194,6 +184,24 @@ export class AbilityWindowHost extends FlutterWindowHost {
       }
     }
     return null;
+  }
+
+  /** Runtime Dart SetTitle (C++ push via napi "setWindowTitle"): applies to
+   * the hosting ability's main window. SPAWNED windows may resolve before
+   * their ability registers (attach races onWindowStageCreate) — the push is
+   * dropped then, same as the other window setters. */
+  setWindowTitle(title?: string): void {
+    if (title === undefined) {
+      return;
+    }
+    const win = this.resolveWindow();
+    if (!win) {
+      Log.w(TAG, `setWindowTitle: no window for viewId=${this.viewIdStr}`);
+      return;
+    }
+    win.setWindowTitle(title).catch((e: Object) => {
+      Log.w(TAG, `setWindowTitle failed viewId=${this.viewId}: ${JSON.stringify(e)}`);
+    });
   }
 
   /** Terminate the hosting UIAbility (else a blank shell lingers). The

@@ -226,6 +226,7 @@ export class FlutterAbility extends UIAbility implements Host {
           return;
         }
         this.flutterView?.onWindowCreated();
+        this.applyWindowTitle();
 
         Log.i(TAG, 'Succeeded in loading the content. Data: %{public}s', JSON.stringify(data) ?? '');
       });
@@ -443,6 +444,29 @@ export class FlutterAbility extends UIAbility implements Host {
       return this.launchWant.parameters![FlutterAbilityLaunchConfigs.EXTRA_INITIAL_ROUTE] as string;
     }
     return ""
+  }
+
+  // Window title from the launch want (SPAWNED Regular windows: put there by
+  // AbilityWindowHost.attachSpawned). The EntryAbility main window's title is
+  // NOT set for now — setWindowTitle on it never took effect on device.
+  protected applyWindowTitle(win?: window.Window): void {
+    const title =
+      this.launchWant.parameters![FlutterAbilityLaunchConfigs.EXTRA_FLUTTER_WINDOW_TITLE] as string | undefined;
+    this.pushWindowTitle(title ?? '', win);
+  }
+
+  // Single push point: empty titles and missing windows are no-ops, rejections are logged.
+  private pushWindowTitle(title: string, win?: window.Window): void {
+    if (title === '') {
+      return;
+    }
+    const w = win ?? this.mainWindow;
+    if (!w) {
+      return;
+    }
+    w.setWindowTitle(title).catch((e: Object) => {
+      Log.w(TAG, `setWindowTitle "${title}" failed: ${JSON.stringify(e)}`);
+    });
   }
 
   /**

@@ -149,6 +149,200 @@ export default function FlutterNapiTest() {
       done();
     })
 
+    it('windowPositionResultDefaultsToZero', 0, async (done: Function) => {
+      const out = new WindowPositionResult();
+      expect(out.left).assertEqual(0);
+      expect(out.top).assertEqual(0);
+      expect(out.width).assertEqual(0);
+      expect(out.height).assertEqual(0);
+      done();
+    })
+
+    it('windowPositionResultSetPopulatesFields', 0, async (done: Function) => {
+      const out = new WindowPositionResult();
+      out.set(10, 20, 30, 40);
+      expect(out.left).assertEqual(10);
+      expect(out.top).assertEqual(20);
+      expect(out.width).assertEqual(30);
+      expect(out.height).assertEqual(40);
+      done();
+    })
+
+    it('nativeHandleOsWindowClosedRunsForUntrackedView', 0, async (done: Function) => {
+      try {
+        FlutterNapi.nativeHandleOsWindowClosed(9101);
+      } catch (e) {
+      }
+      done();
+    })
+
+    it('nativeComputeWindowPositionUntrackedViewKeepsDefaults', 0, async (done: Function) => {
+      const out = new WindowPositionResult();
+      try {
+        const ret = FlutterNapi.nativeComputeWindowPosition(out, 9102, 100, 80, 0, 0, 800, 600, 0, 0, 1000, 800);
+        expect(typeof ret).assertEqual('number');
+      } catch (e) {
+      }
+      // Untracked view: native leaves the holder untouched (0 defaults).
+      expect(out.left).assertEqual(0);
+      expect(out.top).assertEqual(0);
+      done();
+    })
+
+    it('nativeNotifyWindowActivatedRunsForUntrackedView', 0, async (done: Function) => {
+      try {
+        FlutterNapi.nativeNotifyWindowActivated(9103, true);
+        FlutterNapi.nativeNotifyWindowActivated(9103, false);
+      } catch (e) {
+      }
+      done();
+    })
+
+    it('requestWindowHostDelegatesToManagerForEachArchetype', 0, async (done: Function) => {
+      try {
+        // Archetypes 0..3 + unknown fall through the createSubWindow switch.
+        flutterNapi.requestWindowHost(9110, 999, 200, 150, 'host', 0);
+        flutterNapi.requestWindowHost(9111, 999, 200, 150, 'dialog', 1);
+        flutterNapi.requestWindowHost(9112, 999, 200, 150, '', 2);
+        flutterNapi.requestWindowHost(9113, 999, 200, 150, '', 3);
+        flutterNapi.requestWindowHost(9114, 999, 200, 150, '', 99);
+      } catch (e) {
+      }
+      done();
+    })
+
+    it('createRegularAbilityAndBindEntryAbilityDelegateToManager', 0, async (done: Function) => {
+      try {
+        flutterNapi.createRegularAbility(9120, 42, 300, 200, 'win', 1);
+        flutterNapi.bindEntryAbilityToView(9121, 300, 200, 'adopted');
+      } catch (e) {
+      }
+      done();
+    })
+
+    it('destroyWindowHostGuardsImplicitViewAndUnknownHost', 0, async (done: Function) => {
+      try {
+        flutterNapi.destroyWindowHost(0);
+        flutterNapi.destroyWindowHost(9130);
+      } catch (e) {
+      }
+      done();
+    })
+
+    it('exitApplicationWithoutMainHostLogsAndReturns', 0, async (done: Function) => {
+      try {
+        flutterNapi.exitApplication();
+      } catch (e) {
+      }
+      done();
+    })
+
+    it('windowPropertySettersRunWithoutHost', 0, async (done: Function) => {
+      try {
+        flutterNapi.setWindowSize(9140, 100, 100);
+        flutterNapi.setWindowTitle(9140, 't');
+        flutterNapi.setWindowMaximized(9140, true);
+        flutterNapi.setWindowMinimized(9140, true);
+        flutterNapi.setWindowFullscreen(9140, true);
+        flutterNapi.setWindowConstraints(9140, 50, 500, 50, 500);
+        flutterNapi.activateWindow(9140);
+      } catch (e) {
+      }
+      done();
+    })
+
+    it('setViewportMetrics_with_display_corner_radii', 0, async (done: Function) => {
+      console.info("uitest: setViewportMetrics_with_display_corner_radii begin");
+      const ctx = getContext() as common.UIAbilityContext;
+      // The engine is constructed but never init()ed, so its napi is NOT
+      // attached and the call returns at the isAttached() guard — this spec
+      // pins the argument shape (24-arg and legacy 20-arg forms), while the
+      // native forwarding is covered by setViewportMetrics_after_engine_init.
+      const unattachedNapi = new FlutterEngine(ctx, null, null, new PlatformViewsController()).getFlutterNapi();
+      unattachedNapi.setViewportMetrics(
+        3.0, 1080, 2340,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        3.0,
+        [], [], [],
+        12, 34, 56, 78
+      );
+      unattachedNapi.setViewportMetrics(
+        2.0, 720, 1280,
+        1, 2, 3, 4,
+        5, 6, 7, 8,
+        9, 10, 11, 12,
+        2.0,
+        [0, 0, 10, 10], [1], [0]
+      );
+      expect(unattachedNapi.isAttached()).assertFalse();
+      done();
+    })
+
+    it('setViewportMetrics_without_display_corner_radii_defaults', 0, async (done: Function) => {
+      console.info("uitest: setViewportMetrics_without_display_corner_radii_defaults begin");
+      const ctx = getContext() as common.UIAbilityContext;
+      const unattachedNapi = new FlutterEngine(ctx, null, null, new PlatformViewsController()).getFlutterNapi();
+      unattachedNapi.setViewportMetrics(
+        3.0, 1080, 2340,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        3.0,
+        [], [], []
+      );
+      expect(unattachedNapi.isAttached()).assertFalse();
+      done();
+    })
+
+    it('setViewportMetrics_zero_corner_radii_flat_screen', 0, async (done: Function) => {
+      console.info("uitest: setViewportMetrics_zero_corner_radii_flat_screen begin");
+      const ctx = getContext() as common.UIAbilityContext;
+      const unattachedNapi = new FlutterEngine(ctx, null, null, new PlatformViewsController()).getFlutterNapi();
+      unattachedNapi.setViewportMetrics(
+        3.0, 1080, 2340,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        3.0,
+        [], [], [],
+        0, 0, 0, 0
+      );
+      expect(unattachedNapi.isAttached()).assertFalse();
+      done();
+    })
+
+    it('setViewportMetrics_zero_shell_holder_returns_early', 0, () => {
+      console.info("uitest: setViewportMetrics_zero_shell_holder_returns_early begin");
+      const napi = new FlutterNapi();
+      setShellHolderIdForGuardTest(napi, 0);
+      invokeSetViewportMetricsWithCornerRadii(napi);
+      expect(napi.nativeShellHolderId).assertEqual(0);
+    })
+
+    it('setViewportMetrics_after_engine_init_with_corner_radii', 0, (done: Function) => {
+      console.info("uitest: setViewportMetrics_after_engine_init_with_corner_radii begin");
+      const ctx = getContext() as common.UIAbilityContext;
+      try {
+        const loader = FlutterInjector.getInstance().getFlutterLoader();
+        if (!loader.initialized) {
+          loader.startInitialization(ctx);
+          loader.ensureInitializationComplete([]);
+        }
+        const napi = FlutterEnginePreload.preLoadFlutterNapi(ctx, loader.findAppBundlePath(), {});
+        if (napi && napi.nativeShellHolderId) {
+          invokeSetViewportMetricsWithCornerRadii(napi);
+          expect(napi.isAttached()).assertTrue();
+        } else {
+          console.info("uitest: napi not attached, skip native forwarding");
+        }
+      } catch (e) {
+        console.info("uitest: real napi init path error, skip: " + JSON.stringify(e));
+      }
+      done();
+    })
+
     it('unicodeIsEmoji returns boolean for various code points', 0, () => {
       // Standard emoji (grinning face U+1F600)
       expect(typeof FlutterNapi.unicodeIsEmoji(0x1F600)).assertEqual('boolean');

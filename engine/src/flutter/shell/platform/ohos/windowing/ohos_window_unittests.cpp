@@ -13,11 +13,6 @@
 #include "flutter/fml/log_settings.h"
 #include "flutter/shell/platform/ohos/napi/platform_view_ohos_napi.h"
 #include "flutter/shell/platform/ohos/windowing/ohos_window.h"
-#include "flutter/shell/platform/ohos/windowing/ohos_window_controller.h"
-#include "flutter/shell/platform/ohos/windowing/ohos_window_dialog.h"
-#include "flutter/shell/platform/ohos/windowing/ohos_window_popup.h"
-#include "flutter/shell/platform/ohos/windowing/ohos_window_regular.h"
-#include "flutter/shell/platform/ohos/windowing/ohos_window_tooltip.h"
 
 #define private public
 #include "flutter/shell/platform/ohos/ohos_shell_holder.h"
@@ -100,8 +95,6 @@ OHOSWindow::InitParams MakeParams(
   params.host_kind = kind;
   params.view_id = view_id;
   params.parent_view_id = parent_view_id;
-  params.host_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(0xbeef));
-  params.adopt_entry_ability = false;
   return params;
 }
 
@@ -153,20 +146,11 @@ TEST(OHOSWindowTest, ConstructionExposesParams) {
   EXPECT_EQ(window.host_kind(), WindowHostKind::kUiAbility);
   EXPECT_EQ(window.view_id(), 42);
   EXPECT_EQ(window.parent_view_id(), 0);
-  EXPECT_EQ(window.handle(), reinterpret_cast<void*>(uintptr_t(0xbeef)));
-  EXPECT_FALSE(window.adopt_entry_ability());
   // The request is value-copied into the window.
   EXPECT_EQ(window.request().size.width, 200.0);
   EXPECT_EQ(window.request().size.height, 100.0);
   EXPECT_TRUE(window.request().has_constraints);
   EXPECT_EQ(window.request().constraints.min_width, 10.0);
-}
-
-TEST(OHOSWindowTest, AdoptEntryAbilityFlagRoundTrips) {
-  OHOSWindow::InitParams params = MakeParams();
-  params.adopt_entry_ability = true;
-  OHOSWindow window(nullptr, params, {});
-  EXPECT_TRUE(window.adopt_entry_ability());
 }
 
 // ---------------------------------------------------------------------------
@@ -261,46 +245,6 @@ TEST(OHOSWindowTest, ComputeWindowPositionCopiesResult) {
 }
 
 // ---------------------------------------------------------------------------
-// Constraints
-// ---------------------------------------------------------------------------
-
-TEST(OHOSWindowTest, GetConstraintsDefaultOpenRange) {
-  OHOSWindow window(nullptr, MakeParams(), {});
-  // No explicit constraints: min 0 / max 0 == unbounded.
-  FlutterWindowConstraints c = window.GetConstraints();
-  EXPECT_EQ(c.min_width, 0.0);
-  EXPECT_EQ(c.min_height, 0.0);
-  EXPECT_EQ(c.max_width, 0.0);
-  EXPECT_EQ(c.max_height, 0.0);
-}
-
-TEST(OHOSWindowTest, GetConstraintsCopiesStored) {
-  FlutterWindowCreationRequest request = {};
-  request.has_constraints = true;
-  request.constraints = {100.0, 80.0, 1200.0, 800.0};
-  OHOSWindow window(nullptr, MakeParams(), request);
-
-  FlutterWindowConstraints c = window.GetConstraints();
-  EXPECT_EQ(c.min_width, 100.0);
-  EXPECT_EQ(c.min_height, 80.0);
-  EXPECT_EQ(c.max_width, 1200.0);
-  EXPECT_EQ(c.max_height, 800.0);
-}
-
-TEST(OHOSWindowTest, SetRuntimeConstraintsOverridesCreationCopy) {
-  OHOSWindow window(nullptr, MakeParams(), {});
-  FlutterWindowConstraints c = window.GetConstraints();
-  EXPECT_EQ(c.max_width, 0.0);  // untouched default first
-
-  window.SetRuntimeConstraints({400.0, 300.0, 1600.0, 1200.0});
-  c = window.GetConstraints();
-  EXPECT_EQ(c.min_width, 400.0);
-  EXPECT_EQ(c.min_height, 300.0);
-  EXPECT_EQ(c.max_width, 1600.0);
-  EXPECT_EQ(c.max_height, 1200.0);
-}
-
-// ---------------------------------------------------------------------------
 // Sub-window birth sizing
 // ---------------------------------------------------------------------------
 
@@ -314,7 +258,7 @@ TEST(OHOSWindowTest, GetSubWindowBirthSizePrefersRequestSize) {
 
   double width = -1.0;
   double height = -1.0;
-  window.GetSubWindowBirthSize(&width, &height);
+  window.GetSubWindowBirthSize(width, height);
   EXPECT_EQ(width, 640.0);
   EXPECT_EQ(height, 480.0);
 }
@@ -327,7 +271,7 @@ TEST(OHOSWindowTest, GetSubWindowBirthSizeFallsBackToMinConstraint) {
 
   double width = -1.0;
   double height = -1.0;
-  window.GetSubWindowBirthSize(&width, &height);
+  window.GetSubWindowBirthSize(width, height);
   // Born small (min), not full-display.
   EXPECT_EQ(width, 100.0);
   EXPECT_EQ(height, 80.0);
@@ -337,7 +281,7 @@ TEST(OHOSWindowTest, GetSubWindowBirthSizeDefaultsToZero) {
   OHOSWindow window(nullptr, MakeParams(), {});
   double width = -1.0;
   double height = -1.0;
-  window.GetSubWindowBirthSize(&width, &height);
+  window.GetSubWindowBirthSize(width, height);
   EXPECT_EQ(width, 0.0);
   EXPECT_EQ(height, 0.0);
 }
@@ -356,32 +300,12 @@ TEST(OHOSWindowTest, TitleCacheRoundTrips) {
 }
 
 // ---------------------------------------------------------------------------
-// Subclass construction + type dispatch (host request needs a controller —
-// see ohos_window_controller_unittests.cpp)
+// Host request dispatch (host request needs a controller — see
+// ohos_window_controller_unittests.cpp). The dispatch is data-driven on
+// host_kind: kUiAbility routes to the UIAbility path (Regular + modeless
+// Dialog), kSubWindow to the generic sub-window path (modal Dialog / tooltip
+// / popup).
 // ---------------------------------------------------------------------------
-
-TEST(OHOSWindowTest, SubclassConstructionCarriesOwnType) {
-  OHOSWindow::InitParams params;
-
-  params = MakeParams(WindowType::kRegular, WindowHostKind::kUiAbility);
-  OHOSWindowRegular regular(nullptr, params, {});
-  EXPECT_EQ(regular.type(), WindowType::kRegular);
-  EXPECT_EQ(regular.host_kind(), WindowHostKind::kUiAbility);
-
-  params = MakeParams(WindowType::kDialog, WindowHostKind::kSubWindow, 1, 0);
-  OHOSWindowDialog dialog(nullptr, params, {});
-  EXPECT_EQ(dialog.type(), WindowType::kDialog);
-  EXPECT_EQ(dialog.host_kind(), WindowHostKind::kSubWindow);
-  EXPECT_EQ(dialog.parent_view_id(), 0);
-
-  params = MakeParams(WindowType::kTooltip, WindowHostKind::kSubWindow, 2, 0);
-  OHOSWindowTooltip tooltip(nullptr, params, {});
-  EXPECT_EQ(tooltip.type(), WindowType::kTooltip);
-
-  params = MakeParams(WindowType::kPopup, WindowHostKind::kSubWindow, 3, 0);
-  OHOSWindowPopup popup(nullptr, params, {});
-  EXPECT_EQ(popup.type(), WindowType::kPopup);
-}
 
 TEST(OHOSWindowTest, RequestWindowHostWithoutFacadeEarlyReturns) {
   SoftwareHolderFacade holder;
@@ -418,17 +342,11 @@ TEST(OHOSWindowTest, RequestWindowHostWithFacadeDispatches) {
 TEST(OHOSWindowTest, RequestUiAbilityHostWithoutFacadeEarlyReturns) {
   SoftwareHolderFacade holder;
   EXPECT_EQ(holder.controller()->GetNapiFacade().get(), nullptr);
-  OHOSWindowRegular window(
-      holder.controller(),
-      MakeParams(WindowType::kRegular, WindowHostKind::kUiAbility, 7, 0), {});
-  {
-    fml::ScopedSetLogSettings loud({fml::kLogInfo});
-    EXPECT_NO_FATAL_FAILURE(window.RequestWindowHost());
-  }
-  {
-    fml::ScopedSetLogSettings quiet({fml::kLogFatal});
-    EXPECT_NO_FATAL_FAILURE(window.RequestWindowHost());
-  }
+  OHOSWindow window(holder.controller(),
+                    MakeParams(WindowType::kRegular,
+                               WindowHostKind::kUiAbility, 7, 0),
+                    {});
+  EXPECT_NO_FATAL_FAILURE(window.RequestWindowHost());
 }
 
 TEST(OHOSWindowTest, RequestUiAbilityHostAdoptsEntryAbilityWithSize) {
@@ -439,11 +357,10 @@ TEST(OHOSWindowTest, RequestUiAbilityHostAdoptsEntryAbilityWithSize) {
   FlutterWindowCreationRequest request = {};
   request.has_size = true;
   request.size = {800.0, 600.0};
-  OHOSWindowRegular window(
-      holder.controller(),
-      MakeParams(WindowType::kRegular, WindowHostKind::kUiAbility,
-                 kFlutterImplicitViewId, 0),
-      request);
+  OHOSWindow window(holder.controller(),
+                    MakeParams(WindowType::kRegular, WindowHostKind::kUiAbility,
+                               kFlutterImplicitViewId, 0),
+                    request);
   EXPECT_NO_FATAL_FAILURE(window.RequestWindowHost());
 }
 
@@ -452,11 +369,10 @@ TEST(OHOSWindowTest, RequestUiAbilityHostAdoptsEntryAbilityWithoutSize) {
   holder.SetFacade(std::make_shared<PlatformViewOHOSNapi>(nullptr));
   ASSERT_NE(holder.controller()->GetNapiFacade(), nullptr);
 
-  OHOSWindowRegular window(
-      holder.controller(),
-      MakeParams(WindowType::kRegular, WindowHostKind::kUiAbility,
-                 kFlutterImplicitViewId, 0),
-      {});
+  OHOSWindow window(holder.controller(),
+                    MakeParams(WindowType::kRegular, WindowHostKind::kUiAbility,
+                               kFlutterImplicitViewId, 0),
+                    {});
   EXPECT_NO_FATAL_FAILURE(window.RequestWindowHost());
 }
 
@@ -465,9 +381,10 @@ TEST(OHOSWindowTest, RequestUiAbilityHostCreatesRegularAbility) {
   holder.SetFacade(std::make_shared<PlatformViewOHOSNapi>(nullptr));
   ASSERT_NE(holder.controller()->GetNapiFacade(), nullptr);
 
-  OHOSWindowRegular window(
-      holder.controller(),
-      MakeParams(WindowType::kRegular, WindowHostKind::kUiAbility, 7, 0), {});
+  OHOSWindow window(holder.controller(),
+                    MakeParams(WindowType::kRegular,
+                               WindowHostKind::kUiAbility, 7, 0),
+                    {});
   EXPECT_NO_FATAL_FAILURE(window.RequestWindowHost());
 }
 

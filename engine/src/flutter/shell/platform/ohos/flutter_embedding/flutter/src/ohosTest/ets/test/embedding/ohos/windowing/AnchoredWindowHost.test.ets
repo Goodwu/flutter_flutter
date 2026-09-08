@@ -128,10 +128,15 @@ class GatedResizeWindow extends FakeWindow {
       return Promise.reject(new Error('resize-rejected'));
     }
     if (this.gateOpen) {
+      this.reflectOuterSize(w, h);
       return Promise.resolve();
     }
     return new Promise<void>((resolve: Function) => {
-      this.waiters.push(resolve);
+      this.waiters.push(() => {
+        // The size lands only when the parked resize settles.
+        this.reflectOuterSize(w, h);
+        resolve();
+      });
     });
   }
 
@@ -375,6 +380,34 @@ export default function anchoredWindowHostTest() {
         p.mainWin.props = new DrThrowingProperties() as ESObject as FakeWindowProperties;
         await p.host.positionAtForTest(100, 80);
         expect(p.mainWin.moveCalls.length).assertEqual(0);
+        done();
+      });
+
+    it('retries the resize on the next placement after a rejection', Level.LEVEL0,
+      async (done: Function) => {
+        // A rejected resize must NOT commit the appliedPhysW/H baseline —
+        // committing it would dedupe away every later placement of the same
+        // size, sticking the anchored window at its birth size forever.
+        const p = makePositioned(17, 9);
+        const sub = new FakeWindow();
+        // Birth props 600x500 ≠ placement 1000x800 (@dpr 2) → resize due.
+        sub.props.setWindowRect(0, 0, 600, 500);
+        sub.rejectResize = true;
+        p.host.subWindow = sub as ESObject as window.Window;
+        p.host.workOverride = [0, 0, 2400, 1200];
+        p.host.simulatePlacement = [100, 100, 500, 400];
+        await p.host.positionAtForTest(500, 400);
+        await sleep(10);
+        // First pass: resize attempted and rejected (logged by the funnel,
+        // rethrown to positionAt) — the move on this pass is skipped too.
+        expect(sub.resizeCalls.length).assertEqual(1);
+        expect(sub.moveCalls.length).assertEqual(0);
+        // Same size again: the baseline was never committed, so the resize
+        // is re-issued instead of being skipped as "already applied".
+        await p.host.positionAtForTest(500, 400);
+        await sleep(10);
+        expect(sub.resizeCalls.length).assertEqual(2);
+        expect(sub.moveCalls.length).assertEqual(0);
         done();
       });
   });

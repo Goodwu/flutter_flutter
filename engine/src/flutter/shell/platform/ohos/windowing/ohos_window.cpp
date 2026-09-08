@@ -24,25 +24,30 @@ OHOSWindow::OHOSWindow(OHOSWindowController* controller,
       host_kind_(params.host_kind),
       view_id_(params.view_id),
       parent_view_id_(params.parent_view_id),
-      handle_(params.host_handle),
-      adopt_entry_ability_(params.adopt_entry_ability),
-      request_(request) {}
+      request_(request)
+{
+  title_ = request.title != nullptr ? request.title : "";
+  request_.title = nullptr;
+}
 
 OHOSWindow::~OHOSWindow() = default;
 
-void OHOSWindow::FireShouldClose() {
+void OHOSWindow::FireShouldClose()
+{
   if (request_.on_should_close) {
     request_.on_should_close();
   }
 }
 
-void OHOSWindow::FireWillClose() {
+void OHOSWindow::FireWillClose()
+{
   if (request_.on_will_close) {
     request_.on_will_close();
   }
 }
 
-void OHOSWindow::FireNotifyListeners() {
+void OHOSWindow::FireNotifyListeners()
+{
   if (request_.notify_listeners) {
     request_.notify_listeners();
   }
@@ -51,7 +56,8 @@ void OHOSWindow::FireNotifyListeners() {
 bool OHOSWindow::ComputeWindowPosition(const FlutterWindowSize& child_size,
                                        const FlutterWindowRect& parent_rect,
                                        const FlutterWindowRect& work_area,
-                                       FlutterWindowRect* out) {
+                                       FlutterWindowRect* out)
+{
   if (out == nullptr) {
     return false;
   }
@@ -73,25 +79,12 @@ bool OHOSWindow::ComputeWindowPosition(const FlutterWindowSize& child_size,
   return true;
 }
 
-FlutterWindowConstraints OHOSWindow::GetConstraints() const {
-  if (request_.has_constraints) {
-    return request_.constraints;
+void OHOSWindow::RequestWindowHost()
+{
+  if (host_kind_ == WindowHostKind::kUiAbility) {
+    RequestUiAbilityHost();
+    return;
   }
-  // No explicit constraints: open range (max 0 == unbounded); the Dart side
-  // clamps to the work area. LOGICAL px.
-  return FlutterWindowConstraints{0.0, 0.0, 0.0, 0.0};
-}
-
-void OHOSWindow::SetRuntimeConstraints(
-    const FlutterWindowConstraints& constraints) {
-  request_.has_constraints = true;
-  request_.constraints = constraints;
-}
-
-void OHOSWindow::RequestWindowHost() {
-  // Generic SubWindow host (parented Dialog / tooltip / popup). The forwarded
-  // size + archetype let the ETS host size it (not full-display), apply modal
-  // semantics, and make tooltips non-focusable.
   auto facade = controller_->GetNapiFacade();
   if (!facade) {
     FML_LOG(ERROR) << "RequestWindowHost: no napi facade for view " << view_id_;
@@ -99,32 +92,29 @@ void OHOSWindow::RequestWindowHost() {
   }
   double width = 0.0;
   double height = 0.0;
-  GetSubWindowBirthSize(&width, &height);
-  facade->RequestWindowHost(view_id_, parent_view_id_, width, height,
+  GetSubWindowBirthSize(width, height);
+  facade->RequestWindowHost(view_id_, parent_view_id_, width, height, title_,
                             static_cast<int32_t>(type_));
 }
 
-void OHOSWindow::GetSubWindowBirthSize(double* width, double* height) const {
-  *width = 0.0;
-  *height = 0.0;
+void OHOSWindow::GetSubWindowBirthSize(double& width, double& height) const
+{
+  width = 0;
+  height = 0;
   if (request_.has_size) {
-    *width = request_.size.width;
-    *height = request_.size.height;
+    width = request_.size.width;
+    height = request_.size.height;
     return;
   }
   if (!request_.has_constraints) {
     return;
   }
-  // Birth sizing: seed with the min constraint (born small, not
-  // full-display). Safe with square corners only — the ETS host forces the
-  // WM's 16vp corner radius to 0.
-  *width = request_.constraints.min_width;
-  *height = request_.constraints.min_height;
+  width = request_.constraints.min_width;
+  height = request_.constraints.min_height;
 }
 
-void OHOSWindow::RequestUiAbilityHost() const {
-  // Async startAbility path: RegularWindowAbility binds the view-scoped
-  // FlutterView, then the surface callback routes to NotifyCreateForView.
+void OHOSWindow::RequestUiAbilityHost() const
+{
   auto facade = controller_->GetNapiFacade();
   if (!facade) {
     FML_LOG(ERROR) << "RequestWindowHost: no napi facade for view " << view_id_;
@@ -136,16 +126,12 @@ void OHOSWindow::RequestUiAbilityHost() const {
     width = request_.size.width;
     height = request_.size.height;
   }
-  // View 0 = adopted main window: reuses the EntryAbility's pre-created
-  // window/surface (ETS sizes/titles it) instead of spawning a sibling;
-  // every other kUiAbility view spawns its own RegularWindowAbility.
   if (view_id_ == static_cast<int64_t>(kFlutterImplicitViewId)) {
-    facade->BindEntryAbilityToView(view_id_, width, height, /*title=*/"");
+    facade->BindEntryAbilityToView(view_id_, width, height, title_);
     return;
   }
   facade->CreateRegularAbility(view_id_, /*request_id=*/view_id_, width, height,
-                               /*title=*/"",
-                               static_cast<int32_t>(type_));
+                               title_, static_cast<int32_t>(type_));
 }
 
 }  // namespace flutter

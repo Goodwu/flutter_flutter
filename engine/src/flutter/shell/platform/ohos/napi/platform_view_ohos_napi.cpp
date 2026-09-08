@@ -415,33 +415,51 @@ void PlatformViewOHOSNapi::RequestWindowHost(int64_t view_id,
                                              int64_t parent_view_id,
                                              double width,
                                              double height,
+                                             const std::string& title,
                                              int32_t archetype) {
   napi_handle_scope scope;
   napi_open_handle_scope(env_, &scope);
-  napi_value args[5];
+  napi_value args[6];
   napi_status status;
   status = napi_create_int64(env_, view_id, &args[0]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_create_int64(env_, parent_view_id, &args[1]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_int64 parent_view_id fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_create_double(env_, width, &args[2]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_double width fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_create_double(env_, height, &args[3]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_double height fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
-  status = napi_create_int32(env_, archetype, &args[4]);
+  status =
+      napi_create_string_utf8(env_, title.c_str(), title.length(), &args[4]);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_string_utf8 title fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
+  }
+  status = napi_create_int32(env_, archetype, &args[5]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_int32 archetype fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = fml::napi::InvokeJsMethod(env_, ref_napi_obj_, "requestWindowHost",
-                                     5, args);
+                                     6, args);
   if (status != napi_ok) {
     FML_LOG(ERROR) << "InvokeJsMethod requestWindowHost fail ";
   }
@@ -461,27 +479,39 @@ void PlatformViewOHOSNapi::CreateRegularAbility(int64_t view_id,
   status = napi_create_int64(env_, view_id, &args[0]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_create_int64(env_, request_id, &args[1]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_int64 request_id fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_create_double(env_, width, &args[2]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_double width fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_create_double(env_, height, &args[3]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_double height fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status =
       napi_create_string_utf8(env_, title.c_str(), title.length(), &args[4]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_string_utf8 title fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_create_int32(env_, archetype, &args[5]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_int32 archetype fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = fml::napi::InvokeJsMethod(env_, ref_napi_obj_,
                                      "createRegularAbility", 6, args);
@@ -502,19 +532,27 @@ void PlatformViewOHOSNapi::BindEntryAbilityToView(int64_t view_id,
   status = napi_create_int64(env_, view_id, &args[0]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_create_double(env_, width, &args[1]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_double width fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_create_double(env_, height, &args[2]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_double height fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status =
       napi_create_string_utf8(env_, title.c_str(), title.length(), &args[3]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_string_utf8 title fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = fml::napi::InvokeJsMethod(env_, ref_napi_obj_,
                                      "bindEntryAbilityToView", 4, args);
@@ -532,6 +570,8 @@ void PlatformViewOHOSNapi::DestroyWindowHost(int64_t view_id) {
   status = napi_create_int64(env_, view_id, &args[0]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = fml::napi::InvokeJsMethod(env_, ref_napi_obj_, "destroyWindowHost",
                                      1, args);
@@ -562,14 +602,20 @@ void PlatformViewOHOSNapi::SetWindowSize(int64_t view_id,
   status = napi_create_int64(env_, view_id, &args[0]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_create_double(env_, width, &args[1]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_double width fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_create_double(env_, height, &args[2]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_double height fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status =
       fml::napi::InvokeJsMethod(env_, ref_napi_obj_, "setWindowSize", 3, args);
@@ -588,11 +634,15 @@ void PlatformViewOHOSNapi::SetWindowTitle(int64_t view_id,
   status = napi_create_int64(env_, view_id, &args[0]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status =
       napi_create_string_utf8(env_, title.c_str(), title.length(), &args[1]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_string_utf8 title fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status =
       fml::napi::InvokeJsMethod(env_, ref_napi_obj_, "setWindowTitle", 2, args);
@@ -610,10 +660,14 @@ void PlatformViewOHOSNapi::SetWindowMaximized(int64_t view_id, bool maximized) {
   status = napi_create_int64(env_, view_id, &args[0]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_get_boolean(env_, maximized, &args[1]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_get_boolean maximized fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = fml::napi::InvokeJsMethod(env_, ref_napi_obj_, "setWindowMaximized",
                                      2, args);
@@ -631,10 +685,14 @@ void PlatformViewOHOSNapi::SetWindowMinimized(int64_t view_id, bool minimized) {
   status = napi_create_int64(env_, view_id, &args[0]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_get_boolean(env_, minimized, &args[1]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_get_boolean minimized fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = fml::napi::InvokeJsMethod(env_, ref_napi_obj_, "setWindowMinimized",
                                      2, args);
@@ -653,10 +711,14 @@ void PlatformViewOHOSNapi::SetWindowFullscreen(int64_t view_id,
   status = napi_create_int64(env_, view_id, &args[0]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_get_boolean(env_, fullscreen, &args[1]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_get_boolean fullscreen fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = fml::napi::InvokeJsMethod(env_, ref_napi_obj_, "setWindowFullscreen",
                                      2, args);
@@ -678,22 +740,32 @@ void PlatformViewOHOSNapi::SetWindowConstraints(int64_t view_id,
   status = napi_create_int64(env_, view_id, &args[0]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_create_double(env_, min_width, &args[1]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_double min_width fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_create_double(env_, max_width, &args[2]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_double max_width fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_create_double(env_, min_height, &args[3]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_double min_height fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = napi_create_double(env_, max_height, &args[4]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_double max_height fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status = fml::napi::InvokeJsMethod(env_, ref_napi_obj_,
                                      "setWindowConstraints", 5, args);
@@ -711,6 +783,8 @@ void PlatformViewOHOSNapi::ActivateWindow(int64_t view_id) {
   status = napi_create_int64(env_, view_id, &args[0]);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
   }
   status =
       fml::napi::InvokeJsMethod(env_, ref_napi_obj_, "activateWindow", 1, args);
@@ -3302,10 +3376,12 @@ napi_value PlatformViewOHOSNapi::nativeComputeWindowPosition(
   napi_status invoke =
       fml::napi::InvokeJsMethod(env, out_ref, "set", 4, params);
   napi_delete_reference(env, out_ref);
+  napi_close_handle_scope(env, scope);
   if (invoke == napi_ok) {
+    // Created after the close so it lives in the outer (callback) scope —
+    // handles made inside `scope` die with it and would dangle on return.
     napi_create_int32(env, 0, &result);  // success
   }
-  napi_close_handle_scope(env, scope);
   return result;
 }
 

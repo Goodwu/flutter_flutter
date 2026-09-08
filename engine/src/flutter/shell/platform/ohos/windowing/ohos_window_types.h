@@ -53,7 +53,12 @@ struct FlutterWindowCreationRequest {
       const FlutterWindowSize& child_size,
       const FlutterWindowRect& parent_rect,
       const FlutterWindowRect& output_rect);
+
+  const char* title;
 };
+
+static_assert(sizeof(FlutterWindowCreationRequest) == 120,
+              " Dart FFI struct in _window_ohos.dart is out of sync");
 
 // The kind of OHOS host window: kUiAbility (task-center card; Regular and
 // *modeless* dialogs) vs kSubWindow (windowStage.createSubWindow; modal

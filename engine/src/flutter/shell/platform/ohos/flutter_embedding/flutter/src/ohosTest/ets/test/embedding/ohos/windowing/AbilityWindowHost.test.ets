@@ -36,17 +36,12 @@ class TestAbilityHost extends AbilityWindowHost {
   }
 }
 
-/** resize() throws synchronously — exercises the attachAdopted catch. */
+/** resize() throws synchronously — exercises the attachAdopted catch.
+ * Records the attempt first so the call is still observable. */
 class ThrowingResizeWindow extends FakeWindow {
   resize(w: number, h: number): Promise<void> {
+    this.resizeCalls.push([w, h]);
     throw new Error('resize-throws');
-  }
-}
-
-/** setWindowTitle() throws synchronously — exercises the attachAdopted catch. */
-class ThrowingTitleWindow extends FakeWindow {
-  setWindowTitle(title: string): Promise<void> {
-    throw new Error('title-throws');
   }
 }
 
@@ -149,15 +144,43 @@ export default function abilityWindowHostTest() {
       host.attach();
     });
 
-    it('applies preferred size and title to the main window', Level.LEVEL0, () => {
+    it('applies preferred size at attach; birth title NOT pushed (deferred)', Level.LEVEL0, () => {
       const a = makeAdoptCtx();
       const host: TestAbilityHost = new TestAbilityHost(a.ctx, 0, AbilityHostMode.ADOPTED, 1, 200, 100, 'mywin');
       host.attach();
       expect(a.mainWin.resizeCalls.length).assertEqual(1);
       expect(a.mainWin.resizeCalls[0][0]).assertEqual(400);
       expect(a.mainWin.resizeCalls[0][1]).assertEqual(200);
-      expect(a.mainWin.titles.length).assertEqual(1);
-      expect(a.mainWin.titles[0]).assertEqual('mywin');
+      // Main-window title setting is deferred (never took effect on device):
+      // the birth title stays stored on the host, nothing reaches @ohos.window.
+      expect(a.mainWin.titles.length).assertEqual(0);
+      // undefined runtime push no-ops.
+      host.setWindowTitle();
+      expect(a.mainWin.titles.length).assertEqual(0);
+    });
+
+    it('compensates the decoration inset on the adopted resize (content-size semantics)',
+      Level.LEVEL0, () => {
+        const a = makeAdoptCtx();
+        a.mainWin.props.setDecorInsets(0, 74); // title bar eats 74 physical px
+        const host: TestAbilityHost = new TestAbilityHost(a.ctx, 0, AbilityHostMode.ADOPTED, 1, 200, 100, 'mywin');
+        host.attach();
+        // phys 400x200 + decor 0x74 → outer 400x274 → drawable content 400x200.
+        expect(a.mainWin.resizeCalls.length).assertEqual(1);
+        expect(a.mainWin.resizeCalls[0][0]).assertEqual(400);
+        expect(a.mainWin.resizeCalls[0][1]).assertEqual(274);
+      });
+
+    it('swallows a rejected initial resize', Level.LEVEL0, async (done: Function) => {
+      const a = makeAdoptCtx();
+      a.mainWin.rejectResize = true;
+      const host: TestAbilityHost = new TestAbilityHost(a.ctx, 0, AbilityHostMode.ADOPTED, 1, 200, 100, 'mywin');
+      host.attach();
+      await sleep(50);
+      // The rejection is logged, not rethrown, and no unhandled rejection escapes.
+      expect(a.mainWin.resizeCalls.length).assertEqual(1);
+      expect(a.mainWin.titles.length).assertEqual(0);
+      done();
     });
 
     it('skips resize for zero requested size', Level.LEVEL0, () => {
@@ -165,35 +188,34 @@ export default function abilityWindowHostTest() {
       const host: TestAbilityHost = new TestAbilityHost(a.ctx, 0, AbilityHostMode.ADOPTED, 1, 0, 0, 'mywin');
       host.attach();
       expect(a.mainWin.resizeCalls.length).assertEqual(0);
-      expect(a.mainWin.titles[0]).assertEqual('mywin');
-    });
-
-    it('skips the title when empty', Level.LEVEL0, () => {
-      const a = makeAdoptCtx();
-      const host: TestAbilityHost = new TestAbilityHost(a.ctx, 0, AbilityHostMode.ADOPTED, 1, 200, 100, '');
-      host.attach();
-      expect(a.mainWin.resizeCalls.length).assertEqual(1);
       expect(a.mainWin.titles.length).assertEqual(0);
     });
 
-    it('logs a throwing resize and still sets the title', Level.LEVEL0, () => {
+    it('logs a throwing resize', Level.LEVEL0, () => {
       const a = makeAdoptCtx();
       a.stage.mainWindow = new ThrowingResizeWindow() as ESObject as window.Window;
       const host: TestAbilityHost = new TestAbilityHost(a.ctx, 0, AbilityHostMode.ADOPTED, 1, 200, 100, 'mywin');
       host.attach();
       const mainWin = a.stage.mainWindow as ESObject as ThrowingResizeWindow;
-      expect(mainWin.titles.length).assertEqual(1);
-      expect(mainWin.titles[0]).assertEqual('mywin');
+      expect(mainWin.resizeCalls.length).assertEqual(1);
+      expect(mainWin.titles.length).assertEqual(0);
     });
 
-    it('logs a throwing title set', Level.LEVEL0, () => {
+    it('pushes a runtime title to the adopted main window', Level.LEVEL0, () => {
       const a = makeAdoptCtx();
-      a.stage.mainWindow = new ThrowingTitleWindow() as ESObject as window.Window;
-      const host: TestAbilityHost = new TestAbilityHost(a.ctx, 0, AbilityHostMode.ADOPTED, 1, 200, 100, 'mywin');
-      host.attach();
-      const mainWin = a.stage.mainWindow as ESObject as ThrowingTitleWindow;
-      expect(mainWin.resizeCalls.length).assertEqual(1);
+      const host: TestAbilityHost = new TestAbilityHost(a.ctx, 0, AbilityHostMode.ADOPTED, 1, 0, 0, '');
+      host.setWindowTitle('runtime');
+      expect(a.mainWin.titles.length).assertEqual(1);
+      expect(a.mainWin.titles[0]).assertEqual('runtime');
     });
+
+    it('drops a runtime title when no window resolves (spawn races registration)',
+      Level.LEVEL0, () => {
+        const ctx = new FakeHostContext();
+        const host: TestAbilityHost = new TestAbilityHost(ctx, 5, AbilityHostMode.SPAWNED, 7, 0, 0, '');
+        host.setWindowTitle('runtime');
+        expect(host.resolveWindow()).assertEqual(null);
+      });
   });
 
   describe('AbilityWindowHost.attachSpawned', () => {

@@ -89,17 +89,13 @@ class PlatformViewOHOSNapi {
 
   void OnEndFrameHybrid();
 
-  // Multi-window: ask the ETS host to create/destroy a sub-window for a
-  // non-implicit view. width/height are LOGICAL px.
   void RequestWindowHost(int64_t view_id,
                          int64_t parent_view_id,
                          double width,
                          double height,
+                         const std::string& title,
                          int32_t archetype);
-  // Regular window → real UIAbility host (startAbility-launched, cached
-  // engine); `title` is currently unused on this path. Modeless Dialogs ride
-  // the same spawn path and pass archetype=DIALOG so the spawned ability can
-  // apply dialog-specific chrome (win32 parity: no maximize button).
+
   void CreateRegularAbility(int64_t view_id,
                             int64_t request_id,
                             double width,

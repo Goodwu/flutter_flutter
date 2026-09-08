@@ -324,6 +324,7 @@ class RegularWindowControllerOHOS extends RegularWindowController with _WindowCo
       viewId = _OHOSPlatformInterface.createRegularWindow(
         preferredSize: preferredSize,
         preferredConstraints: preferredConstraints,
+        title: title,
         onShouldClose: osc,
         onWillClose: owc,
         onNotifyListeners: onl,
@@ -335,9 +336,6 @@ class RegularWindowControllerOHOS extends RegularWindowController with _WindowCo
       rethrow;
     }
     rootView = flutterView;
-    if (title != null) {
-      setTitle(title);
-    }
   }
 
   @override
@@ -482,6 +480,7 @@ class DialogWindowControllerOHOS extends DialogWindowController with _WindowCont
         preferredSize: preferredSize,
         preferredConstraints: preferredConstraints,
         parentViewId: parent?.rootView.viewId,
+        title: title,
         onShouldClose: _onShouldClose.nativeFunction,
         onWillClose: _onWillClose.nativeFunction,
         onNotifyListeners: _onNotifyListeners.nativeFunction,
@@ -494,9 +493,6 @@ class DialogWindowControllerOHOS extends DialogWindowController with _WindowCont
       rethrow;
     }
     rootView = flutterView;
-    if (title != null) {
-      setTitle(title);
-    }
   }
 
   @override
@@ -936,12 +932,15 @@ class _OHOSPlatformInterface {
   static int createRegularWindow({
     required Size? preferredSize,
     BoxConstraints? preferredConstraints,
+    String? title,
     required Pointer<NativeFunction<Void Function()>> onShouldClose,
     required Pointer<NativeFunction<Void Function()>> onWillClose,
     required Pointer<NativeFunction<Void Function()>> onNotifyListeners,
   }) {
+    final Pointer<_Utf8> titlePointer = title?.toNativeUtf8() ?? nullptr;
     final Pointer<_WindowCreationRequest> request = _allocator<_WindowCreationRequest>()
       ..ref.parentViewId = 0
+      ..ref.title = titlePointer
       ..ref.onShouldClose = onShouldClose
       ..ref.onWillClose = onWillClose
       ..ref.onNotifyListeners = onNotifyListeners;
@@ -957,6 +956,9 @@ class _OHOSPlatformInterface {
       return viewId;
     } finally {
       _free(request);
+      if (titlePointer != nullptr) {
+        _free(titlePointer);
+      }
     }
   }
 
@@ -970,13 +972,16 @@ class _OHOSPlatformInterface {
     required Size? preferredSize,
     BoxConstraints? preferredConstraints,
     int? parentViewId,
+    String? title,
     required Pointer<NativeFunction<Void Function()>> onShouldClose,
     required Pointer<NativeFunction<Void Function()>> onWillClose,
     required Pointer<NativeFunction<Void Function()>> onNotifyListeners,
   }) {
+    final Pointer<_Utf8> titlePointer = title?.toNativeUtf8() ?? nullptr;
     final Pointer<_WindowCreationRequest> request = _allocator<_WindowCreationRequest>()
       ..ref.hasParent = parentViewId != null
       ..ref.parentViewId = parentViewId ?? 0
+      ..ref.title = titlePointer
       ..ref.onShouldClose = onShouldClose
       ..ref.onWillClose = onWillClose
       ..ref.onNotifyListeners = onNotifyListeners;
@@ -992,6 +997,9 @@ class _OHOSPlatformInterface {
       return viewId;
     } finally {
       _free(request);
+      if (titlePointer != nullptr) {
+        _free(titlePointer);
+      }
     }
   }
 
@@ -1302,6 +1310,8 @@ final class _WindowCreationRequest extends Struct {
     >
   >
   onGetWindowPosition;
+
+  external Pointer<_Utf8> title;
 }
 
 // FFI utilities: libc calloc/free allocator and `_Utf8` string conversion.

@@ -77,7 +77,7 @@ class PlatformViewOHOSNapiTest : public ::testing::Test {
 
 TEST_F(PlatformViewOHOSNapiTest, RequestWindowHostNullEnv) {
   PlatformViewOHOSNapi facade(nullptr);
-  EXPECT_NO_FATAL_FAILURE(facade.RequestWindowHost(9401, 0, 640.0, 480.0, 1));
+  EXPECT_NO_FATAL_FAILURE(facade.RequestWindowHost(9401, 0, 640.0, 480.0, "title", 1));
 }
 
 // createRegularAbility: 6 args — int64 view_id, int64 request_id,
@@ -233,11 +233,10 @@ void InsertNapiWindow(OHOSWindowController* controller,
   params.host_kind = WindowHostKind::kSubWindow;
   params.view_id = view_id;
   params.parent_view_id = 0;
-  params.host_handle = OHOSWindowController::HandleForViewId(view_id);
-  params.adopt_entry_ability = false;
+  void* host_handle = OHOSWindowController::HandleForViewId(view_id);
   std::lock_guard<std::mutex> lock(controller->windows_mutex_);
-  controller->windows_[params.host_handle] =
-      controller->CreateWindowObject(request, params);
+  controller->windows_[host_handle] =
+      std::make_unique<OHOSWindow>(controller, params, request);
 }
 
 FlutterWindowRect g_napi_position_rect{1.0, 2.0, 3.0, 4.0};
@@ -359,7 +358,7 @@ TEST_F(PlatformViewOHOSNapiTest, WindowingCalloutsCompleteMarshaling) {
   PlatformViewOHOSNapi::env_ = FakeNapiEnv();
   PlatformViewOHOSNapi facade(nullptr);
   auto body = [&] {
-    facade.RequestWindowHost(9401, 0, 640.0, 480.0, 1);
+    facade.RequestWindowHost(9401, 0, 640.0, 480.0, "title", 1);
     facade.CreateRegularAbility(9401, 1001, 640.0, 480.0, "title", 0);
     facade.BindEntryAbilityToView(9401, 640.0, 480.0, "title");
     facade.DestroyWindowHost(9401);
@@ -452,7 +451,7 @@ TEST_F(PlatformViewOHOSNapiTest, CalloutsInvokeJsMethodFailureBranches) {
   PlatformViewOHOSNapi::env_ = FakeNapiEnv();
   PlatformViewOHOSNapi facade(nullptr);
   const std::vector<std::function<void()>> callouts = {
-      [&] { facade.RequestWindowHost(1, 0, 1.0, 2.0, 3); },
+      [&] { facade.RequestWindowHost(1, 0, 1.0, 2.0, "t", 3); },
       [&] { facade.CreateRegularAbility(1, 2, 1.0, 2.0, "t", 1); },
       [&] { facade.BindEntryAbilityToView(1, 1.0, 2.0, "t"); },
       [&] { facade.DestroyWindowHost(1); },
@@ -2161,21 +2160,22 @@ TEST_F(PlatformViewOHOSNapiTest, HandleOsWindowClosedUnownedViewId) {
 }
 
 TEST_F(PlatformViewOHOSNapiTest, HandleOsWindowClosedTearsDownSeededWindow) {
+  // Real (software) holder — the teardown path must stay far from a fake
+  // pointer. The default request's callbacks are null, and view 0 takes no
+  // RemoveView, so the close chain only erases the window.
   auto holder = MakeSoftwareHolder();
   OHOSWindowController* controller = holder->GetWindowController();
   ASSERT_NE(controller, nullptr);
-  OHOSWindow::InitParams params{};
-  params.view_id = 0;
-  params.host_handle = reinterpret_cast<void*>(1);
-  controller->windows_.emplace(
-      reinterpret_cast<void*>(1),
-      std::make_unique<OHOSWindow>(controller, params,
-                                   FlutterWindowCreationRequest{}));
-  ASSERT_EQ(controller->windows_.count(reinterpret_cast<void*>(1)), 1u);
+  InsertNapiWindow(controller, 0, FlutterWindowCreationRequest{});
+  void* const handle = OHOSWindowController::HandleForViewId(0);
+  ASSERT_EQ(controller->windows_.count(handle), 1u);
+  // The stub feeds the seeded window's view id: the call routes to
+  // HandleOsWindowClosed, which takes the window out of the map.
+  StubNapiSetInt64Value(0);
   EXPECT_EQ(
       PlatformViewOHOSNapi::nativeHandleOsWindowClosed(FakeNapiEnv(), nullptr),
       nullptr);
-  EXPECT_EQ(controller->windows_.count(reinterpret_cast<void*>(1)), 0u);
+  EXPECT_EQ(controller->windows_.count(handle), 0u);
 }
 
 TEST_F(PlatformViewOHOSNapiTest, NativeDispatchEmptyPlatformMessageFullChain) {
@@ -3260,7 +3260,7 @@ TEST_F(PlatformViewOHOSNapiTest, LogSeverityReplayRemainingEdges) {
     fml::ScopedSetLogSettings quiet({fml::kLogFatal});
     PlatformViewOHOSNapi facade(nullptr);
     const std::vector<std::function<void()>> callouts = {
-        [&] { facade.RequestWindowHost(1, 0, 1.0, 2.0, 3); },
+        [&] { facade.RequestWindowHost(1, 0, 1.0, 2.0, "t", 3); },
         [&] { facade.CreateRegularAbility(1, 2, 1.0, 2.0, "t", 1); },
         [&] { facade.BindEntryAbilityToView(1, 1.0, 2.0, "t"); },
         [&] { facade.DestroyWindowHost(1); },

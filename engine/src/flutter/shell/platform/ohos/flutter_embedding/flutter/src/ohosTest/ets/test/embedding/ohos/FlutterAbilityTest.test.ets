@@ -504,6 +504,57 @@ export default function FlutterAbilityTest() {
       expect(v).assertEqual('cov_grp');
     })
 
+    it('applyWindowTitle pushes the want title to the main window', 0, () => {
+      const ability: Any = new FlutterAbility();
+      ability.launchWant = { parameters: { 'flutter_window_title': 'cov_title' } as Record<string, Object> } as Any;
+      const titles: string[] = [];
+      ability.mainWindow = {
+        setWindowTitle: (t: string): Promise<void> => {
+          titles.push(t);
+          return Promise.resolve();
+        }
+      } as Any;
+      ability.applyWindowTitle();
+      expect(titles.length).assertEqual(1);
+      expect(titles[0]).assertEqual('cov_title');
+    })
+
+    it('applyWindowTitle skips the call when the title is unset', 0, () => {
+      const ability: Any = new FlutterAbility();
+      ability.launchWant = { parameters: {} as Record<string, Object> } as Any;
+      const titles: string[] = [];
+      ability.mainWindow = {
+        setWindowTitle: (t: string): Promise<void> => {
+          titles.push(t);
+          return Promise.resolve();
+        }
+      } as Any;
+      ability.applyWindowTitle();
+      expect(titles.length).assertEqual(0);
+    })
+
+    it('applyWindowTitle skips the call when the main window is missing', 0, () => {
+      const ability: Any = new FlutterAbility();
+      ability.launchWant = { parameters: { 'flutter_window_title': 'cov_title' } as Record<string, Object> } as Any;
+      // No mainWindow set — early return, no crash.
+      ability.applyWindowTitle();
+    })
+
+    it('applyWindowTitle applies to an explicitly passed window (override flow)', 0, () => {
+      const ability: Any = new FlutterAbility();
+      ability.launchWant = { parameters: { 'flutter_window_title': 'cov_title' } as Record<string, Object> } as Any;
+      const titles: string[] = [];
+      const win = {
+        setWindowTitle: (t: string): Promise<void> => {
+          titles.push(t);
+          return Promise.resolve();
+        }
+      } as Any;
+      ability.applyWindowTitle(win);
+      expect(titles.length).assertEqual(1);
+      expect(titles[0]).assertEqual('cov_title');
+    })
+
     it('onNewWant crash-cover', 0, () => {
       const ability: Any = new FlutterAbility();
       // Crash-cover: the delegate chain may throw in the test HAP (hcpp style).

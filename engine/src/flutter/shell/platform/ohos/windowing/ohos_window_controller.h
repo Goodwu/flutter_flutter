@@ -29,7 +29,9 @@ class PlatformViewOHOSNapi;
 
 /// Engine-side bookkeeping for single-engine, multi-view windowing on OHOS:
 /// view-id allocation, the handle -> OHOSWindow map, and the napi/FFI
-/// plumbing; per-window behavior lives in the OHOSWindow hierarchy.
+/// plumbing; per-window state lives in OHOSWindow, whose host request
+/// dispatches on WindowHostKind (the semantic WindowType is forwarded to the
+/// ETS host as the archetype int).
 ///
 /// Window creation registers the view with the engine synchronously on the
 /// FFI/UI thread, so registration completes before the FFI returns; the OS
@@ -180,10 +182,6 @@ class OHOSWindowController {
   // register a view, request the host.
   int64_t CreateWindow(const FlutterWindowCreationRequest& request,
                        WindowType type);
-
-  std::unique_ptr<OHOSWindow> CreateWindowObject(
-      const FlutterWindowCreationRequest& request,
-      const OHOSWindow::InitParams& params);
 
   // Allocates the next non-implicit view id (never collides with implicit 0).
   int64_t AllocateViewId();

@@ -702,11 +702,12 @@ export default class FlutterNapi {
                     parentViewId: number,
                     width: number,
                     height: number,
+                    title: string,
                     archetype: number): void {
     Log.d(TAG, `requestWindowHost viewId=${viewId} parentViewId=${parentViewId}` +
-      ` size=${width}x${height} archetype=${archetype}`);
+      ` size=${width}x${height} title="${title}" archetype=${archetype}`);
     FlutterManager.getInstance().createSubWindow(
-      viewId, parentViewId, width, height, archetype);
+      viewId, parentViewId, width, height, title, archetype);
   }
 
   /** Native entry (InvokeJsMethod "createRegularAbility"): launch a Regular
@@ -735,10 +736,8 @@ export default class FlutterNapi {
                          width: number,
                          height: number,
                          title: string): void {
-    Log.d(TAG, `bindEntryAbilityToView viewId=${viewId}` +
-      ` size=${width}x${height} title="${title}"`);
-    FlutterManager.getInstance().bindEntryAbilityToView(
-      viewId, width, height, title);
+    Log.d(TAG, `bindEntryAbilityToView viewId=${viewId} size=${width}x${height} title="${title}"`);
+    FlutterManager.getInstance().bindEntryAbilityToView(viewId, width, height, title);
   }
 
   /** Native entry (InvokeJsMethod "destroyWindowHost"): tear down the OS
@@ -760,7 +759,7 @@ export default class FlutterNapi {
 
   setWindowTitle(viewId: number, title: string): void {
     Log.d(TAG, `setWindowTitle viewId=${viewId} title="${title}"`);
-    FlutterManager.getInstance().setWindowTitle(viewId, title);
+    FlutterManager.getInstance().setWindowTitle(String(viewId), title);
   }
 
   setWindowMaximized(viewId: number, maximized: boolean): void {
