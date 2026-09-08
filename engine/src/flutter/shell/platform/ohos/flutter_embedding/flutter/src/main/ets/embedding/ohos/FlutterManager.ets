@@ -977,15 +977,15 @@ export default class FlutterManager implements WindowHostContext {
       return;
     }
 
-    // Clear padding if window decoration is visible
+    // Fall back to systemAvoidArea for status bar avoidance when window decoration is visible
     if (mainWindow.getWindowDecorVisible() ) {
-      flutterView.setPaddingTop(0);
+      flutterView.setPaddingTop(undefined);
       return;
     }
-    // Clear padding if title buttons are hidden
+    // Fall back to systemAvoidArea when title buttons are hidden (no decoration to avoid)
     const titleButtonRect = mainWindow.getTitleButtonRect();
     if (!titleButtonRect || titleButtonRect.height <= 0) {
-      flutterView.setPaddingTop(0);
+      flutterView.setPaddingTop(undefined);
       return;
     }
     // Set padding to match title button height
