@@ -8,6 +8,7 @@ import { describe, it, expect, Level, MockKit, when } from '@ohos/hypium';
 import Any from '../../../../../main/ets/plugin/common/Any';
 import JSONMessageCodec from '../../../../../main/ets/plugin/common/JSONMessageCodec';
 import JSONMethodCodec from '../../../../../main/ets/plugin/common/JSONMethodCodec';
+import FlutterException from '../../../../../main/ets/plugin/common/FlutterException';
 import MethodCall from '../../../../../main/ets/plugin/common/MethodCall';
 import StringUtils from '../../../../../main/ets/util/StringUtils';
 
@@ -147,17 +148,18 @@ export default function jsonMethodCodecTest() {
       expect(decoded).assertEqual(99);
     });
 
-    it('throws for an error envelope (length 3)', Level.LEVEL1, () => {
-      // Note: source wraps FlutterException in try/catch and rethrows as
-      // Error('Invalid JSON'), so we just verify some error is thrown.
+    it('throws FlutterException for an error envelope (length 3)', Level.LEVEL1, () => {
       const encoded = codec.encodeErrorEnvelope('CODE', 'message', 'details');
-      let threw = false;
       try {
         codec.decodeEnvelope(encoded);
+        expect(true).assertEqual(false); // unreachable: expected a throw
       } catch (e) {
-        threw = true;
+        expect(e instanceof FlutterException).assertEqual(true);
+        const fe: FlutterException = e as FlutterException;
+        expect(fe.code).assertEqual('CODE');
+        expect(fe.message).assertEqual('message');
+        expect(fe.details).assertEqual('details');
       }
-      expect(threw).assertEqual(true);
     });
 
     it('throws Error for an invalid envelope', Level.LEVEL1, () => {
