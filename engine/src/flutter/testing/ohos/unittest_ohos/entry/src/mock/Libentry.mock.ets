@@ -14,6 +14,9 @@ const NativeMock: Record<string, Object> = {
   'checkBinary': (binaryPath: string) => {
     return { exists: true };
   },
+  'getLiveOutput': () => {
+    return '';
+  },
 };
 
 export default NativeMock;

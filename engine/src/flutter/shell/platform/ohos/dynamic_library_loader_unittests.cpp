@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 #include <cstring>
+#include "flutter/fml/log_settings.h"
 #include "flutter/fml/platform/ohos/dynamic_library_loader.h"
 
 namespace flutter {
@@ -31,6 +32,9 @@ TEST(DynamicLibraryLoaderTest, LoadSystemLibrarySucceeds) {
 TEST(DynamicLibraryLoaderTest, LoadNonexistentLibraryFails) {
   DynamicLibraryLoader loader("libnonexistent_xyz123.so");
   EXPECT_FALSE(loader.IsLoaded());
+  fml::ScopedSetLogSettings quiet({fml::kLogFatal});
+  DynamicLibraryLoader again("libnonexistent_xyz123.so");
+  EXPECT_FALSE(again.IsLoaded());
 }
 
 // GetApiVersion should return a value greater than 0
@@ -59,6 +63,10 @@ TEST(DynamicLibraryLoaderTest, LoadSymbolsReturnsFalseForMissingSymbol) {
   };
   EXPECT_FALSE(loader.LoadSymbols(symbols));
   EXPECT_EQ(dummy_target, nullptr);
+  fml::ScopedSetLogSettings quiet({fml::kLogFatal});
+  dummy_target = nullptr;
+  EXPECT_FALSE(loader.LoadSymbols(symbols));
+  EXPECT_EQ(dummy_target, nullptr);
 }
 
 // LoadSymbols should skip and return false when minApi is higher than current
@@ -70,6 +78,10 @@ TEST(DynamicLibraryLoaderTest, LoadSymbolsSkipsWhenApiTooLow) {
   std::vector<SymbolInfo> symbols = {
       {"dummy_symbol", &dummy_target, 99999},
   };
+  EXPECT_FALSE(loader.LoadSymbols(symbols));
+  EXPECT_EQ(dummy_target, nullptr);
+  fml::ScopedSetLogSettings quiet({fml::kLogFatal});
+  dummy_target = nullptr;
   EXPECT_FALSE(loader.LoadSymbols(symbols));
   EXPECT_EQ(dummy_target, nullptr);
 }
@@ -86,6 +98,10 @@ TEST(DynamicLibraryLoaderTest, LoadSymbolsSucceedsForRealAceNdkSymbol) {
       {kSymbolA, &symbol_a_func, kMinApi},
   };
 
+  EXPECT_TRUE(loader.LoadSymbols(symbols));
+  EXPECT_NE(symbol_a_func, nullptr);
+  fml::ScopedSetLogSettings quiet({fml::kLogFatal});
+  symbol_a_func = nullptr;
   EXPECT_TRUE(loader.LoadSymbols(symbols));
   EXPECT_NE(symbol_a_func, nullptr);
 }

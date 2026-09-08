@@ -16,6 +16,7 @@
 // a real engine — is exercised.
 
 #define private public
+#include "flutter/shell/platform/ohos/napi/platform_view_ohos_napi.h"
 #include "flutter/shell/platform/ohos/ohos_shell_holder.h"
 #undef private
 
@@ -25,7 +26,7 @@
 #include <memory>
 #include <string>
 #include <utility>
-#include "flutter/shell/platform/ohos/napi/platform_view_ohos_napi.h"
+#include "flutter/fml/log_settings.h"
 #include "flutter/shell/platform/ohos/windowing/ohos_window_dialog.h"
 #include "flutter/shell/platform/ohos/windowing/ohos_window_popup.h"
 #include "flutter/shell/platform/ohos/windowing/ohos_window_regular.h"
@@ -75,9 +76,8 @@ void* InsertWindow(OHOSWindowController* controller,
                    WindowHostKind kind,
                    const FlutterWindowCreationRequest& request = {}) {
   void* handle = OHOSWindowController::HandleForViewId(view_id);
-  controller->windows_[handle] =
-      controller->CreateWindowObject(request, MakeWindowParams(
-          type, kind, view_id, request.parent_view_id));
+  controller->windows_[handle] = controller->CreateWindowObject(
+      request, MakeWindowParams(type, kind, view_id, request.parent_view_id));
   return handle;
 }
 
@@ -161,23 +161,23 @@ class OHOSWindowControllerTest : public ::testing::Test {
 
 TEST_F(OHOSWindowControllerTest, ResolveHostKindMapsArchetypes) {
   // Regular always UIAbility.
-  EXPECT_EQ(OHOSWindowController::ResolveHostKind(WindowType::kRegular, false,
-                                                  0),
-            WindowHostKind::kUiAbility);
-  EXPECT_EQ(OHOSWindowController::ResolveHostKind(WindowType::kRegular, true,
-                                                  5),
-            WindowHostKind::kUiAbility);
+  EXPECT_EQ(
+      OHOSWindowController::ResolveHostKind(WindowType::kRegular, false, 0),
+      WindowHostKind::kUiAbility);
+  EXPECT_EQ(
+      OHOSWindowController::ResolveHostKind(WindowType::kRegular, true, 5),
+      WindowHostKind::kUiAbility);
   // Modeless dialog (no parent) = UIAbility; modal (has_parent) = SubWindow.
-  EXPECT_EQ(OHOSWindowController::ResolveHostKind(WindowType::kDialog, false,
-                                                  0),
-            WindowHostKind::kUiAbility);
+  EXPECT_EQ(
+      OHOSWindowController::ResolveHostKind(WindowType::kDialog, false, 0),
+      WindowHostKind::kUiAbility);
   // parent_view_id == 0 is a LEGITIMATE parent (adopted main window).
   EXPECT_EQ(OHOSWindowController::ResolveHostKind(WindowType::kDialog, true, 0),
             WindowHostKind::kSubWindow);
   // Tooltip / Popup always SubWindow.
-  EXPECT_EQ(OHOSWindowController::ResolveHostKind(WindowType::kTooltip, true,
-                                                  5),
-            WindowHostKind::kSubWindow);
+  EXPECT_EQ(
+      OHOSWindowController::ResolveHostKind(WindowType::kTooltip, true, 5),
+      WindowHostKind::kSubWindow);
   EXPECT_EQ(OHOSWindowController::ResolveHostKind(WindowType::kPopup, true, 5),
             WindowHostKind::kSubWindow);
 }
@@ -228,9 +228,9 @@ TEST_F(OHOSWindowControllerTest, ForWindowHandleHitAndMiss) {
   void* handle = controller_->GetHandleForView(0);
   ASSERT_NE(handle, nullptr);
   EXPECT_EQ(OHOSWindowController::ForWindowHandle(handle), controller_);
-  EXPECT_EQ(OHOSWindowController::ForWindowHandle(
-                reinterpret_cast<void*>(0x1234)),
-            nullptr);
+  EXPECT_EQ(
+      OHOSWindowController::ForWindowHandle(reinterpret_cast<void*>(0x1234)),
+      nullptr);
 }
 
 TEST_F(OHOSWindowControllerTest, AllocateViewIdIsMonotonicAndNeverZero) {
@@ -364,8 +364,8 @@ TEST_F(OHOSWindowControllerTest, GetContentSizeFallsBackToRequestSize) {
   EXPECT_EQ(controller_->CreateRegularWindow(request), 0);
 
   // No actual size pushed -> creation request size.
-  FlutterWindowSize size = controller_->GetContentSize(
-      controller_->GetHandleForView(0));
+  FlutterWindowSize size =
+      controller_->GetContentSize(controller_->GetHandleForView(0));
   EXPECT_EQ(size.width, 640.0);
   EXPECT_EQ(size.height, 480.0);
 
@@ -463,8 +463,8 @@ TEST_F(OHOSWindowControllerTest, SetViewActivatedNotifiesOnlyOnChange) {
   g_counters = &counters;
   auto request = MakeRequest();
   request.notify_listeners = OnNotifyListeners;
-  InsertWindow(controller_, 9, WindowType::kRegular,
-               WindowHostKind::kUiAbility, request);
+  InsertWindow(controller_, 9, WindowType::kRegular, WindowHostKind::kUiAbility,
+               request);
 
   // Never pushed -> historical default true.
   EXPECT_TRUE(controller_->GetViewActivated(9));
@@ -504,8 +504,8 @@ TEST_F(OHOSWindowControllerTest, ComputeWindowPositionDelegates) {
   g_positioner = &config;
   auto request = MakeRequest();
   request.on_get_window_position = OnGetWindowPosition;
-  InsertWindow(controller_, 7, WindowType::kTooltip,
-               WindowHostKind::kSubWindow, request);
+  InsertWindow(controller_, 7, WindowType::kTooltip, WindowHostKind::kSubWindow,
+               request);
 
   FlutterWindowRect out{};
   EXPECT_TRUE(controller_->ComputeWindowPosition(
@@ -533,8 +533,8 @@ TEST_F(OHOSWindowControllerTest, HandleOsWindowClosedNonImplicit) {
   auto request = MakeRequest();
   request.on_should_close = OnShouldClose;
   request.on_will_close = OnWillClose;
-  InsertWindow(controller_, 5, WindowType::kTooltip,
-               WindowHostKind::kSubWindow, request);
+  InsertWindow(controller_, 5, WindowType::kTooltip, WindowHostKind::kSubWindow,
+               request);
 
   controller_->HandleOsWindowClosed(5);
   EXPECT_EQ(counters.should_close, 1);
@@ -558,8 +558,7 @@ TEST_F(OHOSWindowControllerTest, HandleOsWindowClosedImplicitSkipsRemoveView) {
 
 TEST_F(OHOSWindowControllerTest, OnPreEngineRestartDropsAllAndResetsAdoption) {
   EXPECT_EQ(controller_->CreateRegularWindow(MakeRequest()), 0);  // view 0
-  InsertWindow(controller_, 5, WindowType::kDialog,
-               WindowHostKind::kSubWindow);
+  InsertWindow(controller_, 5, WindowType::kDialog, WindowHostKind::kSubWindow);
   InsertWindow(controller_, 6, WindowType::kTooltip,
                WindowHostKind::kSubWindow);
   EXPECT_TRUE(controller_->entry_ability_bound_);
@@ -581,10 +580,10 @@ TEST_F(OHOSWindowControllerTest, OnPreEngineRestartDropsAllAndResetsAdoption) {
 // ---------------------------------------------------------------------------
 
 TEST_F(OHOSWindowControllerTest, WindowBaseRequestWindowHostGenericSubWindow) {
-  OHOSWindow base(controller_,
-                  MakeWindowParams(WindowType::kTooltip,
-                                   WindowHostKind::kSubWindow, 5),
-                  MakeRequest());
+  OHOSWindow base(
+      controller_,
+      MakeWindowParams(WindowType::kTooltip, WindowHostKind::kSubWindow, 5),
+      MakeRequest());
   // Facade null -> logged + returned (base generic SubWindow path).
   base.RequestWindowHost();
   SUCCEED();
@@ -592,46 +591,46 @@ TEST_F(OHOSWindowControllerTest, WindowBaseRequestWindowHostGenericSubWindow) {
 
 TEST_F(OHOSWindowControllerTest, WindowRegularRequestWindowHostBothViews) {
   // View 0: BindEntryAbilityToView branch (facade null).
-  OHOSWindowRegular regular0(controller_,
-                              MakeWindowParams(WindowType::kRegular,
-                                               WindowHostKind::kUiAbility, 0),
-                              MakeRequest());
+  OHOSWindowRegular regular0(
+      controller_,
+      MakeWindowParams(WindowType::kRegular, WindowHostKind::kUiAbility, 0),
+      MakeRequest());
   regular0.RequestWindowHost();
   // View 1: CreateRegularAbility branch (facade null).
-  OHOSWindowRegular regular1(controller_,
-                              MakeWindowParams(WindowType::kRegular,
-                                               WindowHostKind::kUiAbility, 1),
-                              MakeRequest());
+  OHOSWindowRegular regular1(
+      controller_,
+      MakeWindowParams(WindowType::kRegular, WindowHostKind::kUiAbility, 1),
+      MakeRequest());
   regular1.RequestWindowHost();
   SUCCEED();
 }
 
 TEST_F(OHOSWindowControllerTest, WindowDialogRequestWindowHostBothKinds) {
   // Modeless (kUiAbility) -> RequestUiAbilityHost (facade null).
-  OHOSWindowDialog modeless(controller_,
-                            MakeWindowParams(WindowType::kDialog,
-                                             WindowHostKind::kUiAbility, 2),
-                            MakeRequest());
+  OHOSWindowDialog modeless(
+      controller_,
+      MakeWindowParams(WindowType::kDialog, WindowHostKind::kUiAbility, 2),
+      MakeRequest());
   modeless.RequestWindowHost();
   // Modal (kSubWindow) -> base generic SubWindow (facade null).
-  OHOSWindowDialog modal(controller_,
-                         MakeWindowParams(WindowType::kDialog,
-                                          WindowHostKind::kSubWindow, 3, 0),
-                         MakeRequest());
+  OHOSWindowDialog modal(
+      controller_,
+      MakeWindowParams(WindowType::kDialog, WindowHostKind::kSubWindow, 3, 0),
+      MakeRequest());
   modal.RequestWindowHost();
   SUCCEED();
 }
 
 TEST_F(OHOSWindowControllerTest, WindowAnchoredRequestWindowHost) {
-  OHOSWindowTooltip tooltip(controller_,
-                            MakeWindowParams(WindowType::kTooltip,
-                                             WindowHostKind::kSubWindow, 4),
-                            MakeRequest());
+  OHOSWindowTooltip tooltip(
+      controller_,
+      MakeWindowParams(WindowType::kTooltip, WindowHostKind::kSubWindow, 4),
+      MakeRequest());
   tooltip.RequestWindowHost();
-  OHOSWindowPopup popup(controller_,
-                        MakeWindowParams(WindowType::kPopup,
-                                         WindowHostKind::kSubWindow, 5),
-                        MakeRequest());
+  OHOSWindowPopup popup(
+      controller_,
+      MakeWindowParams(WindowType::kPopup, WindowHostKind::kSubWindow, 5),
+      MakeRequest());
   popup.RequestWindowHost();
   SUCCEED();
 }
@@ -655,8 +654,8 @@ TEST_F(OHOSWindowControllerTest, FfiCreateRegularWindowFullPath) {
   auto request = MakeRequest();
   request.has_size = true;
   request.size = {640.0, 480.0};
-  int64_t view = InternalFlutter_WindowController_CreateRegularWindow(
-      0, &request);
+  int64_t view =
+      InternalFlutter_WindowController_CreateRegularWindow(0, &request);
   EXPECT_EQ(view, 0);
   void* handle = InternalFlutter_Window_GetHandle(0, 0);
   EXPECT_EQ(handle, OHOSWindowController::HandleForViewId(0));
@@ -675,9 +674,8 @@ TEST_F(OHOSWindowControllerTest, FfiGetContentSize) {
   request.size = {640.0, 480.0};
   EXPECT_EQ(InternalFlutter_WindowController_CreateRegularWindow(0, &request),
             0);
-  FlutterWindowSize size =
-      InternalFlutter_Window_GetContentSize(
-          OHOSWindowController::HandleForViewId(0));
+  FlutterWindowSize size = InternalFlutter_Window_GetContentSize(
+      OHOSWindowController::HandleForViewId(0));
   EXPECT_EQ(size.width, 640.0);
   EXPECT_EQ(size.height, 480.0);
   // Unknown window -> zeros.
@@ -833,6 +831,19 @@ TEST_F(OHOSWindowControllerTest, FfiCreateRejectedWhenAmbiguous) {
             OHOSWindowController::kCreateWindowFailedViewId);
 }
 
+TEST_F(OHOSWindowControllerTest, FfiCreateRejectedWhenAmbiguousQuietLogs) {
+  auto holder2 = std::make_unique<OHOSShellHolder>(
+      MakeTestSettings(), std::make_shared<PlatformViewOHOSNapi>(nullptr),
+      nullptr);
+  holder2->napi_facade_.reset();
+  auto request = MakeRequest();
+  fml::ScopedSetLogSettings quiet({fml::kLogFatal});
+  EXPECT_EQ(InternalFlutter_WindowController_CreateRegularWindow(99, &request),
+            OHOSWindowController::kCreateWindowFailedViewId);
+  EXPECT_EQ(InternalFlutter_WindowController_CreateDialogWindow(99, &request),
+            OHOSWindowController::kCreateWindowFailedViewId);
+}
+
 TEST_F(OHOSWindowControllerTest, FfiSetTitleAndConstraintsRoundTrip) {
   void* handle = InsertWindow(controller_, 5, WindowType::kTooltip,
                               WindowHostKind::kSubWindow);
@@ -891,16 +902,116 @@ TEST_F(OHOSWindowControllerTest, GetTitleTruncationKeepsWholeCodepoints) {
 }
 
 TEST_F(OHOSWindowControllerTest, ControllerStateMutationsNoCrash) {
+  holder_->napi_facade_ = std::make_shared<PlatformViewOHOSNapi>(nullptr);
+  PlatformViewOHOSNapi::env_ = reinterpret_cast<napi_env>(0xF00D);
   void* handle = InsertWindow(controller_, 5, WindowType::kRegular,
                               WindowHostKind::kUiAbility);
   FlutterWindowSize size{100.0, 80.0};
   controller_->SetContentSize(handle, size);
+  controller_->SetConstraints(handle, {1.0, 1.0, 2.0, 2.0});
+  controller_->SetTitle(handle, "ut-title");
   controller_->Activate(handle);
   controller_->SetMaximized(handle, true);
   controller_->SetMinimized(handle, false);
   controller_->SetFullscreen(handle, true);
+  controller_->DestroyWindow(handle);
+  PlatformViewOHOSNapi::env_ = nullptr;
+}
+
+TEST_F(OHOSWindowControllerTest, GetContentSizeWithoutRequestSizeIsZero) {
+  EXPECT_EQ(controller_->CreateRegularWindow(MakeRequest()), 0);
+  FlutterWindowSize size =
+      controller_->GetContentSize(controller_->GetHandleForView(0));
+  EXPECT_EQ(size.width, 0.0);
+  EXPECT_EQ(size.height, 0.0);
+}
+
+TEST_F(OHOSWindowControllerTest, SetContentSizeSkipsWhenFacadeNull) {
+  EXPECT_EQ(controller_->CreateRegularWindow(MakeRequest()), 0);
+  EXPECT_NO_FATAL_FAILURE(controller_->SetContentSize(
+      controller_->GetHandleForView(0), {100.0, 80.0}));
+}
+
+TEST_F(OHOSWindowControllerTest, SetTitleUnknownHandleIsNoOp) {
+  EXPECT_NO_FATAL_FAILURE(controller_->SetTitle(
+      OHOSWindowController::HandleForViewId(999), "orphan"));
+}
+
+TEST_F(OHOSWindowControllerTest, GetTitleCapacityOneWritesEmpty) {
+  void* handle = InsertWindow(controller_, 5, WindowType::kTooltip,
+                              WindowHostKind::kSubWindow);
+  controller_->SetTitle(handle, "ab");
+  char buf[1] = {'x'};
+  controller_->GetTitle(handle, buf, 1);
+  EXPECT_EQ(buf[0], '\0');
+}
+
+TEST_F(OHOSWindowControllerTest, DestroyImplicitWithFacadeCallsExit) {
+  holder_->napi_facade_ = std::make_shared<PlatformViewOHOSNapi>(nullptr);
+  PlatformViewOHOSNapi::env_ = reinterpret_cast<napi_env>(0xF00D);
+  EXPECT_EQ(controller_->CreateRegularWindow(MakeRequest()), 0);
+  void* handle = controller_->GetHandleForView(0);
+  ASSERT_NE(handle, nullptr);
+  EXPECT_NO_FATAL_FAILURE(controller_->DestroyWindow(handle));
+  PlatformViewOHOSNapi::env_ = nullptr;
+}
+
+TEST_F(OHOSWindowControllerTest, OnPreEngineRestartDestroysHostsWhenFacadeSet) {
+  holder_->napi_facade_ = std::make_shared<PlatformViewOHOSNapi>(nullptr);
+  PlatformViewOHOSNapi::env_ = reinterpret_cast<napi_env>(0xF00D);
+  EXPECT_EQ(controller_->CreateRegularWindow(MakeRequest()), 0);
+  InsertWindow(controller_, 5, WindowType::kDialog, WindowHostKind::kSubWindow);
+  EXPECT_NO_FATAL_FAILURE(controller_->OnPreEngineRestart());
+  EXPECT_TRUE(controller_->windows_.empty());
+  PlatformViewOHOSNapi::env_ = nullptr;
+}
+
+TEST_F(OHOSWindowControllerTest, FfiOpsRejectedWhenNoUniqueController) {
+  auto holder2 = std::make_unique<OHOSShellHolder>(
+      MakeTestSettings(), std::make_shared<PlatformViewOHOSNapi>(nullptr),
+      nullptr);
+  holder2->napi_facade_.reset();
+  auto request = MakeRequest();
+  EXPECT_EQ(InternalFlutter_WindowController_CreateDialogWindow(99, &request),
+            OHOSWindowController::kCreateWindowFailedViewId);
+  EXPECT_EQ(InternalFlutter_WindowController_CreateTooltipWindow(99, &request),
+            OHOSWindowController::kCreateWindowFailedViewId);
+  EXPECT_EQ(InternalFlutter_WindowController_CreatePopupWindow(99, &request),
+            OHOSWindowController::kCreateWindowFailedViewId);
+  void* unknown = reinterpret_cast<void*>(0xABCD);
+  InternalFlutter_Window_Destroy(99, unknown);
+  FlutterWindowSize got = InternalFlutter_Window_GetContentSize(unknown);
+  EXPECT_EQ(got.width, 0.0);
+  EXPECT_EQ(got.height, 0.0);
+  FlutterWindowSize size{10.0, 20.0};
+  FlutterWindowConstraints constraints{1.0, 1.0, 2.0, 2.0};
+  InternalFlutter_Window_SetContentSize(unknown, &size);
+  InternalFlutter_Window_SetConstraints(unknown, &constraints);
+  InternalFlutter_Window_SetTitle(unknown, "x");
+  InternalFlutter_Window_Activate(unknown);
+  InternalFlutter_Window_SetMaximized(unknown, true);
+  InternalFlutter_Window_SetMinimized(unknown, false);
+  InternalFlutter_Window_SetFullscreen(unknown, true);
+}
+
+TEST_F(OHOSWindowControllerTest, FfiSetContentSizeWithSizeForwards) {
+  void* handle = InsertWindow(controller_, 5, WindowType::kTooltip,
+                              WindowHostKind::kSubWindow);
+  FlutterWindowSize size{32.0, 48.0};
+  EXPECT_NO_FATAL_FAILURE(InternalFlutter_Window_SetContentSize(handle, &size));
+}
+
+TEST_F(OHOSWindowControllerTest, LogThresholdCoversWarnAndErrorSkip) {
+  {
+    fml::ScopedSetLogSettings quiet({fml::kLogFatal});
+    controller_->DestroyWindow(reinterpret_cast<void*>(0xdead));
+    EXPECT_EQ(controller_->CreateTooltipWindow(MakeRequest()),
+              OHOSWindowController::kCreateWindowFailedViewId);
+    controller_->SetTitle(nullptr, nullptr);
+    EXPECT_EQ(InternalFlutter_WindowController_CreateRegularWindow(0, nullptr),
+              OHOSWindowController::kCreateWindowFailedViewId);
+  }
 }
 
 }  // namespace testing
 }  // namespace flutter
-

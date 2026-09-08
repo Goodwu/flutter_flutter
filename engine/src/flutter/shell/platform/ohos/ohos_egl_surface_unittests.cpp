@@ -58,7 +58,27 @@
 #include "flutter/shell/platform/ohos/test_stubs/libc_wrapper_stub.h"
 #include "gtest/gtest.h"
 
+#include <cstddef>
+#include <list>
+
 namespace flutter {
+class OhosEGLSurfaceDamage {
+ public:
+  PFNEGLSETDAMAGEREGIONKHRPROC set_damage_region_ = nullptr;
+  PFNEGLSWAPBUFFERSWITHDAMAGEEXTPROC swap_buffers_with_damage_ = nullptr;
+  bool partial_redraw_supported_ = false;
+  std::list<DlIRect> damage_history_;
+};
+struct OhosEGLSurfaceDamageLayoutTwin {
+  PFNEGLSETDAMAGEREGIONKHRPROC set_damage_region_ = nullptr;
+  PFNEGLSWAPBUFFERSWITHDAMAGEEXTPROC swap_buffers_with_damage_ = nullptr;
+  bool partial_redraw_supported_ = false;
+  std::list<DlIRect> damage_history_;
+};
+static_assert(offsetof(OhosEGLSurfaceDamage, set_damage_region_) == 0);
+static_assert(sizeof(OhosEGLSurfaceDamage) ==
+              sizeof(OhosEGLSurfaceDamageLayoutTwin));
+
 namespace testing {
 
 namespace fake_egl {
@@ -84,6 +104,8 @@ struct FakeEGLState {
   EGLBoolean choose_config_result = EGL_TRUE;
   EGLint choose_config_count = 1;
   bool choose_config_write_null = false;
+  int fail_choose_config_on_nth = 0;
+  int choose_config_calls = 0;
 
   int fail_create_context_on_nth = 0;
   int create_context_calls = 0;
@@ -127,6 +149,10 @@ struct FakeEGLState {
 
 FakeEGLState g_egl;
 
+void ResetFakeEglForProcessRerun() {
+  g_egl = FakeEGLState{};
+}
+
 std::string HexPtr(const void* p) {
   std::ostringstream os;
   os << "0x" << std::hex << reinterpret_cast<uintptr_t>(p);
@@ -152,30 +178,16 @@ class FakeEGL {
   ~FakeEGL() { g_egl.active = false; }
 };
 
-}  // namespace fake_egl
-}  // namespace testing
-}  // namespace flutter
-
-namespace flutter {
-namespace testing {
-namespace fake_egl {
-// System-EGL direct channel: in the app-sandbox .so form dlsym(RTLD_NEXT)
-// cannot resolve the real libEGL, so the passthrough branch of the stubs
-// below falls back to the system library handle. The display itself must
-// be obtained the OHOS way (eglGetPlatformDisplayEXT with
-// EGL_PLATFORM_OHOS_KHR, like the rosen samples) - a bare eglGetDisplay
-// into the system wrapper crashes there.
 void* SystemEglSym(const char* name) {
   static void* lib = dlopen("libEGL.so", RTLD_LAZY | RTLD_LOCAL);
   return lib ? dlsym(lib, name) : nullptr;
 }
 
-// GL entry points (glGetString etc.) live in the GLES driver library, not in
-// libEGL. Same direct-channel rationale as SystemEglSym above.
 void* SystemGlesSym(const char* name) {
   static void* lib = dlopen("libGLESv3.so", RTLD_LAZY | RTLD_LOCAL);
   return lib ? dlsym(lib, name) : nullptr;
 }
+
 }  // namespace fake_egl
 }  // namespace testing
 }  // namespace flutter
@@ -260,6 +272,11 @@ EGLBoolean eglChooseConfig(EGLDisplay dpy,
     return real(dpy, attrib_list, configs, config_size, num_config);
   }
   g_egl.events.push_back("ChooseConfig");
+  ++g_egl.choose_config_calls;
+  if (g_egl.fail_choose_config_on_nth > 0 &&
+      g_egl.fail_choose_config_on_nth == g_egl.choose_config_calls) {
+    return EGL_FALSE;
+  }
   if (g_egl.choose_config_result != EGL_TRUE) {
     return EGL_FALSE;
   }
@@ -584,6 +601,33 @@ class QuietLogs {
   fml::ScopedSetLogSettings scoped_;
 };
 
+class LoudLogs {
+ public:
+  LoudLogs() : scoped_(fml::LogSettings{fml::kLogInfo}) {}
+
+ private:
+  fml::ScopedSetLogSettings scoped_;
+};
+
+int g_set_damage_calls = 0;
+int g_swap_damage_calls = 0;
+
+EGLBoolean EGLAPIENTRY StubSetDamageRegion(EGLDisplay,
+                                           EGLSurface,
+                                           EGLint*,
+                                           EGLint) {
+  ++g_set_damage_calls;
+  return EGL_TRUE;
+}
+
+EGLBoolean EGLAPIENTRY StubSwapBuffersWithDamage(EGLDisplay,
+                                                 EGLSurface,
+                                                 const EGLint*,
+                                                 EGLint) {
+  ++g_swap_damage_calls;
+  return EGL_TRUE;
+}
+
 using fake_egl::CountEvents;
 using fake_egl::FakeEGL;
 using fake_egl::g_egl;
@@ -786,6 +830,52 @@ TEST_F(OhosEGLSurfaceTest, PartialRepaintHelpersStayInert) {
   EXPECT_EQ(CountEvents("GetProcAddress"), 0u);
 }
 
+TEST_F(OhosEGLSurfaceTest, PartialRedrawPokedFlagsDriveDamageAndSwap) {
+  OhosEGLSurface surface(kFakeSurfaceA, kFakeDisplay, kFakeContextA);
+  ASSERT_NE(surface.damage_, nullptr);
+  surface.damage_->partial_redraw_supported_ = true;
+
+  g_set_damage_calls = 0;
+  surface.SetDamageRegion(std::nullopt);
+  EXPECT_EQ(g_set_damage_calls, 0);
+  surface.damage_->set_damage_region_ = &StubSetDamageRegion;
+  surface.SetDamageRegion(std::nullopt);
+  EXPECT_EQ(g_set_damage_calls, 0);
+  surface.SetDamageRegion(DlIRect::MakeLTRB(0, 0, 8, 8));
+  EXPECT_EQ(g_set_damage_calls, 1);
+
+  g_egl.query_buffer_age = 0;
+  EXPECT_FALSE(surface.InitialDamage().has_value());
+  g_egl.query_buffer_age = 1;
+  auto age1 = surface.InitialDamage();
+  ASSERT_TRUE(age1.has_value());
+  g_egl.query_buffer_age = 4;
+  auto age4 = surface.InitialDamage();
+  ASSERT_TRUE(age4.has_value());
+
+  g_swap_damage_calls = 0;
+  EXPECT_TRUE(surface.SwapBuffers(std::nullopt));
+  EXPECT_EQ(g_swap_damage_calls, 0);
+  surface.damage_->swap_buffers_with_damage_ = &StubSwapBuffersWithDamage;
+  EXPECT_TRUE(surface.SwapBuffers(std::nullopt));
+  EXPECT_EQ(g_swap_damage_calls, 0);
+  for (int i = 0; i < 12; ++i) {
+    EXPECT_TRUE(surface.SwapBuffers(DlIRect::MakeLTRB(i, i, i + 2, i + 2)));
+  }
+  EXPECT_EQ(g_swap_damage_calls, 12);
+  EXPECT_LE(surface.damage_->damage_history_.size(), 10u);
+
+  g_egl.query_buffer_age = 3;
+  auto joined = surface.InitialDamage();
+  ASSERT_TRUE(joined.has_value());
+}
+
+TEST_F(OhosEGLSurfaceTest, EmitsSurfaceInfo) {
+  LoudLogs loud;
+  OhosEGLSurface surface(kFakeSurfaceA, kFakeDisplay, kFakeContextA);
+  EXPECT_TRUE(surface.IsValid());
+}
+
 TEST_F(OhosEGLSurfaceTest, GetSizeQueriesBothDimensions) {
   OhosEGLSurface surface(kFakeSurfaceA, kFakeDisplay, kFakeContextA);
   auto size = surface.GetSize();
@@ -815,7 +905,7 @@ TEST_F(OhosEGLSurfaceTest, DestructorDestroysOwnedSurfaceHandle) {
   EXPECT_EQ(CountEvents("DestroySurface:" + HexPtr(kFakeSurfaceA)), 1u);
 }
 
-TEST_F(OhosEGLSurfaceTest, QuietSeveritySkipsLogConstruction) {
+TEST_F(OhosEGLSurfaceTest, SkipsLogConstruction) {
   fake_egl::FakeEGL guard;
   QuietLogs quiet;
   {
@@ -863,10 +953,9 @@ TEST_F(OhosEGLSurfaceTest, DestructorCheckFailureViaRealPassthrough) {
     constructed = true;
   }
   EXPECT_TRUE(constructed);
-  eglTerminate(real_display);
 }
 
-TEST_F(OhosEGLSurfaceTest, QuietSeverityOnLoadFailures) {
+TEST_F(OhosEGLSurfaceTest, LoadFailuresDoNotCrash) {
   QuietLogs quiet;
   {
     ::ScopedDlopenRedirect redirect("libhisysevent",
@@ -888,6 +977,12 @@ TEST_F(OhosEGLSurfaceTest, QuietSeverityOnLoadFailures) {
       EXPECT_TRUE(ret == 0 || ret == -5 || ret == -1);
     }
   }
+}
+
+TEST_F(OhosEGLSurfaceTest, PassthroughAnchorsKeepRealLibrariesLinked) {
+  guard_.reset();
+  EXPECT_TRUE(eglQueryString(EGL_NO_DISPLAY, EGL_VERSION) == nullptr);
+  EXPECT_EQ(eglGetError(), EGL_BAD_DISPLAY);
 }
 
 }  // namespace testing

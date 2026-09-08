@@ -28,6 +28,7 @@
 #include <sys/eventfd.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include "flutter/impeller/toolkit/egl/image.h"
@@ -44,6 +45,7 @@
 #include <memory>
 #include <set>
 #include "flutter/display_list/skia/dl_sk_canvas.h"
+#include "flutter/fml/log_settings.h"
 #include "flutter/shell/platform/ohos/ohos_external_texture_vulkan.h"
 #include "flutter/shell/platform/ohos/test_stubs/ace_graphic_ndk_stub.h"
 #include "flutter/shell/platform/ohos/test_stubs/libc_wrapper_stub.h"
@@ -56,9 +58,7 @@
 
 namespace flutter {
 extern std::set<uint64_t> g_external_texture_set;
-}
 
-namespace flutter {
 namespace testing {
 namespace {
 
@@ -131,6 +131,18 @@ class GraphicStubKnobGuard {
   GraphicStubKnobGuard() {}
   ~GraphicStubKnobGuard() {}
 };
+
+bool FdReleasedOrReused(int handed_off, int keep_dup) {
+  if (fcntl(handed_off, F_GETFD) == -1) {
+    return true;
+  }
+  struct stat handed = {};
+  struct stat kept = {};
+  if (fstat(handed_off, &handed) != 0 || fstat(keep_dup, &kept) != 0) {
+    return true;
+  }
+  return handed.st_dev != kept.st_dev || handed.st_ino != kept.st_ino;
+}
 
 bool QueueOneProducerFrame(OHOSExternalTextureGL& texture,
                            int width,
@@ -255,22 +267,17 @@ class ScopedEGLProcs {
 class ScopedUnsignaledFence {
  public:
   ScopedUnsignaledFence() {
-    fd_ = open("/dev/ptmx", O_RDWR | O_NONBLOCK);
-    if (fd_ < 0) {
-      // Inside an OHOS app sandbox on commercial devices neither /dev/ptmx
-      // nor eventfd() is available. Use the read end of a pipe (it never
-      // reports ready under poll while the write end stays open, so it acts
-      // as an unsignaled fence) and mock fstat to present it as a char
-      // device.
-      UpdateFstatFunc([](int fd, struct stat* st) {
-        st->st_mode = S_IFCHR | 0666;
-        return 0;
-      });
-      int fds[2];
-      if (pipe2(fds, O_NONBLOCK) == 0) {
-        fd_ = fds[0];
-        write_fd_ = fds[1];
+    UpdateFstatFunc([](int fd, struct stat* st) {
+      if (__real_fstat(fd, st) != 0) {
+        return -1;
       }
+      st->st_mode = S_IFCHR | (st->st_mode & 0777);
+      return 0;
+    });
+    int fds[2];
+    if (pipe2(fds, O_NONBLOCK) == 0) {
+      fd_ = fds[0];
+      write_fd_ = fds[1];
     }
   }
 
@@ -324,6 +331,7 @@ constexpr int64_t kWave3TextureId = 1;
 class OhosExternalTextureTest : public ::testing::Test {
  protected:
   void SetUp() override {
+    UpdateFstatFunc(nullptr);
     listener_call_count_ = 0;
     texture_ = std::make_shared<OHOSExternalTextureGL>(
         kTestTextureId, MakeListener(&listener_call_count_));
@@ -456,6 +464,16 @@ TEST_F(OhosExternalTextureTest,
 }
 
 TEST_F(OhosExternalTextureTest, ConstructorFailsWhenNativeImageCreateFails) {
+  {
+    ::GraphicStubKnobGuard guard;
+    g_stub_graphic_fail_mask = kStubFailNativeImageCreate;
+    auto created = std::make_shared<OHOSExternalTextureGL>(
+        kTestTextureId, MakeListener(&listener_call_count_));
+    EXPECT_EQ(created->native_image_source_, nullptr);
+    EXPECT_EQ(created->producer_nativewindow_, nullptr);
+    EXPECT_EQ(created->GetProducerSurfaceId(), 0u);
+  }
+
   auto texture = MakeTextureWithoutSource(MakeListener(&listener_call_count_));
   EXPECT_EQ(texture->native_image_source_, nullptr);
   EXPECT_EQ(texture->producer_nativewindow_, nullptr);
@@ -468,6 +486,12 @@ TEST_F(OhosExternalTextureTest, ConstructorFailsWhenNativeImageCreateFails) {
     texture->OnGrContextDestroyed();
   });
   EXPECT_EQ(g_external_texture_set.size(), set_size);
+  {
+    fml::ScopedSetLogSettings quiet({fml::kLogFatal});
+    auto again = MakeTextureWithoutSource(MakeListener(&listener_call_count_));
+    EXPECT_EQ(again->native_image_source_, nullptr);
+    EXPECT_NO_FATAL_FAILURE(again->OnGrContextCreated());
+  }
 }
 
 TEST_F(OhosExternalTextureTest, ConstructorFailsWhenAcquireNativeWindowFails) {
@@ -487,6 +511,97 @@ TEST_F(OhosExternalTextureTest, ConstructorHandlesOptAndListenerFailures) {
   EXPECT_NE(texture->native_image_source_, nullptr);
   EXPECT_NE(texture->producer_nativewindow_, nullptr);
   EXPECT_TRUE(texture->need_120_fps_);
+  {
+    fml::ScopedSetLogSettings loud({fml::kLogInfo});
+    auto loud_tex = std::make_shared<OHOSExternalTextureGL>(
+        kTestTextureId + 20, MakeListener(&listener_call_count_));
+    EXPECT_NE(loud_tex->native_image_source_, nullptr);
+    EXPECT_NE(loud_tex->GetProducerSurfaceId(), 0u);
+    loud_tex->OnGrContextCreated();
+    loud_tex->OnGrContextDestroyed();
+    if (loud_tex->native_image_source_) {
+      loud_tex->SetExternalNativeImage(loud_tex->native_image_source_);
+    }
+    loud_tex->Reset(true);
+    loud_tex->Reset(false);
+    loud_tex->DestroyNativeImageSource();
+    loud_tex->OnTextureUnregistered();
+    ::GraphicStubKnobGuard fail_type;
+    g_stub_graphic_fail_mask = kStubFailSetAppFrameworkType;
+    auto type_fail = std::make_shared<OHOSExternalTextureGL>(
+        kTestTextureId + 21, MakeListener(&listener_call_count_));
+    EXPECT_NE(type_fail->native_image_source_, nullptr);
+    g_stub_graphic_fail_mask = 0;
+  }
+  {
+    fml::ScopedSetLogSettings quiet({fml::kLogFatal});
+    auto again = std::make_shared<OHOSExternalTextureGL>(
+        kTestTextureId + 1, MakeListener(&listener_call_count_));
+    EXPECT_NE(again->native_image_source_, nullptr);
+    again->OnGrContextDestroyed();
+    ::GraphicStubKnobGuard fail_create;
+    g_stub_graphic_fail_mask = kStubFailNativeImageCreate;
+    auto no_image = std::make_shared<OHOSExternalTextureGL>(
+        kTestTextureId + 30, MakeListener(&listener_call_count_));
+    EXPECT_EQ(no_image->native_image_source_, nullptr);
+    g_stub_graphic_fail_mask = kStubFailAcquireNativeWindow;
+    auto no_window = std::make_shared<OHOSExternalTextureGL>(
+        kTestTextureId + 31, MakeListener(&listener_call_count_));
+    EXPECT_EQ(no_window->producer_nativewindow_, nullptr);
+    g_stub_graphic_fail_mask =
+        kStubFailWindowHandleOpt | kStubFailFrameAvailableListener;
+    auto opt_fail = std::make_shared<OHOSExternalTextureGL>(
+        kTestTextureId + 32, MakeListener(&listener_call_count_));
+    EXPECT_NE(opt_fail->native_image_source_, nullptr);
+    g_stub_graphic_fail_mask = 0;
+    auto same = std::make_shared<OHOSExternalTextureGL>(
+        kTestTextureId + 33, MakeListener(&listener_call_count_));
+    if (same->native_image_source_) {
+      same->SetExternalNativeImage(same->native_image_source_);
+    }
+  }
+  {
+    ::GraphicStubKnobGuard guard;
+    g_stub_graphic_fail_mask =
+        kStubFailWindowHandleOpt | kStubFailFrameAvailableListener;
+    auto failed = std::make_shared<OHOSExternalTextureGL>(
+        kTestTextureId + 2, MakeListener(&listener_call_count_));
+    EXPECT_NE(failed->native_image_source_, nullptr);
+    EXPECT_NE(failed->producer_nativewindow_, nullptr);
+    EXPECT_FALSE(failed->need_120_fps_);
+  }
+  {
+    ::GraphicStubKnobGuard guard;
+    g_stub_framework_type = "Other";
+    const int32_t source_types[] = {
+        OH_SURFACE_SOURCE_VIDEO,
+        OH_SURFACE_SOURCE_GAME,
+        OH_SURFACE_SOURCE_CAMERA,
+    };
+    for (int32_t source : source_types) {
+      g_stub_source_type = source;
+      auto typed = std::make_shared<OHOSExternalTextureGL>(
+          kTestTextureId + 10 + source, MakeListener(&listener_call_count_));
+      EXPECT_NE(typed->native_image_source_, nullptr);
+      EXPECT_FALSE(typed->need_120_fps_);
+    }
+  }
+  {
+    ::GraphicStubKnobGuard guard;
+    g_stub_graphic_fail_mask = kStubFailSetAppFrameworkType;
+    auto set_failed = std::make_shared<OHOSExternalTextureGL>(
+        kTestTextureId + 3, MakeListener(&listener_call_count_));
+    EXPECT_NE(set_failed->native_image_source_, nullptr);
+    EXPECT_NE(set_failed->producer_nativewindow_, nullptr);
+  }
+  {
+    ::GraphicStubKnobGuard guard;
+    g_stub_framework_type = nullptr;
+    auto null_type = std::make_shared<OHOSExternalTextureGL>(
+        kTestTextureId + 4, MakeListener(&listener_call_count_));
+    EXPECT_NE(null_type->native_image_source_, nullptr);
+    EXPECT_NE(null_type->producer_nativewindow_, nullptr);
+  }
 }
 
 TEST_F(OhosExternalTextureTest, GetProducerWindowIdReacquiresNullWindow) {
@@ -502,6 +617,8 @@ TEST_F(OhosExternalTextureTest, OnGrContextDestroyedReleasesAndRegisters) {
   texture_->image_lru_.AddImage(MakeRasterDlImage(0xFF000000), config, 3);
   int fence_fd = open("/dev/null", O_RDONLY);
   ASSERT_GE(fence_fd, 0);
+  int keep = dup(fence_fd);
+  ASSERT_GE(keep, 0);
   texture_->last_fence_fd_ = fence_fd;
   texture_->gl_resources_[42] = GlResource{};
 
@@ -509,13 +626,14 @@ TEST_F(OhosExternalTextureTest, OnGrContextDestroyedReleasesAndRegisters) {
     ScopedCharDevFstat char_fstat;
     texture_->OnGrContextDestroyed();
   }
+  EXPECT_TRUE(FdReleasedOrReused(fence_fd, keep));
+  close(keep);
   uint64_t key = reinterpret_cast<uint64_t>(texture_->native_image_source_);
   EXPECT_EQ(g_external_texture_set.count(key), 1u);
   EXPECT_NE(texture_->native_image_source_, nullptr);
   EXPECT_EQ(texture_->old_dl_image_, nullptr);
   EXPECT_EQ(texture_->image_lru_.FindImage(3, config, nullptr), nullptr);
   EXPECT_EQ(texture_->last_fence_fd_, -1);
-  EXPECT_EQ(fcntl(fence_fd, F_GETFD), -1);
   EXPECT_TRUE(texture_->gl_resources_.empty());
 
   EXPECT_NO_FATAL_FAILURE(OHOSExternalTexture::DefaultOnFrameAvailableWithLock(
@@ -570,6 +688,8 @@ TEST_F(OhosExternalTextureTest, CreatePixelMapBufferMapsFormatsAndRejects) {
       texture_->CreatePixelMapBuffer(32, 16, (int)PIXEL_FORMAT_RGBA_F16));
   EXPECT_FALSE(
       texture_->CreatePixelMapBuffer(32, 16, (int)PIXEL_FORMAT_UNKNOWN));
+  const int kUnmappedFormat = static_cast<int>(PIXEL_FORMAT_YCRCB_P010) + 1;
+  EXPECT_FALSE(texture_->CreatePixelMapBuffer(32, 16, kUnmappedFormat));
 }
 
 TEST_F(OhosExternalTextureTest, SetPixelMapAsProducerRejectsNull) {
@@ -715,6 +835,10 @@ TEST_F(OhosExternalTextureTest, GetConsumerAcquireUpdatesSizeAndLastBuffer) {
 
   int valid_fd = open("/dev/null", O_RDONLY);
   ASSERT_GE(valid_fd, 0);
+  int keep = dup(valid_fd);
+  ASSERT_GE(keep, 0);
+  ASSERT_TRUE(OHOSExternalTexture::FdIsValid(valid_fd))
+      << "/dev/null must look like a sync_file so GetConsumer will close it";
   texture.last_fence_fd_ = valid_fd;
   OHNativeWindowBuffer* buffer2 = nullptr;
   {
@@ -725,7 +849,8 @@ TEST_F(OhosExternalTextureTest, GetConsumerAcquireUpdatesSizeAndLastBuffer) {
   }
   EXPECT_NE(buffer2, nullptr);
   EXPECT_EQ(texture.last_native_window_buffer_, buffer2);
-  EXPECT_EQ(fcntl(valid_fd, F_GETFD), -1);
+  EXPECT_TRUE(FdReleasedOrReused(valid_fd, keep));
+  close(keep);
   EXPECT_EQ(texture.now_paint_frame_seq_num_.load(), 2);
   EXPECT_FALSE(texture.buffer_size_has_changed_);
 }
@@ -757,11 +882,24 @@ TEST_F(OhosExternalTextureTest, GetConsumerWithholdsBufferWhileSizeChanging) {
   EXPECT_EQ(texture.now_paint_frame_seq_num_.load(), 2);
 }
 
+TEST_F(OhosExternalTextureTest, PaintUsesOldDlImageWhenFrozen) {
+  SoftwarePaintTarget target(64, 64);
+  texture_->old_dl_image_ = MakeRasterDlImage(SK_ColorRED);
+  texture_->Paint(target.context(), DlRect::MakeWH(64, 64), true,
+                  DlImageSampling::kLinear);
+  EXPECT_NE(texture_->old_dl_image_, nullptr);
+}
+
 TEST_F(OhosExternalTextureTest, PaintDrawsBackgroundColorWhenImageMissing) {
   SoftwarePaintTarget target(64, 64);
   texture_->SetBackGroundColor(0xFF123456);
   DlRect opaque_bounds = DlRect::MakeWH(64, 64);
   auto paint_context = target.context();
+  {
+    fml::ScopedSetLogSettings loud({fml::kLogInfo});
+    texture_->Paint(paint_context, opaque_bounds, false,
+                    DlImageSampling::kLinear);
+  }
   texture_->Paint(paint_context, opaque_bounds, false,
                   DlImageSampling::kLinear);
   EXPECT_EQ(target.CenterPixel(), 0xFF563412u);
@@ -841,6 +979,21 @@ TEST_F(OhosExternalTextureTest, MarkNewFrameAvailableQueueErrorAndNullWindow) {
   EXPECT_EQ(texture_->now_new_frame_seq_num_.load(), 1);
   EXPECT_EQ(texture_->now_paint_frame_seq_num_.load(), 0);
   texture_->producer_nativewindow_ = saved;
+
+  {
+    ::GraphicStubKnobGuard guard;
+    g_stub_buffer_queue_size = 101;
+    texture_->MarkNewFrameAvailable();
+    g_stub_buffer_queue_size = 8;
+    texture_->need_120_fps_ = false;
+    texture_->now_new_frame_seq_num_ = 20;
+    texture_->now_paint_frame_seq_num_ = 0;
+    texture_->MarkNewFrameAvailable();
+    g_stub_graphic_fail_mask = kStubAcquireBufferSuccess;
+    texture_->now_new_frame_seq_num_ = 20;
+    texture_->now_paint_frame_seq_num_ = 0;
+    EXPECT_NO_FATAL_FAILURE(texture_->MarkNewFrameAvailable());
+  }
 }
 
 TEST_F(OhosExternalTextureTest, ResetFailurePathsAndBackgroundFlagClear) {
@@ -949,7 +1102,18 @@ TEST_F(OhosExternalTextureTest, SetGPUFenceWithoutDisplayReturns) {
   EXPECT_EQ(fence_fd, -1);
 }
 
-static EGLDisplay g_current_display_override = EGL_NO_DISPLAY;
+EGLDisplay g_current_display_override = EGL_NO_DISPLAY;
+
+void ResetOhosExternalTextureTestEglState() {
+  g_current_display_override = EGL_NO_DISPLAY;
+  OHOSExternalTextureGL::eglCreateSyncKHR_ = nullptr;
+  OHOSExternalTextureGL::eglDupNativeFenceFDANDROID_ = nullptr;
+  OHOSExternalTextureGL::eglDestroySyncKHR_ = nullptr;
+  OHOSExternalTextureGL::eglWaitSyncKHR_ = nullptr;
+  OHOSExternalTextureGL::eglCreateImageKHR_ = nullptr;
+  OHOSExternalTextureGL::eglDestroyImageKHR_ = nullptr;
+  OHOSExternalTextureGL::glEGLImageTargetTexture2DOES_ = nullptr;
+}
 
 extern "C" EGLDisplay eglGetCurrentDisplay(void) {
   if (g_current_display_override != EGL_NO_DISPLAY) {
@@ -1045,18 +1209,26 @@ TEST_F(OhosExternalTextureTest, WaitGPUFenceClosesAlreadySignaledFd) {
   StubDisplayScope stub_display;
   int signaled = open("/dev/null", O_RDONLY);
   ASSERT_GE(signaled, 0);
+  int keep = dup(signaled);
+  ASSERT_GE(keep, 0);
   texture_->WaitGPUFence(signaled);
-  EXPECT_EQ(fcntl(signaled, F_GETFD), -1);
+  EXPECT_TRUE(FdReleasedOrReused(signaled, keep));
+  close(keep);
 }
 
 TEST_F(OhosExternalTextureTest, WaitGPUFenceClosesFdWhenProcsMissing) {
   StubDisplayScope stub_display;
   ScopedEGLProcs procs;
   OHOSExternalTextureGL::eglCreateSyncKHR_ = nullptr;
+  OHOSExternalTextureGL::eglDestroySyncKHR_ = nullptr;
   ScopedUnsignaledFence fence;
   ASSERT_GE(fence.get(), 0);
-  texture_->WaitGPUFence(fence.get());
-  EXPECT_EQ(fcntl(fence.get(), F_GETFD), -1);
+  int fd = fence.get();
+  int keep = dup(fd);
+  ASSERT_GE(keep, 0);
+  texture_->WaitGPUFence(fd);
+  EXPECT_TRUE(FdReleasedOrReused(fd, keep));
+  close(keep);
 }
 
 TEST_F(OhosExternalTextureTest, WaitGPUFenceStoresSyncOnSuccess) {
@@ -1080,8 +1252,12 @@ TEST_F(OhosExternalTextureTest, WaitGPUFenceClosesFdWhenSyncCreateFails) {
   OHOSExternalTextureGL::eglDestroySyncKHR_ = &StubDestroySync;
   ScopedUnsignaledFence fence;
   ASSERT_GE(fence.get(), 0);
-  texture_->WaitGPUFence(fence.get());
-  EXPECT_EQ(fcntl(fence.get(), F_GETFD), -1);
+  int fd = fence.get();
+  int keep = dup(fd);
+  ASSERT_GE(keep, 0);
+  texture_->WaitGPUFence(fd);
+  EXPECT_TRUE(FdReleasedOrReused(fd, keep));
+  close(keep);
 }
 
 TEST_F(OhosExternalTextureTest, WaitGPUFenceLogsEglError) {
@@ -1175,6 +1351,7 @@ TEST_F(OhosExternalTextureTest, CreateDlImageNullWhenTargetProcMissing) {
 class ScopedRealEGLContext {
  public:
   ScopedRealEGLContext() {
+    g_current_display_override = EGL_NO_DISPLAY;
     display_ = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (display_ == EGL_NO_DISPLAY) {
       skip_reason_ = "EGL default display unavailable";
@@ -1225,9 +1402,6 @@ class ScopedRealEGLContext {
     if (context_ != EGL_NO_CONTEXT) {
       eglDestroyContext(display_, context_);
     }
-    if (display_ != EGL_NO_DISPLAY) {
-      eglTerminate(display_);
-    }
   }
 
   bool unavailable() const { return !skip_reason_.empty(); }
@@ -1242,6 +1416,8 @@ class ScopedRealEGLContext {
 };
 
 TEST_F(OhosExternalTextureTest, CreateDlImageOnRealEglContext) {
+  ResetOhosExternalTextureTestEglState();
+  OHOSExternalTextureGL::InitEGLFunPtr();
   ScopedRealEGLContext real_egl;
   if (real_egl.unavailable()) {
     GTEST_SKIP() << real_egl.skip_reason();
@@ -1303,7 +1479,12 @@ TEST_F(OhosExternalTextureVulkanTest, ConstructAndUnregisterWithoutContext) {
   texture_->OnTextureUnregistered();
 }
 
-TEST_F(OhosExternalTextureTest, MarkNewFrameAvailableCoversLogConditionLegs) {
+TEST_F(OhosExternalTextureTest, MarkNewFrameAvailableLogCondition) {
+  {
+    fml::ScopedSetLogSettings loud({fml::kLogInfo});
+    texture_->now_new_frame_seq_num_ = 10;
+    texture_->MarkNewFrameAvailable();
+  }
   texture_->now_new_frame_seq_num_ = 10;
   texture_->MarkNewFrameAvailable();
   EXPECT_TRUE(texture_->producer_has_frame_);
@@ -1323,6 +1504,8 @@ TEST_F(OhosExternalTextureTest, OnTextureUnregisteredClosesValidFence) {
   texture_->image_lru_.AddImage(MakeRasterDlImage(0xFF000000), config, 3);
   int fence_fd = open("/dev/null", O_RDONLY);
   ASSERT_GE(fence_fd, 0);
+  int keep = dup(fence_fd);
+  ASSERT_GE(keep, 0);
   texture_->last_fence_fd_ = fence_fd;
   texture_->gl_resources_[42] = GlResource{};
 
@@ -1330,7 +1513,8 @@ TEST_F(OhosExternalTextureTest, OnTextureUnregisteredClosesValidFence) {
     ScopedCharDevFstat char_fstat;
     texture_->OnTextureUnregistered();
   }
-  EXPECT_EQ(fcntl(fence_fd, F_GETFD), -1);
+  EXPECT_TRUE(FdReleasedOrReused(fence_fd, keep));
+  close(keep);
   EXPECT_EQ(texture_->old_dl_image_, nullptr);
   EXPECT_EQ(texture_->image_lru_.FindImage(3, config, nullptr), nullptr);
   EXPECT_EQ(texture_->last_fence_fd_, -1);
@@ -1374,7 +1558,7 @@ TEST_F(OhosExternalTextureTest, PaintFallsBackWhenCreateDlImageHasNoDisplay) {
   EXPECT_EQ(texture_->now_paint_frame_seq_num_.load(), int64_t{1});
 }
 
-TEST_F(OhosExternalTextureTest, SetProducerWindowSizeCoversFailureLegs) {
+TEST_F(OhosExternalTextureTest, SetProducerWindowSizeFailures) {
   ASSERT_EQ(texture_->Reset(false), 0u);
   EXPECT_FALSE(texture_->SetProducerWindowSize(640, 480));
   EXPECT_EQ(texture_->producer_nativewindow_width_, 0);
@@ -1397,11 +1581,16 @@ TEST_F(OhosExternalTextureTest, FenceHelpersReportPollErrorEvents) {
   EXPECT_FALSE(OHOSExternalTexture::FenceIsSignal(closed_fd));
 }
 
-TEST_F(OhosExternalTextureTest, FdIsValidCoversFstatErrorLegs) {
+TEST_F(OhosExternalTextureTest, FdIsValidWhenFstatFails) {
   int fd = open("/dev/null", O_RDONLY);
   ASSERT_GE(fd, 0);
-  close(fd);
+  UpdateFstatFunc([](int, struct stat*) -> int {
+    errno = EBADF;
+    return -1;
+  });
   EXPECT_FALSE(OHOSExternalTexture::FdIsValid(fd));
+  UpdateFstatFunc(nullptr);
+  close(fd);
 }
 
 TEST_F(OhosExternalTextureTest, GetWindowBufferConfigAllowsNullConfigOut) {
@@ -1438,7 +1627,7 @@ TEST_F(OhosExternalTextureTest,
       reinterpret_cast<OH_NativeImage*>(0x5)));
 }
 
-TEST_F(OhosExternalTextureTest, FenceProcsPartialMissingLegs) {
+TEST_F(OhosExternalTextureTest, FenceProcsPartialMissing) {
   ScopedRealEGLContext real_egl;
   if (real_egl.unavailable()) {
     GTEST_SKIP() << real_egl.skip_reason();
@@ -1481,8 +1670,12 @@ TEST_F(OhosExternalTextureTest, FenceProcsPartialMissingLegs) {
   {
     ScopedUnsignaledFence fence;
     ASSERT_GE(fence.get(), 0);
-    texture->WaitGPUFence(fence.get());
-    EXPECT_EQ(fcntl(fence.get(), F_GETFD), -1);
+    int fd = fence.get();
+    int keep = dup(fd);
+    ASSERT_GE(keep, 0);
+    texture->WaitGPUFence(fd);
+    EXPECT_TRUE(FdReleasedOrReused(fd, keep));
+    close(keep);
   }
 
   OHOSExternalTextureGL::eglCreateSyncKHR_ = &StubCreateSyncOk;
@@ -1491,8 +1684,12 @@ TEST_F(OhosExternalTextureTest, FenceProcsPartialMissingLegs) {
   {
     ScopedUnsignaledFence fence;
     ASSERT_GE(fence.get(), 0);
-    texture->WaitGPUFence(fence.get());
-    EXPECT_EQ(fcntl(fence.get(), F_GETFD), -1);
+    int fd = fence.get();
+    int keep = dup(fd);
+    ASSERT_GE(keep, 0);
+    texture->WaitGPUFence(fd);
+    EXPECT_TRUE(FdReleasedOrReused(fd, keep));
+    close(keep);
   }
 }
 

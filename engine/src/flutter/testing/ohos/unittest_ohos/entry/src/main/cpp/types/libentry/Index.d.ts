@@ -24,3 +24,4 @@ export interface SandboxInfo {
 export const checkBinary: (binaryPath: string) => BinaryCheckResult;
 export const getSandboxPath: () => SandboxInfo;
 export const runTestsSo: (soPath: string, filesDir: string, gtestFilter?: string) => Promise<BinaryResult>;
+export const getLiveOutput: () => string;

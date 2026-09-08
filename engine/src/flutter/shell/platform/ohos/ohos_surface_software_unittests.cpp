@@ -10,6 +10,7 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <memory>
+#include "flutter/fml/log_settings.h"
 #include "flutter/shell/platform/ohos/context/ohos_context.h"
 #include "flutter/shell/platform/ohos/ohos_surface_software.h"
 #include "flutter/shell/platform/ohos/test_stubs/ace_graphic_ndk_stub.h"
@@ -231,6 +232,58 @@ TEST(OHOSSurfaceSoftware, PresentBackingStoreFlushFailure) {
     GTEST_SKIP() << "no mappable fd source for the stub BufferHandle";
   }
   ASSERT_TRUE(ok);
+  g_stub_graphic_fail_mask = kStubFailFlushBuffer;
+  EXPECT_FALSE(surface.PresentBackingStore(backing));
+}
+
+TEST(OHOSSurfaceSoftware, LogSeverityReplaySurfaceAndPresentEdges) {
+  {
+    fml::ScopedSetLogSettings loud({fml::kLogInfo});
+    GraphicStubKnobGuard guard;
+    OHOSSurfaceSoftware surface(MakeSoftwareContext());
+    EXPECT_NE(surface.CreateGPUSurface(nullptr), nullptr);
+    EXPECT_NO_FATAL_FAILURE(surface.TeardownOnScreenContext());
+    EXPECT_TRUE(surface.OnScreenSurfaceResize(DlISize(8, 8)));
+    EXPECT_FALSE(surface.SetNativeWindow(fml::RefPtr<OHOSNativeWindow>()));
+    EXPECT_FALSE(surface.SetNativeWindow(MakeWindow(nullptr)));
+    EXPECT_TRUE(surface.SetNativeWindow(MakeWindow(kFakeWindowHandle)));
+    auto first = surface.AcquireBackingStore(DlISize(8, 8));
+    ASSERT_NE(first, nullptr);
+    EXPECT_EQ(surface.AcquireBackingStore(DlISize(8, 8)).get(), first.get());
+    EXPECT_FALSE(surface.PresentBackingStore(nullptr));
+    g_stub_graphic_fail_mask = kStubFailRequestBuffer;
+    EXPECT_FALSE(surface.PresentBackingStore(first));
+    g_stub_graphic_fail_mask = kStubFailGetBufferHandle;
+    EXPECT_FALSE(surface.PresentBackingStore(first));
+  }
+  {
+    fml::ScopedSetLogSettings quiet({fml::kLogFatal});
+    GraphicStubKnobGuard guard;
+    OHOSSurfaceSoftware surface(MakeSoftwareContext());
+    EXPECT_NE(surface.CreateGPUSurface(nullptr), nullptr);
+    EXPECT_FALSE(surface.SetNativeWindow(MakeWindow(nullptr)));
+    EXPECT_TRUE(surface.SetNativeWindow(MakeWindow(kFakeWindowHandle)));
+    auto store = surface.AcquireBackingStore(DlISize(6, 6));
+    ASSERT_NE(store, nullptr);
+    EXPECT_FALSE(surface.PresentBackingStore(nullptr));
+    g_stub_graphic_fail_mask = kStubFailRequestBuffer;
+    EXPECT_FALSE(surface.PresentBackingStore(store));
+  }
+}
+
+TEST(OHOSSurfaceSoftware, EmitsPresentInfoLogs) {
+  fml::ScopedSetLogSettings loud({fml::kLogInfo});
+  GraphicStubKnobGuard guard;
+  StubBackingFdGuard fd_guard;
+  OHOSSurfaceSoftware surface(MakeSoftwareContext());
+  ASSERT_TRUE(surface.SetNativeWindow(MakeWindow(kFakeWindowHandle)));
+  auto backing = surface.AcquireBackingStore(DlISize(10, 10));
+  ASSERT_NE(backing, nullptr);
+  const bool presented = surface.PresentBackingStore(backing);
+  if (!presented && !MappableFdSourceAvailable()) {
+    GTEST_SKIP() << "no mappable fd source for the stub BufferHandle";
+  }
+  EXPECT_TRUE(presented);
   g_stub_graphic_fail_mask = kStubFailFlushBuffer;
   EXPECT_FALSE(surface.PresentBackingStore(backing));
 }
