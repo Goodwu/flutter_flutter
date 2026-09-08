@@ -481,7 +481,7 @@ export struct FlutterPage {
   aboutToAppear() {
     this.flutterView = FlutterManager.getInstance().getFlutterView(this.viewId);
     if (!this.flutterView) {
-      Log.e(TAG, "getFlutterView failed. viewId is " + this.viewId.toString());
+      Log.e(TAG, 'getFlutterView failed. viewId is ' + this.viewId.toString());
     }
     this.pushAutofillUiContext('FlutterPage.aboutToAppear');
     this.flutterView?.addFirstFrameListener(this)
