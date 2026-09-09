@@ -2754,6 +2754,7 @@ const Set<String> kExecutableAllowlist = <String>{
   'packages/flutter_tools/bin/xcode_backend.sh',
 
   // OHOS CI scripts.
+  'ci/ohos_ci_runner.sh',
   'ci/scripts/build_hello_world_for_arkts_test.sh',
   'ci/scripts/check_build_mode.sh',
   'ci/scripts/check_network.sh',
@@ -2766,6 +2767,7 @@ const Set<String> kExecutableAllowlist = <String>{
   'ci/scripts/gclient_sync.sh',
   'ci/scripts/init_flutter_test_env.sh',
   'ci/scripts/pack_flutter.sh',
+  'ci/scripts/patch_tests_for_ohos.sh',
   'ci/scripts/prepare_cipd.sh',
   'ci/scripts/prepare_openharmony_sdk.sh',
   'ci/scripts/prepare_project.sh',
@@ -2778,6 +2780,7 @@ const Set<String> kExecutableAllowlist = <String>{
   'ci/scripts/replace_in_file.sh',
   'ci/scripts/restore_engine_mtimes.sh',
   'ci/scripts/run_hooks.sh',
+  'ci/scripts/run_customer_testing.sh',
   'ci/scripts/run_parallel_shards.sh',
   'ci/scripts/run_shard_test.sh',
   'ci/scripts/runner.py',
