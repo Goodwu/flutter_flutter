@@ -190,7 +190,11 @@ class Runner:
 
 
 def main():
-    """Main entry point"""
+    """Main entry point.
+
+    Usage: runner.py <stage>
+      stage - preparation | compilation | test | integration | customer
+    """
     if len(sys.argv) > 1:
         stage = sys.argv[1]
     else:

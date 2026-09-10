@@ -216,3 +216,10 @@ test_steps:
     script: ci/scripts/run_parallel_shards.sh
     description: Run all unit tests in parallel shard groups (single machine)
     required: true
+
+# Customer Testing
+customer_steps:
+  - name: Customer Testing (Upstream)
+    script: ci/scripts/run_customer_testing.sh
+    description: Run upstream customer_testing suite (~10min) with OHOS patches applied to detect fork-introduced regressions.
+    required: true
