@@ -3317,8 +3317,11 @@ napi_value PlatformViewOHOSNapi::nativeComputeWindowPosition(
     napi_callback_info info) {
   // Args (logical px): out, view_id, child_size(2), parent_rect(4),
   // work_area(4). The returned number survives the handle-scope close.
-  napi_value result;
-  napi_create_int32(env, 1, &result);  // default: not computed
+  napi_value result = nullptr;
+  if (napi_create_int32(env, 1, &result) != napi_ok) {
+    FML_DLOG(ERROR) << "nativeComputeWindowPosition default result create fail";
+    return nullptr;
+  }
   size_t argc = 12;
   napi_value args[12] = {nullptr};
   napi_handle_scope scope;
@@ -3340,16 +3343,56 @@ napi_value PlatformViewOHOSNapi::nativeComputeWindowPosition(
 
   double cw = 0, ch = 0, pl = 0, pt = 0, pw = 0, ph = 0;
   double wl = 0, wt = 0, ww = 0, wh = 0;
-  napi_get_value_double(env, args[2], &cw);
-  napi_get_value_double(env, args[3], &ch);
-  napi_get_value_double(env, args[4], &pl);
-  napi_get_value_double(env, args[5], &pt);
-  napi_get_value_double(env, args[6], &pw);
-  napi_get_value_double(env, args[7], &ph);
-  napi_get_value_double(env, args[8], &wl);
-  napi_get_value_double(env, args[9], &wt);
-  napi_get_value_double(env, args[10], &ww);
-  napi_get_value_double(env, args[11], &wh);
+  if (napi_get_value_double(env, args[2], &cw) != napi_ok) {
+    FML_DLOG(ERROR) << "nativeComputeWindowPosition childW parse failed";
+    napi_close_handle_scope(env, scope);
+    return result;
+  }
+  if (napi_get_value_double(env, args[3], &ch) != napi_ok) {
+    FML_DLOG(ERROR) << "nativeComputeWindowPosition childH parse failed";
+    napi_close_handle_scope(env, scope);
+    return result;
+  }
+  if (napi_get_value_double(env, args[4], &pl) != napi_ok) {
+    FML_DLOG(ERROR) << "nativeComputeWindowPosition parentLeft parse failed";
+    napi_close_handle_scope(env, scope);
+    return result;
+  }
+  if (napi_get_value_double(env, args[5], &pt) != napi_ok) {
+    FML_DLOG(ERROR) << "nativeComputeWindowPosition parentTop parse failed";
+    napi_close_handle_scope(env, scope);
+    return result;
+  }
+  if (napi_get_value_double(env, args[6], &pw) != napi_ok) {
+    FML_DLOG(ERROR) << "nativeComputeWindowPosition parentW parse failed";
+    napi_close_handle_scope(env, scope);
+    return result;
+  }
+  if (napi_get_value_double(env, args[7], &ph) != napi_ok) {
+    FML_DLOG(ERROR) << "nativeComputeWindowPosition parentH parse failed";
+    napi_close_handle_scope(env, scope);
+    return result;
+  }
+  if (napi_get_value_double(env, args[8], &wl) != napi_ok) {
+    FML_DLOG(ERROR) << "nativeComputeWindowPosition workLeft parse failed";
+    napi_close_handle_scope(env, scope);
+    return result;
+  }
+  if (napi_get_value_double(env, args[9], &wt) != napi_ok) {
+    FML_DLOG(ERROR) << "nativeComputeWindowPosition workTop parse failed";
+    napi_close_handle_scope(env, scope);
+    return result;
+  }
+  if (napi_get_value_double(env, args[10], &ww) != napi_ok) {
+    FML_DLOG(ERROR) << "nativeComputeWindowPosition workW parse failed";
+    napi_close_handle_scope(env, scope);
+    return result;
+  }
+  if (napi_get_value_double(env, args[11], &wh) != napi_ok) {
+    FML_DLOG(ERROR) << "nativeComputeWindowPosition workH parse failed";
+    napi_close_handle_scope(env, scope);
+    return result;
+  }
 
   flutter::FlutterWindowSize child_size{cw, ch};
   flutter::FlutterWindowRect parent_rect{pl, pt, pw, ph};
@@ -3369,10 +3412,35 @@ napi_value PlatformViewOHOSNapi::nativeComputeWindowPosition(
     return result;  // 1
   }
   napi_value params[4] = {nullptr};
-  napi_create_double(env, out.left, &params[0]);
-  napi_create_double(env, out.top, &params[1]);
-  napi_create_double(env, out.width, &params[2]);
-  napi_create_double(env, out.height, &params[3]);
+  napi_status status;
+  status = napi_create_double(env, out.left, &params[0]);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_double left fail ";
+    napi_delete_reference(env, out_ref);
+    napi_close_handle_scope(env, scope);
+    return result;
+  }
+  status = napi_create_double(env, out.top, &params[1]);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_double top fail ";
+    napi_delete_reference(env, out_ref);
+    napi_close_handle_scope(env, scope);
+    return result;
+  }
+  status = napi_create_double(env, out.width, &params[2]);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_double width fail ";
+    napi_delete_reference(env, out_ref);
+    napi_close_handle_scope(env, scope);
+    return result;
+  }
+  status = napi_create_double(env, out.height, &params[3]);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_double height fail ";
+    napi_delete_reference(env, out_ref);
+    napi_close_handle_scope(env, scope);
+    return result;
+  }
   napi_status invoke =
       fml::napi::InvokeJsMethod(env, out_ref, "set", 4, params);
   napi_delete_reference(env, out_ref);
@@ -3380,7 +3448,10 @@ napi_value PlatformViewOHOSNapi::nativeComputeWindowPosition(
   if (invoke == napi_ok) {
     // Created after the close so it lives in the outer (callback) scope —
     // handles made inside `scope` die with it and would dangle on return.
-    napi_create_int32(env, 0, &result);  // success
+    if (napi_create_int32(env, 0, &result) != napi_ok) {
+      FML_DLOG(ERROR)
+          << "nativeComputeWindowPosition success result create fail";
+    }
   }
   return result;
 }
@@ -3401,8 +3472,13 @@ napi_value PlatformViewOHOSNapi::nativeNotifyWindowActivated(
 
   int64_t view_id = 0;
   bool activated = false;
-  if (napi_get_value_int64(env, args[0], &view_id) != napi_ok ||
-      napi_get_value_bool(env, args[1], &activated) != napi_ok) {
+  if (napi_get_value_int64(env, args[0], &view_id) != napi_ok) {
+    FML_DLOG(ERROR) << "nativeNotifyWindowActivated view_id parse failed";
+    napi_close_handle_scope(env, scope);
+    return nullptr;
+  }
+  if (napi_get_value_bool(env, args[1], &activated) != napi_ok) {
+    FML_DLOG(ERROR) << "nativeNotifyWindowActivated activated parse failed";
     napi_close_handle_scope(env, scope);
     return nullptr;
   }

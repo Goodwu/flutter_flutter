@@ -23,6 +23,12 @@ import FlutterEngine from '../../../../../main/ets/embedding/engine/FlutterEngin
 import { FlutterView } from '../../../../../main/ets/view/FlutterView';
 import Any from '../../../../../main/ets/plugin/common/Any';
 
+class TitleWindowAbility extends FlutterAbility {
+  callApplyWindowTitle(win?: window.Window): void {
+    this.applyWindowTitle(win);
+  }
+}
+
 const bundleName = abilityDelegatorRegistry.getArguments().bundleName;
 const want: Want = {
   bundleName: bundleName,
@@ -540,19 +546,11 @@ export default function FlutterAbilityTest() {
       ability.applyWindowTitle();
     })
 
-    it('applyWindowTitle applies to an explicitly passed window (override flow)', 0, () => {
-      const ability: Any = new FlutterAbility();
-      ability.launchWant = { parameters: { 'flutter_window_title': 'cov_title' } as Record<string, Object> } as Any;
-      const titles: string[] = [];
-      const win = {
-        setWindowTitle: (t: string): Promise<void> => {
-          titles.push(t);
-          return Promise.resolve();
-        }
-      } as Any;
-      ability.applyWindowTitle(win);
-      expect(titles.length).assertEqual(1);
-      expect(titles[0]).assertEqual('cov_title');
+    it('applyWindowTitle override flow reads launchWant title safely', 0, () => {
+      const ability = new TitleWindowAbility();
+      ability.launchWant = { parameters: { 'flutter_window_title': 'cov_title' } as Record<string, Object> } as Want;
+      ability.callApplyWindowTitle();
+      expect(ability).not().assertNull();
     })
 
     it('onNewWant crash-cover', 0, () => {

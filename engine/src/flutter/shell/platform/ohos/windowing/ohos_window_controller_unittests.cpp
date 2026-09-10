@@ -561,46 +561,46 @@ TEST_F(OHOSWindowControllerTest, WindowBaseRequestWindowHostGenericSubWindow) {
 
 TEST_F(OHOSWindowControllerTest, WindowRegularRequestWindowHostBothViews) {
   // View 0: BindEntryAbilityToView branch (facade null).
-  OHOSWindow regular0(controller_,
-                      MakeWindowParams(WindowType::kRegular,
-                                       WindowHostKind::kUiAbility, 0),
-                      MakeRequest());
+  OHOSWindow regular0(
+      controller_,
+      MakeWindowParams(WindowType::kRegular, WindowHostKind::kUiAbility, 0),
+      MakeRequest());
   regular0.RequestWindowHost();
   // View 1: CreateRegularAbility branch (facade null).
-  OHOSWindow regular1(controller_,
-                      MakeWindowParams(WindowType::kRegular,
-                                       WindowHostKind::kUiAbility, 1),
-                      MakeRequest());
+  OHOSWindow regular1(
+      controller_,
+      MakeWindowParams(WindowType::kRegular, WindowHostKind::kUiAbility, 1),
+      MakeRequest());
   regular1.RequestWindowHost();
   SUCCEED();
 }
 
 TEST_F(OHOSWindowControllerTest, WindowDialogRequestWindowHostBothKinds) {
   // Modeless (kUiAbility) -> RequestUiAbilityHost (facade null).
-  OHOSWindow modeless(controller_,
-                      MakeWindowParams(WindowType::kDialog,
-                                       WindowHostKind::kUiAbility, 2),
-                      MakeRequest());
+  OHOSWindow modeless(
+      controller_,
+      MakeWindowParams(WindowType::kDialog, WindowHostKind::kUiAbility, 2),
+      MakeRequest());
   modeless.RequestWindowHost();
   // Modal (kSubWindow) -> base generic SubWindow (facade null).
-  OHOSWindow modal(controller_,
-                   MakeWindowParams(WindowType::kDialog,
-                                    WindowHostKind::kSubWindow, 3, 0),
-                   MakeRequest());
+  OHOSWindow modal(
+      controller_,
+      MakeWindowParams(WindowType::kDialog, WindowHostKind::kSubWindow, 3, 0),
+      MakeRequest());
   modal.RequestWindowHost();
   SUCCEED();
 }
 
 TEST_F(OHOSWindowControllerTest, WindowTooltipPopupRequestWindowHost) {
-  OHOSWindow tooltip(controller_,
-                    MakeWindowParams(WindowType::kTooltip,
-                                     WindowHostKind::kSubWindow, 4),
-                    MakeRequest());
+  OHOSWindow tooltip(
+      controller_,
+      MakeWindowParams(WindowType::kTooltip, WindowHostKind::kSubWindow, 4),
+      MakeRequest());
   tooltip.RequestWindowHost();
-  OHOSWindow popup(controller_,
-                   MakeWindowParams(WindowType::kPopup,
-                                    WindowHostKind::kSubWindow, 5),
-                   MakeRequest());
+  OHOSWindow popup(
+      controller_,
+      MakeWindowParams(WindowType::kPopup, WindowHostKind::kSubWindow, 5),
+      MakeRequest());
   popup.RequestWindowHost();
   SUCCEED();
 }

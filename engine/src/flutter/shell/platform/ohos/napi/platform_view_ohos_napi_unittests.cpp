@@ -77,7 +77,8 @@ class PlatformViewOHOSNapiTest : public ::testing::Test {
 
 TEST_F(PlatformViewOHOSNapiTest, RequestWindowHostNullEnv) {
   PlatformViewOHOSNapi facade(nullptr);
-  EXPECT_NO_FATAL_FAILURE(facade.RequestWindowHost(9401, 0, 640.0, 480.0, "title", 1));
+  EXPECT_NO_FATAL_FAILURE(
+      facade.RequestWindowHost(9401, 0, 640.0, 480.0, "title", 1));
 }
 
 // createRegularAbility: 6 args — int64 view_id, int64 request_id,
@@ -2795,10 +2796,26 @@ TEST_F(PlatformViewOHOSNapiTest, NativeTextureAndA11yFullChainUnknownIds) {
 TEST_F(PlatformViewOHOSNapiTest, NativeComputeWindowPositionStages) {
   napi_env env = FakeNapiEnv();
   StubNapiSetCbArgc(12);
+  StubNapiFailCbInfo(kStubFailure);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeComputeWindowPosition(env, nullptr),
+            nullptr);
+  StubNapiFailCbInfo(napi_ok);
   StubNapiFailInt64OnCall(1);
   EXPECT_NO_FATAL_FAILURE(
       PlatformViewOHOSNapi::nativeComputeWindowPosition(env, nullptr));
   StubNapiFailInt64OnCall(0);
+
+  StubNapiFailCreateInt32OnCall(1);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeComputeWindowPosition(env, nullptr),
+            nullptr);
+  StubNapiFailCreateInt32OnCall(0);
+
+  for (int nth = 1; nth <= 10; ++nth) {
+    StubNapiFailDoubleOnCall(nth);
+    EXPECT_EQ(PlatformViewOHOSNapi::nativeComputeWindowPosition(env, nullptr),
+              nullptr);
+  }
+  StubNapiFailDoubleOnCall(0);
 
   auto holder = MakeSoftwareHolder();
   ASSERT_NE(holder->GetWindowController(), nullptr);
@@ -2821,6 +2838,19 @@ TEST_F(PlatformViewOHOSNapiTest, NativeComputeWindowPositionStages) {
   StubNapiFailReference(kStubFailure);
   EXPECT_NO_FATAL_FAILURE(
       PlatformViewOHOSNapi::nativeComputeWindowPosition(env, nullptr));
+
+  for (int nth = 1; nth <= 4; ++nth) {
+    StubNapiFailCreateDoubleOnCall(nth);
+    EXPECT_EQ(PlatformViewOHOSNapi::nativeComputeWindowPosition(env, nullptr),
+              nullptr);
+  }
+  StubNapiFailCreateDoubleOnCall(0);
+
+  StubNapiFailCreateInt32OnCall(2);
+  EXPECT_EQ(PlatformViewOHOSNapi::nativeComputeWindowPosition(env, nullptr),
+            nullptr);
+  StubNapiFailCreateInt32OnCall(0);
+
   EXPECT_NO_FATAL_FAILURE(
       PlatformViewOHOSNapi::nativeComputeWindowPosition(env, nullptr));
 }

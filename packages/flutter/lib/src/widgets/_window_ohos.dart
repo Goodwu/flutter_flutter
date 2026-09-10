@@ -343,12 +343,14 @@ class RegularWindowControllerOHOS extends RegularWindowController with _WindowCo
     try {
       _delegate.onWindowCloseRequested(this);
     } catch (error, stackTrace) {
-      FlutterError.reportError(FlutterErrorDetails(
-        exception: error,
-        stack: stackTrace,
-        library: 'windowing',
-        context: ErrorDescription('onWindowCloseRequested threw; close request not granted'),
-      ));
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'windowing',
+          context: ErrorDescription('onWindowCloseRequested threw; close request not granted'),
+        ),
+      );
     }
   }
 
@@ -448,8 +450,7 @@ class RegularWindowControllerOHOS extends RegularWindowController with _WindowCo
   // ACTIVE↔INACTIVE → nativeNotifyWindowActivated); a change also fires the
   // notify_listeners chain so dependents rebuild and re-query this.
   @override
-  bool get isActivated =>
-      _OHOSPlatformInterface.getWindowActivated(rootView.viewId);
+  bool get isActivated => _OHOSPlatformInterface.getWindowActivated(rootView.viewId);
 
   // The SetTitle echo from the native cache (the chain's only title writer,
   // so the cache is the platform truth); setTitle also notifies listeners.
@@ -504,12 +505,14 @@ class DialogWindowControllerOHOS extends DialogWindowController with _WindowCont
       _delegate.onWindowCloseRequested(this);
     } catch (error, stackTrace) {
       // Same FFI-boundary containment as RegularWindowControllerOHOS.
-      FlutterError.reportError(FlutterErrorDetails(
-        exception: error,
-        stack: stackTrace,
-        library: 'windowing',
-        context: ErrorDescription('onWindowCloseRequested threw; close request not granted'),
-      ));
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'windowing',
+          context: ErrorDescription('onWindowCloseRequested threw; close request not granted'),
+        ),
+      );
     }
   }
 
@@ -560,8 +563,7 @@ class DialogWindowControllerOHOS extends DialogWindowController with _WindowCont
   // Same native focus-flag query as RegularWindowControllerOHOS; sub-window
   // hosts push via windowEvent WINDOW_ACTIVE/WINDOW_INACTIVE.
   @override
-  bool get isActivated =>
-      _OHOSPlatformInterface.getWindowActivated(rootView.viewId);
+  bool get isActivated => _OHOSPlatformInterface.getWindowActivated(rootView.viewId);
 
   @override
   bool get isMinimized => _isMinimized;
@@ -676,12 +678,16 @@ class TooltipWindowControllerOHOS extends TooltipWindowController with _WindowCo
       );
     } catch (error, stackTrace) {
       _allocator.free(result);
-      FlutterError.reportError(FlutterErrorDetails(
-        exception: error,
-        stack: stackTrace,
-        library: 'windowing',
-        context: ErrorDescription('WindowPositioner.placeWindow threw; keeping default placement'),
-      ));
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'windowing',
+          context: ErrorDescription(
+            'WindowPositioner.placeWindow threw; keeping default placement',
+          ),
+        ),
+      );
       return Pointer<_Rect>.fromAddress(0);
     }
     result.ref.left = targetRect.left;
@@ -699,12 +705,14 @@ class TooltipWindowControllerOHOS extends TooltipWindowController with _WindowCo
       // Called synchronously from C++ via an isolateLocal NativeCallable;
       // an escaping exception would cross the FFI boundary as undefined
       // behavior. Report and keep the window open (request NOT granted).
-      FlutterError.reportError(FlutterErrorDetails(
-        exception: error,
-        stack: stackTrace,
-        library: 'windowing',
-        context: ErrorDescription('onWindowCloseRequested threw; close request not granted'),
-      ));
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'windowing',
+          context: ErrorDescription('onWindowCloseRequested threw; close request not granted'),
+        ),
+      );
     }
   }
 
@@ -783,9 +791,9 @@ class PopupWindowControllerOHOS extends PopupWindowController with _WindowContro
   // PHYSICAL px) → logical via the view's DPR. Zero for a not-yet-laid-out
   // or non-anchored window.
   @override
-  Offset get offsetFromParent => _OHOSPlatformInterface.getWindowOffsetFromParent(
-        getWindowHandle(),
-      ) / (rootView.devicePixelRatio == 0 ? 1.0 : rootView.devicePixelRatio);
+  Offset get offsetFromParent =>
+      _OHOSPlatformInterface.getWindowOffsetFromParent(getWindowHandle()) /
+      (rootView.devicePixelRatio == 0 ? 1.0 : rootView.devicePixelRatio);
 
   @override
   @internal
@@ -832,12 +840,16 @@ class PopupWindowControllerOHOS extends PopupWindowController with _WindowContro
       );
     } catch (error, stackTrace) {
       _allocator.free(result);
-      FlutterError.reportError(FlutterErrorDetails(
-        exception: error,
-        stack: stackTrace,
-        library: 'windowing',
-        context: ErrorDescription('WindowPositioner.placeWindow threw; keeping default placement'),
-      ));
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'windowing',
+          context: ErrorDescription(
+            'WindowPositioner.placeWindow threw; keeping default placement',
+          ),
+        ),
+      );
       return Pointer<_Rect>.fromAddress(0);
     }
     result.ref.left = targetRect.left;
@@ -852,12 +864,14 @@ class PopupWindowControllerOHOS extends PopupWindowController with _WindowContro
     try {
       _delegate.onWindowCloseRequested(this);
     } catch (error, stackTrace) {
-      FlutterError.reportError(FlutterErrorDetails(
-        exception: error,
-        stack: stackTrace,
-        library: 'windowing',
-        context: ErrorDescription('onWindowCloseRequested threw; close request not granted'),
-      ));
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'windowing',
+          context: ErrorDescription('onWindowCloseRequested threw; close request not granted'),
+        ),
+      );
     }
   }
 
@@ -1175,19 +1189,16 @@ class _OHOSPlatformInterface {
         'InternalFlutter_Window_GetActivated',
       );
 
-  static bool getWindowActivated(int viewId) => _getWindowActivatedPtr(
-        WidgetsBinding.instance.platformDispatcher.engineId!,
-        viewId,
-      );
+  static bool getWindowActivated(int viewId) =>
+      _getWindowActivatedPtr(WidgetsBinding.instance.platformDispatcher.engineId!, viewId);
 
   // Anchored (tooltip/popup) content offset inside its host window. The FFI
   // writes PHYSICAL px; callers divide by the view's devicePixelRatio for
   // the logical Offset the framework reports.
-  static final void Function(Pointer<Void>, Pointer<_Size>) _getOffsetFromParentPtr =
-      _flutterLib.lookupFunction<
-        _GetOffsetFromParentNative,
-        void Function(Pointer<Void>, Pointer<_Size>)
-      >('InternalFlutter_Window_GetOffsetFromParent');
+  static final void Function(Pointer<Void>, Pointer<_Size>) _getOffsetFromParentPtr = _flutterLib
+      .lookupFunction<_GetOffsetFromParentNative, void Function(Pointer<Void>, Pointer<_Size>)>(
+        'InternalFlutter_Window_GetOffsetFromParent',
+      );
 
   static Offset getWindowOffsetFromParent(Pointer<Void> windowHandle) {
     final Pointer<_Size> ffiOffset = _allocator<_Size>();
@@ -1202,15 +1213,13 @@ class _OHOSPlatformInterface {
   // most `capacity - 1` bytes + NUL; longer titles truncate.
   static const int _kTitleCapacity = 512;
 
-  static final void Function(Pointer<Void>, Pointer<_Utf8>, int) _getTitlePtr =
-      _flutterLib.lookupFunction<
-        _GetTitleNative,
-        void Function(Pointer<Void>, Pointer<_Utf8>, int)
-      >('InternalFlutter_Window_GetTitle');
+  static final void Function(Pointer<Void>, Pointer<_Utf8>, int) _getTitlePtr = _flutterLib
+      .lookupFunction<_GetTitleNative, void Function(Pointer<Void>, Pointer<_Utf8>, int)>(
+        'InternalFlutter_Window_GetTitle',
+      );
 
   static String getWindowTitle(Pointer<Void> windowHandle) {
-    final Pointer<_Utf8> buffer =
-        _allocator<Uint8>(_kTitleCapacity).cast<_Utf8>();
+    final Pointer<_Utf8> buffer = _allocator<Uint8>(_kTitleCapacity).cast<_Utf8>();
     try {
       _getTitlePtr(windowHandle, buffer, _kTitleCapacity);
       return buffer.toDartString();

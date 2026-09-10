@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 import FlutterNapi from '../../../../../main/ets/embedding/engine/FlutterNapi';
+import { WindowPositionResult } from '../../../../../main/ets/embedding/engine/FlutterNapi';
 import FlutterEngine from '../../../../../main/ets/embedding/engine/FlutterEngine';
 import PlatformViewsController from '../../../../../main/ets/plugin/platform/PlatformViewsController';
 import {
@@ -258,7 +259,7 @@ export default function FlutterNapiTest() {
       // attached and the call returns at the isAttached() guard — this spec
       // pins the argument shape (24-arg and legacy 20-arg forms), while the
       // native forwarding is covered by setViewportMetrics_after_engine_init.
-      const unattachedNapi = new FlutterEngine(ctx, null, null, new PlatformViewsController()).getFlutterNapi();
+      const unattachedNapi = new FlutterEngine(ctx, null, new FlutterNapi(), new PlatformViewsController()).getFlutterNapi();
       unattachedNapi.setViewportMetrics(
         3.0, 1080, 2340,
         0, 0, 0, 0,
@@ -283,7 +284,7 @@ export default function FlutterNapiTest() {
     it('setViewportMetrics_without_display_corner_radii_defaults', 0, async (done: Function) => {
       console.info("uitest: setViewportMetrics_without_display_corner_radii_defaults begin");
       const ctx = getContext() as common.UIAbilityContext;
-      const unattachedNapi = new FlutterEngine(ctx, null, null, new PlatformViewsController()).getFlutterNapi();
+      const unattachedNapi = new FlutterEngine(ctx, null, new FlutterNapi(), new PlatformViewsController()).getFlutterNapi();
       unattachedNapi.setViewportMetrics(
         3.0, 1080, 2340,
         0, 0, 0, 0,
@@ -299,7 +300,7 @@ export default function FlutterNapiTest() {
     it('setViewportMetrics_zero_corner_radii_flat_screen', 0, async (done: Function) => {
       console.info("uitest: setViewportMetrics_zero_corner_radii_flat_screen begin");
       const ctx = getContext() as common.UIAbilityContext;
-      const unattachedNapi = new FlutterEngine(ctx, null, null, new PlatformViewsController()).getFlutterNapi();
+      const unattachedNapi = new FlutterEngine(ctx, null, new FlutterNapi(), new PlatformViewsController()).getFlutterNapi();
       unattachedNapi.setViewportMetrics(
         3.0, 1080, 2340,
         0, 0, 0, 0,
@@ -340,6 +341,7 @@ export default function FlutterNapiTest() {
       } catch (e) {
         console.info("uitest: real napi init path error, skip: " + JSON.stringify(e));
       }
+      FlutterInjector.getInstance().getFlutterNapi();
       done();
     })
 
@@ -706,7 +708,7 @@ it('setExternalNativeImagePtr does not throw when detached', 0, () => {
       // attached and the call returns at the isAttached() guard — this spec
       // pins the argument shape (24-arg and legacy 20-arg forms), while the
       // native forwarding is covered by setViewportMetrics_after_engine_init.
-      const unattachedNapi = new FlutterEngine(ctx, null, null, new PlatformViewsController()).getFlutterNapi();
+      const unattachedNapi = new FlutterEngine(ctx, null, new FlutterNapi(), new PlatformViewsController()).getFlutterNapi();
       unattachedNapi.setViewportMetrics(
         3.0, 1080, 2340,
         0, 0, 0, 0,
@@ -731,7 +733,7 @@ it('setExternalNativeImagePtr does not throw when detached', 0, () => {
     it('setViewportMetrics_without_display_corner_radii_defaults', 0, async (done: Function) => {
       console.info("uitest: setViewportMetrics_without_display_corner_radii_defaults begin");
       const ctx = getContext() as common.UIAbilityContext;
-      const unattachedNapi = new FlutterEngine(ctx, null, null, new PlatformViewsController()).getFlutterNapi();
+      const unattachedNapi = new FlutterEngine(ctx, null, new FlutterNapi(), new PlatformViewsController()).getFlutterNapi();
       unattachedNapi.setViewportMetrics(
         3.0, 1080, 2340,
         0, 0, 0, 0,
@@ -747,7 +749,7 @@ it('setExternalNativeImagePtr does not throw when detached', 0, () => {
     it('setViewportMetrics_zero_corner_radii_flat_screen', 0, async (done: Function) => {
       console.info("uitest: setViewportMetrics_zero_corner_radii_flat_screen begin");
       const ctx = getContext() as common.UIAbilityContext;
-      const unattachedNapi = new FlutterEngine(ctx, null, null, new PlatformViewsController()).getFlutterNapi();
+      const unattachedNapi = new FlutterEngine(ctx, null, new FlutterNapi(), new PlatformViewsController()).getFlutterNapi();
       unattachedNapi.setViewportMetrics(
         3.0, 1080, 2340,
         0, 0, 0, 0,
@@ -788,6 +790,7 @@ it('setExternalNativeImagePtr does not throw when detached', 0, () => {
       } catch (e) {
         console.info("uitest: real napi init path error, skip: " + JSON.stringify(e));
       }
+      FlutterInjector.getInstance().getFlutterNapi();
       done();
     })
 

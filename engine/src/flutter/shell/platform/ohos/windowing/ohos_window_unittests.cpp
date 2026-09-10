@@ -342,10 +342,9 @@ TEST(OHOSWindowTest, RequestWindowHostWithFacadeDispatches) {
 TEST(OHOSWindowTest, RequestUiAbilityHostWithoutFacadeEarlyReturns) {
   SoftwareHolderFacade holder;
   EXPECT_EQ(holder.controller()->GetNapiFacade().get(), nullptr);
-  OHOSWindow window(holder.controller(),
-                    MakeParams(WindowType::kRegular,
-                               WindowHostKind::kUiAbility, 7, 0),
-                    {});
+  OHOSWindow window(
+      holder.controller(),
+      MakeParams(WindowType::kRegular, WindowHostKind::kUiAbility, 7, 0), {});
   EXPECT_NO_FATAL_FAILURE(window.RequestWindowHost());
 }
 
@@ -381,10 +380,9 @@ TEST(OHOSWindowTest, RequestUiAbilityHostCreatesRegularAbility) {
   holder.SetFacade(std::make_shared<PlatformViewOHOSNapi>(nullptr));
   ASSERT_NE(holder.controller()->GetNapiFacade(), nullptr);
 
-  OHOSWindow window(holder.controller(),
-                    MakeParams(WindowType::kRegular,
-                               WindowHostKind::kUiAbility, 7, 0),
-                    {});
+  OHOSWindow window(
+      holder.controller(),
+      MakeParams(WindowType::kRegular, WindowHostKind::kUiAbility, 7, 0), {});
   EXPECT_NO_FATAL_FAILURE(window.RequestWindowHost());
 }
 

@@ -24,30 +24,26 @@ OHOSWindow::OHOSWindow(OHOSWindowController* controller,
       host_kind_(params.host_kind),
       view_id_(params.view_id),
       parent_view_id_(params.parent_view_id),
-      request_(request)
-{
+      request_(request) {
   title_ = request.title != nullptr ? request.title : "";
   request_.title = nullptr;
 }
 
 OHOSWindow::~OHOSWindow() = default;
 
-void OHOSWindow::FireShouldClose()
-{
+void OHOSWindow::FireShouldClose() {
   if (request_.on_should_close) {
     request_.on_should_close();
   }
 }
 
-void OHOSWindow::FireWillClose()
-{
+void OHOSWindow::FireWillClose() {
   if (request_.on_will_close) {
     request_.on_will_close();
   }
 }
 
-void OHOSWindow::FireNotifyListeners()
-{
+void OHOSWindow::FireNotifyListeners() {
   if (request_.notify_listeners) {
     request_.notify_listeners();
   }
@@ -56,8 +52,7 @@ void OHOSWindow::FireNotifyListeners()
 bool OHOSWindow::ComputeWindowPosition(const FlutterWindowSize& child_size,
                                        const FlutterWindowRect& parent_rect,
                                        const FlutterWindowRect& work_area,
-                                       FlutterWindowRect* out)
-{
+                                       FlutterWindowRect* out) {
   if (out == nullptr) {
     return false;
   }
@@ -79,8 +74,7 @@ bool OHOSWindow::ComputeWindowPosition(const FlutterWindowSize& child_size,
   return true;
 }
 
-void OHOSWindow::RequestWindowHost()
-{
+void OHOSWindow::RequestWindowHost() {
   if (host_kind_ == WindowHostKind::kUiAbility) {
     RequestUiAbilityHost();
     return;
@@ -97,8 +91,7 @@ void OHOSWindow::RequestWindowHost()
                             static_cast<int32_t>(type_));
 }
 
-void OHOSWindow::GetSubWindowBirthSize(double& width, double& height) const
-{
+void OHOSWindow::GetSubWindowBirthSize(double& width, double& height) const {
   width = 0;
   height = 0;
   if (request_.has_size) {
@@ -113,8 +106,7 @@ void OHOSWindow::GetSubWindowBirthSize(double& width, double& height) const
   height = request_.constraints.min_height;
 }
 
-void OHOSWindow::RequestUiAbilityHost() const
-{
+void OHOSWindow::RequestUiAbilityHost() const {
   auto facade = controller_->GetNapiFacade();
   if (!facade) {
     FML_LOG(ERROR) << "RequestWindowHost: no napi facade for view " << view_id_;
