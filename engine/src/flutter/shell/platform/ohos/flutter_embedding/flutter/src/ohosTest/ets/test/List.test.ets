@@ -40,6 +40,7 @@ import DartMessengerTest from './embedding/engine/dart/DartMessengerTest.test';
 import ApplicationInfoTest from './embedding/engine/loader/ApplicationInfoTest.test';
 import FlutterApplicationInfoTest from './embedding/engine/loader/FlutterApplicationInfoTest.test';
 import FlutterLoaderTest from './embedding/engine/loader/FlutterLoaderTest.test';
+import ApplicationInfoLoaderTest from './embedding/engine/loader/ApplicationInfoLoaderTest.test';
 import FlutterMutatorViewTest from './embedding/engine/mutatorsstack/FlutterMutatorViewTest.test';
 import FlutterMutatorsStackTest from './embedding/engine/mutatorsstack/FlutterMutatorsStackTest.test';
 import FlutterRendererTest from './embedding/engine/renderer/FlutterRendererTest.test';
@@ -60,6 +61,7 @@ import FlutterNapiHybridTest from './embedding/engine/FlutterNapiHybrid.test';
 import FlutterNapiStateTest from './embedding/engine/FlutterNapiStateTest.test';
 import FlutterOverlaySurfaceTest from './embedding/engine/FlutterOverlaySurfaceTest.test';
 import FlutterShellArgsTest from './embedding/engine/FlutterShellArgsTest.test';
+import FlutterEngineFlagsTest from './embedding/engine/FlutterEngineFlagsTest.test';
 import BinaryMessengerTest from './plugin/common/BinaryMessengerTest.test';
 import DartExecutorTest from './embedding/engine/dart/DartExecutorTest.test';
 
@@ -180,6 +182,7 @@ export default function testsuite() {
   ApplicationInfoTest();
   FlutterApplicationInfoTest();
   FlutterLoaderTest()
+  ApplicationInfoLoaderTest()
   FlutterMutatorViewTest();
   FlutterMutatorsStackTest();
   FlutterRendererTest();
@@ -199,6 +202,7 @@ export default function testsuite() {
   FlutterNapiStateTest();
   FlutterOverlaySurfaceTest();
   FlutterShellArgsTest();
+  FlutterEngineFlagsTest();
   BinaryMessengerTest();
   DartExecutorTest();
   pathUtilsTest();
