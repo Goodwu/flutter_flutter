@@ -178,7 +178,8 @@ export class IncomingResultHandler implements BinaryReply {
           if (e instanceof FlutterException) {
             this.callback.error(e.code, e.message, e.details);
           } else {
-            Log.e(MethodChannel.TAG, "Failed to handle method call result", e);
+            const errMsg = (e instanceof Error) ? (e.message ?? '') : String(e);
+            this.callback.error("error", errMsg, null);
           }
         }
       }
