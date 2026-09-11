@@ -295,8 +295,14 @@ export class EmbeddingNodeController extends NodeController {
     // API 24+: prefer postInputEventWithStrategy, fallback to postTouchEvent on API 20	 
  	  if (this.supportPostInputEventWithStrategy()) {
       this.alignToLocalSpace(event);
-      return (this.builderNode as ESObject)?.postInputEventWithStrategy(event, CompetitionStrategy.DEFAULT) as boolean;
- 	  }
+      if ((this.builderNode as ESObject)?.postInputEventWithStrategy(event, CompetitionStrategy.DEFAULT)) {
+        return true;
+      } else if (typeof (this.builderNode as ESObject)?.postTouchEvent === 'function') {
+        Log.d(TAG, 'postInputEventWithStrategy failed, fallback to postTouchEvent');
+        return this.builderNode?.postTouchEvent(event) as boolean;
+      }
+    }
     return this.builderNode?.postTouchEvent(event) as boolean;
   }
 }
+
