@@ -96,7 +96,7 @@ function makeCtx(stage: FakeWindowStage | undefined): FakeHostContext {
 }
 
 export default function subWindowHostTest() {
-  describe('SubWindowHost.attach earlyFailures', () => {
+  describe('SubWindowHost.attach.earlyFailures', () => {
     it('fails when no parent ability can be resolved', Level.LEVEL0, () => {
       const ctx = new FakeHostContext();
       const host: TestSubWindowHost = new TestSubWindowHost(ctx, 1, 0, 100, 80);
@@ -138,7 +138,7 @@ export default function subWindowHostTest() {
     });
   });
 
-  describe('SubWindowHost.attach success', () => {
+  describe('SubWindowHost.attach.success', () => {
     it('creates a new FlutterView then fails without a shared engine', Level.LEVEL0,
       async (done: Function) => {
         const fake = new FakeWindow();
@@ -355,7 +355,7 @@ export default function subWindowHostTest() {
       });
   });
 
-  describe('SubWindowHost.attach loadAndResizeFailures', () => {
+  describe('SubWindowHost.attach.loadAndResizeFailures', () => {
     it('fails when loadContent reports an error', Level.LEVEL0, async (done: Function) => {
       const fake = new FakeWindow();
       fake.loadContentErr = makeErr(401);

@@ -71,7 +71,7 @@ export default function popupWindowHostTest() {
     });
   });
 
-  describe('PopupWindowHost deactivate policy (win32 parity)', () => {
+  describe('PopupWindowHost.deactivatePolicy.win32Parity', () => {
     it('destroys IMMEDIATELY on parent WINDOW_INACTIVE (win32 WA_INACTIVE)',
       Level.LEVEL0, async (done: Function) => {
         const p = new PopupSetup(2);

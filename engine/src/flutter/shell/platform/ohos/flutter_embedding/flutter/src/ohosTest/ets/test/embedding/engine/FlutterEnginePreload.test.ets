@@ -106,6 +106,7 @@ export default function FlutterEnginePreloadTest() {
         'dartEntrypointArgs': ['--debug']
       };
       const result = FlutterEnginePreload.preLoadFlutterNapi(context, 'test_bundle', params);
+      await result?.detachFromNativeAndReleaseResourcesAsync();
       done();
     })
 
@@ -143,6 +144,7 @@ export default function FlutterEnginePreloadTest() {
         'cached_engine_group_id': 'test_cached_engine_group'
       };
       const result = FlutterEnginePreload.preLoadFlutterNapi(context, 'test_bundle', params);
+      await result?.detachFromNativeAndReleaseResourcesAsync();
       done();
     })
 
@@ -174,6 +176,7 @@ export default function FlutterEnginePreloadTest() {
         'viewport_metrics': viewportMetrics
       };
       FlutterEnginePreload.predrawEngine(engine, params, 'corner_radii_predraw_view');
+      engine.destroy();
       done();
     })
 
@@ -183,6 +186,7 @@ export default function FlutterEnginePreloadTest() {
       const loader = ensureLoaderInitialized(context);
       const napi = FlutterEnginePreload.preLoadFlutterNapi(context, loader.findAppBundlePath(), {});
       expect(napi).not().assertNull();
+      await napi?.detachFromNativeAndReleaseResourcesAsync();
       done();
     })
 
@@ -206,6 +210,7 @@ export default function FlutterEnginePreloadTest() {
       };
       FlutterEnginePreload.predrawEngine(engine, params, 'corner_radii_predraw_a');
       FlutterEnginePreload.predrawEngine(engine, params, 'corner_radii_predraw_b');
+      engine.destroy();
       done();
     })
 

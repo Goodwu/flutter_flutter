@@ -547,7 +547,7 @@ export default function anchoredWindowHostTest() {
       });
   });
 
-  describe('AnchoredWindowHost.deactivatePolicy (win32 parity)', () => {
+  describe('AnchoredWindowHost.deactivatePolicy.win32Parity', () => {
     it('destroys IMMEDIATELY on parent WINDOW_INACTIVE (win32 WA_INACTIVE)',
       Level.LEVEL0, async (done: Function) => {
         const p = await makeAnchored(60);
@@ -798,7 +798,7 @@ export default function anchoredWindowHostTest() {
       });
   });
 
-  describe('AnchoredWindowHost.reanchor serialization', () => {
+  describe('AnchoredWindowHost.reanchor.serialization', () => {
     it('pends the trailing edge while an animated resize is in flight (no duplicate resize)', Level.LEVEL0,
       async (done: Function) => {
         const p = makePositioned(70, 9);
@@ -855,7 +855,7 @@ export default function anchoredWindowHostTest() {
       });
   });
 
-  describe('AnchoredWindowHost.positionAt sizing', () => {
+  describe('AnchoredWindowHost.positionAt.sizing', () => {
     // Shared setup: parent = ability main window (1000x800 phys at 0,0,
     // dpr 2 → 500x400 logical content); sub = DISTINCT FakeWindow whose
     // live rect is also 1000x800 phys.
