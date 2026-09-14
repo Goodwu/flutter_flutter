@@ -56,7 +56,7 @@ export default class FlutterEnginePreload {
       viewportMetrics.physicalWidth = display_info.width;
       viewportMetrics.physicalHeight = display_info.height;
       viewportMetrics.devicePixelRatio = display_info.densityPixels;
-      viewportMetrics.physicalTouchSlop = 1.0 * display_info.densityPixels;
+      viewportMetrics.physicalTouchSlop = 8.0 * display_info.densityPixels;
     }
     if (flutterNapi) {
       if (!nextViewId) {
@@ -116,7 +116,7 @@ export default class FlutterEnginePreload {
       viewportMetrics.physicalWidth = display_info.width;
       viewportMetrics.physicalHeight = display_info.height;
       viewportMetrics.devicePixelRatio = display_info.densityPixels;
-      viewportMetrics.physicalTouchSlop = 1.0 * display_info.densityPixels;
+      viewportMetrics.physicalTouchSlop = 8.0 * display_info.densityPixels;
     }
     flutterNapi.setPreloading();
     flutterNapi.xComponentPreDraw(nextViewId, viewportMetrics.physicalWidth, viewportMetrics.physicalHeight);
