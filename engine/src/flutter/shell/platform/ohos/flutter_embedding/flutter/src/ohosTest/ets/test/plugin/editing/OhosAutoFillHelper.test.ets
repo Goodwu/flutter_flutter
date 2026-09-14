@@ -344,7 +344,7 @@ export default function ohosAutoFillHelperTest() {
     });
   });
 
-  describe('OhosAutoFillHelper.buildNodeIdMap (extended)', () => {
+  describe('OhosAutoFillHelper.buildNodeIdMap.extended', () => {
     it('processes fields that have autofill (covers fields loop)', Level.LEVEL1, () => {
       const f1: Configuration = makeConfig(makeAutofill('a', new Array<string>('username'), 'a'));
       const f2: Configuration = makeConfig(makeAutofill('b', new Array<string>('password'), 'b'));
@@ -374,7 +374,7 @@ export default function ohosAutoFillHelperTest() {
     });
   });
 
-  describe('OhosAutoFillHelper.buildViewData (extended)', () => {
+  describe('OhosAutoFillHelper.buildViewData.extended', () => {
     it('uses pageRect when it is valid', Level.LEVEL1, () => {
       const cfg: Configuration = makeConfig(makeAutofill('u', new Array<string>('username'), 'val'));
       const m: Map<string, number> = new Map<string, number>();
@@ -411,7 +411,7 @@ export default function ohosAutoFillHelperTest() {
     });
   });
 
-  describe('OhosAutoFillHelper.buildViewDataForSave (extended)', () => {
+  describe('OhosAutoFillHelper.buildViewDataForSave.extended', () => {
     it('skips fields without autofill in fieldConfigs map', Level.LEVEL1, () => {
       const cfgs: Map<string, Configuration> = new Map<string, Configuration>();
       const cfgU: Configuration = makeConfig(makeAutofill('u', new Array<string>('username'), 'alice'));
@@ -438,7 +438,7 @@ export default function ohosAutoFillHelperTest() {
     });
   });
 
-  describe('OhosAutoFillHelper.toAutoFillRect (default value branches)', () => {
+  describe('OhosAutoFillHelper.toAutoFillRect.defaultValueBranches', () => {
     it('uses width=1 when rect.width is 0 (covers false branch of width>0)', Level.LEVEL1, () => {
       // Build viewData with a 0-width rect via fieldRects; resolvePageRect -> toAutoFillRect(rect)
       // and rect.width > 0 ? rect.width : 1 -> false branch.
@@ -468,7 +468,7 @@ export default function ohosAutoFillHelperTest() {
     });
   });
 
-  describe('OhosAutoFillHelper.parseFillResult (extended)', () => {
+  describe('OhosAutoFillHelper.parseFillResult.extended', () => {
     it('returns empty map for empty pageNodeInfos', Level.LEVEL1, () => {
       const vd: OhosViewData = makeViewData(new Array<OhosPageNodeInfo>());
       const m: Map<number, string> = OhosAutoFillHelper.parseFillResult(vd as Any);

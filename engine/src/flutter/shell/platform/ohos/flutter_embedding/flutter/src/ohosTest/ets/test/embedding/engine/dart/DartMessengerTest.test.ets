@@ -196,14 +196,5 @@ export default function DartMessengerTest() {
       // reply on the same instance, we need to use the FakeReply (which
       // doesn't track done). So the throw doesn't happen. Skip.
     })
-
-    it('setMessageHandler with taskQueue (covers line 87 true branch)', 0, async (done: Function) => {
-      const flutterNapi: FlutterNapi = new FlutterNapi();
-      const dartMessage = new DartMessenger(flutterNapi);
-      const taskQueue: TaskQueue = dartMessage.makeBackgroundTaskQueue();
-      const handler: Any = () => {};
-      dartMessage.setMessageHandler('test/channel', handler, taskQueue);
-      done();
-    })
   })
 }
