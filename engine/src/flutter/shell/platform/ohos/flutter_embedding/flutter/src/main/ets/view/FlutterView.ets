@@ -357,6 +357,8 @@ export class FlutterView {
   private windowPosition: window.Rect | null = null;
   // Default value 5, see: https://developer.huawei.com/consumer/cn/doc/harmonyos-references/ts-basic-gestures-pangesture
   private callbackValue: callbackNumber = () => 5;
+  // Stay consistent with Android
+ 	private defaultPhysicalTouchSlop: number = 8;
   // DPI update flag to distinguish between system DPI updates and custom DPI updates
   private isDevicePixelRatioAdaptive: boolean = false;
   private lastHeight: number = 0;
@@ -1439,7 +1441,7 @@ export class FlutterView {
         displayFeatureStatus[i] = displayFeatures[i].getState();
       }
 
-      this.viewportMetrics.physicalTouchSlop = this.callbackValue();
+      this.viewportMetrics.physicalTouchSlop = this.defaultPhysicalTouchSlop * this.viewportMetrics.devicePixelRatio;
       this?.flutterEngine?.getFlutterNapi()?.setViewportMetrics(this.viewportMetrics.devicePixelRatio,
         this.viewportMetrics.physicalWidth,
         this.viewportMetrics.physicalHeight,
