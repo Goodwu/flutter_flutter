@@ -16,6 +16,7 @@ import {
   FlutterView,
   FlutterNapi,
   Log,
+  resizeWindowToContent,
 } from '@ohos/flutter_ohos';
 
 const TAG = 'RegularWindowAbility';
@@ -135,16 +136,9 @@ export default class RegularWindowAbility extends FlutterAbility {
       let dpr = 1.0;
       try { dpr = display.getDefaultDisplaySync().densityPixels || 1.0; } catch (_) { /* keep 1.0 */ }
       if (this.preferredWidth > 0 && this.preferredHeight > 0) {
-        try {
-          // Promise-returning: the catch only sees synchronous throws —
-          // rejections need .catch or they escape as unhandled.
-          main.resize(Math.round(this.preferredWidth * dpr), Math.round(this.preferredHeight * dpr))
-            .catch((e: Object) => {
-              Log.w(TAG, `resize preferred size rejected: ${JSON.stringify(e)}`);
-            });
-        } catch (e) {
-          Log.w(TAG, `resize preferred size failed: ${JSON.stringify(e)}`);
-        }
+        resizeWindowToContent(main,
+          Math.round(this.preferredWidth * dpr), Math.round(this.preferredHeight * dpr),
+          `RegularWindow viewId=${viewIdStr}`);
       }
       if (this.windowTitle.length > 0) {
         try {
@@ -167,26 +161,13 @@ export default class RegularWindowAbility extends FlutterAbility {
         }
         this.regularFlutterView?.onWindowCreated();
 
-        // resize() sizes the OUTER window, so the floating-window decoration
-        // eats into the drawable content. Compensate by adding the measured
-        // inset (windowRect − drawableRect) back so the content area equals
-        // preferredSize×DPR, like win32 GetWindowSizeForClientSize; no-ops
-        // without inset.
-        try {
-          const props = main.getWindowProperties();
-          const outer = props.windowRect;
-          const drawable = props.drawableRect;
-          const decorW = Math.max(0, Math.round(outer.width - drawable.width));
-          const decorH = Math.max(0, Math.round(outer.height - drawable.height));
-          const targetW = Math.round(this.preferredWidth * dpr) + decorW;
-          const targetH = Math.round(this.preferredHeight * dpr) + decorH;
-          if ((decorW > 0 || decorH > 0) && this.preferredWidth > 0 && this.preferredHeight > 0) {
-            main.resize(targetW, targetH).catch((e: Object) => {
-              Log.w(TAG, `DECOR compensate resize rejected: ${JSON.stringify(e)}`);
-            });
-          }
-        } catch (e) {
-          Log.w(TAG, `DECOR compensate failed: ${JSON.stringify(e)}`);
+        // The 2in1 title bar may have attached since the birth resize —
+        // re-run the compensation; resizeWindowToContent measures the inset
+        // again and no-ops when the frame is already at content+decor.
+        if (this.preferredWidth > 0 && this.preferredHeight > 0) {
+          resizeWindowToContent(main,
+            Math.round(this.preferredWidth * dpr), Math.round(this.preferredHeight * dpr),
+            'DECOR compensate');
         }
       });
     } catch (exception) {

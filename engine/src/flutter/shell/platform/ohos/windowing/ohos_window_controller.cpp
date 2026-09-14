@@ -18,11 +18,6 @@
 #include "flutter/fml/logging.h"
 #include "flutter/shell/platform/ohos/napi/platform_view_ohos_napi.h"
 #include "flutter/shell/platform/ohos/ohos_shell_holder.h"
-#include "flutter/shell/platform/ohos/windowing/ohos_window_anchored.h"
-#include "flutter/shell/platform/ohos/windowing/ohos_window_dialog.h"
-#include "flutter/shell/platform/ohos/windowing/ohos_window_popup.h"
-#include "flutter/shell/platform/ohos/windowing/ohos_window_regular.h"
-#include "flutter/shell/platform/ohos/windowing/ohos_window_tooltip.h"
 
 static std::mutex g_controllers_mutex;
 static std::set<flutter::OHOSWindowController*> g_controllers;
@@ -161,21 +156,6 @@ WindowHostKind OHOSWindowController::ResolveHostKind(WindowType type,
   }
 }
 
-std::unique_ptr<OHOSWindow> OHOSWindowController::CreateWindowObject(
-    const FlutterWindowCreationRequest& request,
-    const OHOSWindow::InitParams& params) {
-  switch (params.type) {
-    case WindowType::kRegular:
-      return std::make_unique<OHOSWindowRegular>(this, params, request);
-    case WindowType::kDialog:
-      return std::make_unique<OHOSWindowDialog>(this, params, request);
-    case WindowType::kTooltip:
-      return std::make_unique<OHOSWindowTooltip>(this, params, request);
-    case WindowType::kPopup:
-      return std::make_unique<OHOSWindowPopup>(this, params, request);
-  }
-}
-
 int64_t OHOSWindowController::CreateWindow(
     const FlutterWindowCreationRequest& request,
     WindowType type) {
@@ -208,9 +188,10 @@ int64_t OHOSWindowController::CreateWindow(
   params.host_kind = kind;
   params.view_id = view_id;
   params.parent_view_id = request.parent_view_id;
-  params.host_handle = handle;
-  params.adopt_entry_ability = is_first_ui_ability;
-  auto window = CreateWindowObject(request, params);
+  // Host behavior is data-driven (host_kind dispatch in
+  // OHOSWindow::RequestWindowHost), so a single concrete class serves every
+  // archetype — the ETS host distinguishes types by the forwarded archetype.
+  auto window = std::make_unique<OHOSWindow>(this, params, request);
   OHOSWindow* const window_ptr = window.get();
   {
     std::lock_guard<std::mutex> lock(windows_mutex_);
@@ -278,8 +259,6 @@ void OHOSWindowController::DestroyWindow(void* window) {
       facade->ExitApplication();
     }
   }
-  // `window_ptr` (sole owner since the move) destructs here, after every
-  // callback and facade hop that could touch it has returned.
 }
 
 void* OHOSWindowController::GetHandleForView(int64_t view_id) {
@@ -346,13 +325,9 @@ void OHOSWindowController::SetContentSize(void* window,
 void OHOSWindowController::SetConstraints(
     void* window,
     const FlutterWindowConstraints& constraints) {
+  // Pass-through: the ETS host owns the live constraints (it clamps window
+  // sizes against them); nothing in C++ reads them back.
   const int64_t view_id = ViewIdForHandle(window);
-  // Runtime constraint updates forward to the OS host (WMS clamps user
-  // resizes to them) and refresh the stored request so later reads
-  // reflect the live value instead of the creation-time copy.
-  if (OHOSWindow* const win = LookupWindow(window)) {
-    win->SetRuntimeConstraints(constraints);
-  }
   if (auto facade = holder_->GetNapiFacade()) {
     facade->SetWindowConstraints(view_id, constraints.min_width,
                                  constraints.max_width, constraints.min_height,

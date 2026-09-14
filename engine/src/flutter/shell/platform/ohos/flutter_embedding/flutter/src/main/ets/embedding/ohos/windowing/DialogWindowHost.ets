@@ -41,8 +41,9 @@ export class DialogWindowHost extends SubWindowHost {
               viewId: number,
               parentViewId: number,
               width: number,
-              height: number) {
-    super(ctx, viewId, parentViewId, WindowArchetype.DIALOG, width, height);
+              height: number,
+              title: string = '') {
+    super(ctx, viewId, parentViewId, WindowArchetype.DIALOG, width, height, title);
   }
 
   /**
@@ -80,8 +81,6 @@ export class DialogWindowHost extends SubWindowHost {
     }
   }
 
-  /** Enable title-bar drag; probed (dynamic @since 14) — throws logged, not
-   * fatal (the page's startMoving drag strip covers builds without one). */
   protected async prepareShow(subWindow: window.Window): Promise<void> {
     const api = subWindow as DialogSubWindowApi;
     if (typeof api.setWindowTitleMoveEnabled !== 'function') {

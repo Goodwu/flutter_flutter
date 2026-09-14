@@ -758,16 +758,16 @@ TEST_F(XComponentAdapterTest, ResolveSubViewRoutingWithLiveControllerRoutes) {
   params.host_kind = WindowHostKind::kSubWindow;
   params.view_id = 5;
   params.parent_view_id = 0;
-  params.host_handle = OHOSWindowController::HandleForViewId(5);
-  controller->windows_[params.host_handle] =
-      controller->CreateWindowObject(FlutterWindowCreationRequest{}, params);
+  void* const host_handle = OHOSWindowController::HandleForViewId(5);
+  controller->windows_[host_handle] = std::make_unique<OHOSWindow>(
+      controller, params, FlutterWindowCreationRequest{});
 
   xc.ResolveSubViewRouting();
   EXPECT_TRUE(xc.is_sub_view_);
   EXPECT_EQ(xc.sub_view_id_, 5);
 
   // Destroy the tracked window: liveness check fails, routing stays implicit.
-  controller->DestroyWindow(params.host_handle);
+  controller->DestroyWindow(host_handle);
   xc.ResolveSubViewRouting();
   EXPECT_FALSE(xc.is_sub_view_);
   EXPECT_EQ(xc.sub_view_id_, 0);

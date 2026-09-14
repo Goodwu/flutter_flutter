@@ -11,6 +11,7 @@ import FlutterNapi from '../../engine/FlutterNapi';
 import { FlutterView } from '../../../view/FlutterView';
 import { WindowArchetype } from './WindowArchetype';
 import { WindowHostContext } from './WindowHostContext';
+import { resizeWindowToContent } from './WindowingUtils';
 
 const TAG = 'FlutterWindowHost'
 
@@ -35,6 +36,7 @@ export abstract class FlutterWindowHost {
   readonly viewIdStr: string;
   readonly parentViewId: number;
   readonly archetype: WindowArchetype;
+  readonly title: string;
   /** Requested LOGICAL size (0 = unconstrained / sized-to-content). */
   protected readonly requestedWidth: number;
   protected readonly requestedHeight: number;
@@ -46,12 +48,14 @@ export abstract class FlutterWindowHost {
               parentViewId: number,
               archetype: WindowArchetype,
               width: number,
-              height: number) {
+              height: number,
+              title: string = '') {
     this.ctx = ctx;
     this.viewId = viewId;
     this.viewIdStr = String(viewId);
     this.parentViewId = parentViewId;
     this.archetype = archetype;
+    this.title = title;
     this.requestedWidth = width;
     this.requestedHeight = height;
   }
@@ -183,11 +187,17 @@ export abstract class FlutterWindowHost {
     width = this.clampToConstraints(width, this.constraintMinW, this.constraintMaxW);
     height = this.clampToConstraints(height, this.constraintMinH, this.constraintMaxH);
     const dpr = this.ctx.densityPixels();
-    const physW = Math.round(width * dpr);
-    const physH = Math.round(height * dpr);
-    win.resize(physW, physH).catch((e: Object) => {
-      Log.e(TAG, `setWindowSize failed viewId=${this.viewId}: ${JSON.stringify(e)}`);
-    });
+    this.resizeToContent(win, Math.round(width * dpr), Math.round(height * dpr), 'setWindowSize');
+  }
+
+  /** Content-size resize funnel (see WindowingUtils): resizes the OUTER
+   * frame to content + decoration, skipping when already at target. */
+  protected resizeToContent(win: window.Window,
+                            physW: number,
+                            physH: number,
+                            where: string,
+                            propagateFailure: boolean = false): Promise<void> {
+    return resizeWindowToContent(win, physW, physH, `${where} viewId=${this.viewId}`, propagateFailure);
   }
 
   /** Runtime SetConstraints (LOGICAL px; max 0 == unbounded). Stores the
@@ -231,15 +241,8 @@ export abstract class FlutterWindowHost {
     });
   }
 
-  setWindowTitle(title: string): void {
-    const win = this.resolveWindow();
-    if (!win) {
-      Log.e(TAG, `setWindowTitle: no window for viewId=${this.viewId}`);
-      return;
-    }
-    win.setWindowTitle(title).catch((e: Object) => {
-      Log.e(TAG, `setWindowTitle failed viewId=${this.viewId}: ${JSON.stringify(e)}`);
-    });
+  setWindowTitle(title?: string): void {
+    // no-op tool/popup/dialog need not override, SubWindowHost with titlebar need override
   }
 
   setWindowMaximized(maximized: boolean): void {

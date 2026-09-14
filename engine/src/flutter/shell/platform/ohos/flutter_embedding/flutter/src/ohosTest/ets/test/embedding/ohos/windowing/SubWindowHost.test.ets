@@ -375,7 +375,10 @@ export default function subWindowHostTest() {
       done();
     });
 
-    it('fails when the post-load resize throws', Level.LEVEL0, async (done: Function) => {
+    // Birth resize is on the critical path (propagateFailure=true in
+    // attach): a rejection must re-enter failAttach — destroy the OS
+    // sub-window and notify Dart — instead of showing an unsized host.
+    it('fails attach when the post-load resize is rejected', Level.LEVEL0, async (done: Function) => {
       const fake = new FakeWindow();
       fake.rejectResize = true;
       const stage = new FakeWindowStage();

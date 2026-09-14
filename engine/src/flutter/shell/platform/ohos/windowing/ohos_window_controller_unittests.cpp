@@ -27,10 +27,7 @@
 #include <string>
 #include <utility>
 #include "flutter/fml/log_settings.h"
-#include "flutter/shell/platform/ohos/windowing/ohos_window_dialog.h"
-#include "flutter/shell/platform/ohos/windowing/ohos_window_popup.h"
-#include "flutter/shell/platform/ohos/windowing/ohos_window_regular.h"
-#include "flutter/shell/platform/ohos/windowing/ohos_window_tooltip.h"
+#include "flutter/shell/platform/ohos/windowing/ohos_window.h"
 
 static const char* g_ohos_device_type = "phone";
 
@@ -63,8 +60,6 @@ OHOSWindow::InitParams MakeWindowParams(WindowType type,
   params.host_kind = kind;
   params.view_id = view_id;
   params.parent_view_id = parent_view_id;
-  params.host_handle = OHOSWindowController::HandleForViewId(view_id);
-  params.adopt_entry_ability = false;
   return params;
 }
 
@@ -76,8 +71,9 @@ void* InsertWindow(OHOSWindowController* controller,
                    WindowHostKind kind,
                    const FlutterWindowCreationRequest& request = {}) {
   void* handle = OHOSWindowController::HandleForViewId(view_id);
-  controller->windows_[handle] = controller->CreateWindowObject(
-      request, MakeWindowParams(type, kind, view_id, request.parent_view_id));
+  controller->windows_[handle] = std::make_unique<OHOSWindow>(
+      controller, MakeWindowParams(type, kind, view_id, request.parent_view_id),
+      request);
   return handle;
 }
 
@@ -257,29 +253,6 @@ TEST_F(OHOSWindowControllerTest, GetHandleForViewBeforeAfter) {
 // Window creation
 // ---------------------------------------------------------------------------
 
-TEST_F(OHOSWindowControllerTest, CreateWindowObjectDispatchesByType) {
-  auto regular = controller_->CreateWindowObject(
-      MakeRequest(),
-      MakeWindowParams(WindowType::kRegular, WindowHostKind::kUiAbility, 1));
-  EXPECT_EQ(regular->type(), WindowType::kRegular);
-  EXPECT_EQ(regular->host_kind(), WindowHostKind::kUiAbility);
-
-  auto dialog = controller_->CreateWindowObject(
-      MakeRequest(),
-      MakeWindowParams(WindowType::kDialog, WindowHostKind::kSubWindow, 2, 0));
-  EXPECT_EQ(dialog->type(), WindowType::kDialog);
-
-  auto tooltip = controller_->CreateWindowObject(
-      MakeRequest(),
-      MakeWindowParams(WindowType::kTooltip, WindowHostKind::kSubWindow, 3));
-  EXPECT_EQ(tooltip->type(), WindowType::kTooltip);
-
-  auto popup = controller_->CreateWindowObject(
-      MakeRequest(),
-      MakeWindowParams(WindowType::kPopup, WindowHostKind::kSubWindow, 4));
-  EXPECT_EQ(popup->type(), WindowType::kPopup);
-}
-
 TEST_F(OHOSWindowControllerTest, FirstRegularWindowAdoptsViewZero) {
   auto request = MakeRequest();
   request.has_size = true;
@@ -429,15 +402,12 @@ TEST_F(OHOSWindowControllerTest, GetTitleGuardsAndTruncates) {
 // Constraints / activation / listeners
 // ---------------------------------------------------------------------------
 
-TEST_F(OHOSWindowControllerTest, SetConstraintsUpdatesStoredRequest) {
+TEST_F(OHOSWindowControllerTest, SetConstraintsForwardsWithoutCaching) {
   void* handle = InsertWindow(controller_, 5, WindowType::kRegular,
                               WindowHostKind::kUiAbility);
+  // Pass-through: forwards to the (null) facade, keeps no C++ copy.
   controller_->SetConstraints(handle, {100.0, 80.0, 1200.0, 800.0});
-  EXPECT_EQ(controller_->LookupWindow(handle)->GetConstraints().min_width,
-            100.0);
-  EXPECT_EQ(controller_->LookupWindow(handle)->GetConstraints().max_width,
-            1200.0);
-  // Unknown window: no stored request to touch, facade null -> no crash.
+  // Unknown window: nothing cached, facade null -> no crash.
   controller_->SetConstraints(OHOSWindowController::HandleForViewId(999),
                               {0.0, 0.0, 0.0, 0.0});
 }
@@ -591,13 +561,13 @@ TEST_F(OHOSWindowControllerTest, WindowBaseRequestWindowHostGenericSubWindow) {
 
 TEST_F(OHOSWindowControllerTest, WindowRegularRequestWindowHostBothViews) {
   // View 0: BindEntryAbilityToView branch (facade null).
-  OHOSWindowRegular regular0(
+  OHOSWindow regular0(
       controller_,
       MakeWindowParams(WindowType::kRegular, WindowHostKind::kUiAbility, 0),
       MakeRequest());
   regular0.RequestWindowHost();
   // View 1: CreateRegularAbility branch (facade null).
-  OHOSWindowRegular regular1(
+  OHOSWindow regular1(
       controller_,
       MakeWindowParams(WindowType::kRegular, WindowHostKind::kUiAbility, 1),
       MakeRequest());
@@ -607,13 +577,13 @@ TEST_F(OHOSWindowControllerTest, WindowRegularRequestWindowHostBothViews) {
 
 TEST_F(OHOSWindowControllerTest, WindowDialogRequestWindowHostBothKinds) {
   // Modeless (kUiAbility) -> RequestUiAbilityHost (facade null).
-  OHOSWindowDialog modeless(
+  OHOSWindow modeless(
       controller_,
       MakeWindowParams(WindowType::kDialog, WindowHostKind::kUiAbility, 2),
       MakeRequest());
   modeless.RequestWindowHost();
   // Modal (kSubWindow) -> base generic SubWindow (facade null).
-  OHOSWindowDialog modal(
+  OHOSWindow modal(
       controller_,
       MakeWindowParams(WindowType::kDialog, WindowHostKind::kSubWindow, 3, 0),
       MakeRequest());
@@ -621,13 +591,13 @@ TEST_F(OHOSWindowControllerTest, WindowDialogRequestWindowHostBothKinds) {
   SUCCEED();
 }
 
-TEST_F(OHOSWindowControllerTest, WindowAnchoredRequestWindowHost) {
-  OHOSWindowTooltip tooltip(
+TEST_F(OHOSWindowControllerTest, WindowTooltipPopupRequestWindowHost) {
+  OHOSWindow tooltip(
       controller_,
       MakeWindowParams(WindowType::kTooltip, WindowHostKind::kSubWindow, 4),
       MakeRequest());
   tooltip.RequestWindowHost();
-  OHOSWindowPopup popup(
+  OHOSWindow popup(
       controller_,
       MakeWindowParams(WindowType::kPopup, WindowHostKind::kSubWindow, 5),
       MakeRequest());
@@ -788,12 +758,13 @@ TEST_F(OHOSWindowControllerTest, ViewIdForHandleNullIsMinusOne) {
   EXPECT_EQ(OHOSWindowController::ViewIdForHandle(nullptr), -1);
 }
 
-TEST_F(OHOSWindowControllerTest, AdoptedRegularWindowSetsAdoptFlag) {
+TEST_F(OHOSWindowControllerTest, FirstRegularWindowAdoptsImplicitView) {
   EXPECT_EQ(controller_->CreateRegularWindow(MakeRequest()), 0);
-  OHOSWindow* window =
-      controller_->LookupWindow(controller_->GetHandleForView(0));
-  ASSERT_NE(window, nullptr);
-  EXPECT_TRUE(window->adopt_entry_ability());
+  // The adopting window is registered under implicit view 0's handle; the
+  // ETS host learns about the adoption from which facade method ran
+  // (BindEntryAbilityToView), so no C++ flag is kept.
+  EXPECT_NE(controller_->LookupWindow(controller_->GetHandleForView(0)),
+            nullptr);
 }
 
 TEST_F(OHOSWindowControllerTest, CreateDialogWithParentFailsWithoutEngine) {
@@ -844,7 +815,7 @@ TEST_F(OHOSWindowControllerTest, FfiCreateRejectedWhenAmbiguousQuietLogs) {
             OHOSWindowController::kCreateWindowFailedViewId);
 }
 
-TEST_F(OHOSWindowControllerTest, FfiSetTitleAndConstraintsRoundTrip) {
+TEST_F(OHOSWindowControllerTest, FfiSetTitleRoundTripAndSetConstraints) {
   void* handle = InsertWindow(controller_, 5, WindowType::kTooltip,
                               WindowHostKind::kSubWindow);
   InternalFlutter_Window_SetTitle(handle, "ffi-title");
@@ -854,8 +825,6 @@ TEST_F(OHOSWindowControllerTest, FfiSetTitleAndConstraintsRoundTrip) {
 
   FlutterWindowConstraints constraints{10.0, 20.0, 100.0, 200.0};
   InternalFlutter_Window_SetConstraints(handle, &constraints);
-  EXPECT_EQ(controller_->LookupWindow(handle)->GetConstraints().min_width,
-            10.0);
 
   char empty[8] = "xxxxxxx";
   InternalFlutter_Window_GetTitle(OHOSWindowController::HandleForViewId(999),

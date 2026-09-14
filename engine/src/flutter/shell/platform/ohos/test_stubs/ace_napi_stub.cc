@@ -72,6 +72,10 @@ struct NapiStubState {
   napi_status fail_create_string_utf8 = napi_ok;
   int fail_create_string_utf8_skip = 0;
   napi_status fail_create_int64 = napi_ok;
+  int fail_create_int32_on_call = 0;
+  int create_int32_calls = 0;
+  int fail_create_double_on_call = 0;
+  int create_double_calls = 0;
   napi_status fail_reference = napi_ok;
   napi_status fail_unwrap = napi_ok;
   napi_status fail_named_property = napi_ok;
@@ -204,6 +208,11 @@ napi_status napi_create_int32(napi_env env,
   if (env == nullptr) {
     return napi_invalid_arg;
   }
+  ++g_napi_stub.create_int32_calls;
+  if (g_napi_stub.fail_create_int32_on_call != 0 &&
+      g_napi_stub.create_int32_calls >= g_napi_stub.fail_create_int32_on_call) {
+    return napi_invalid_arg;
+  }
   if (result == nullptr) {
     return napi_invalid_arg;
   }
@@ -242,6 +251,12 @@ napi_status napi_create_double(napi_env env,
                                double /*value*/,
                                napi_value* result) {
   if (env == nullptr) {
+    return napi_invalid_arg;
+  }
+  ++g_napi_stub.create_double_calls;
+  if (g_napi_stub.fail_create_double_on_call != 0 &&
+      g_napi_stub.create_double_calls >=
+          g_napi_stub.fail_create_double_on_call) {
     return napi_invalid_arg;
   }
   if (result == nullptr) {
@@ -924,6 +939,16 @@ extern "C" void StubNapiFailStringUtf8(napi_status s, int skip) {
 
 extern "C" void StubNapiFailCreateInt64(napi_status s) {
   g_napi_stub.fail_create_int64 = s;
+}
+
+extern "C" void StubNapiFailCreateInt32OnCall(int nth) {
+  g_napi_stub.fail_create_int32_on_call = nth;
+  g_napi_stub.create_int32_calls = 0;
+}
+
+extern "C" void StubNapiFailCreateDoubleOnCall(int nth) {
+  g_napi_stub.fail_create_double_on_call = nth;
+  g_napi_stub.create_double_calls = 0;
 }
 
 extern "C" void StubNapiFailCreateStringUtf8(napi_status s, int skip) {

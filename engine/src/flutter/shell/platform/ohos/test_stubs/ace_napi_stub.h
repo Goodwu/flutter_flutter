@@ -19,6 +19,8 @@ void StubNapiSetString(const char* s);
 void StubNapiFailStringUtf8(napi_status s, int skip);
 void StubNapiFailCreateStringUtf8(napi_status s, int skip);
 void StubNapiFailCreateInt64(napi_status s);
+void StubNapiFailCreateInt32OnCall(int nth);
+void StubNapiFailCreateDoubleOnCall(int nth);
 void StubNapiSetArrayLength(uint32_t n);
 void StubNapiFailArrayLength(napi_status s);
 void StubNapiFailGetElement(napi_status s);

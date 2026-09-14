@@ -468,7 +468,7 @@ export abstract class AnchoredWindowHost extends SubWindowHost {
         }
         if (pw > 0 && ph > 0 &&
             (pw !== this.appliedPhysW || ph !== this.appliedPhysH)) {
-          await subWindow.resize(pw, ph);
+          await this.resizeToContent(subWindow, pw, ph, 'positionAt', true);
           this.appliedPhysW = pw;
           this.appliedPhysH = ph;
         }

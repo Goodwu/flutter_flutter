@@ -56,6 +56,7 @@ export { default as OhosTouchProcessor } from './src/main/ets/embedding/ohos/Oho
 export { default as Settings } from './src/main/ets/embedding/ohos/Settings';
 export * from './src/main/ets/embedding/ohos/TouchEventTracker';
 export { default as WindowInfoRepositoryCallbackAdapterWrapper } from './src/main/ets/embedding/ohos/WindowInfoRepositoryCallbackAdapterWrapper';
+export { resizeWindowToContent } from './src/main/ets/embedding/ohos/windowing/WindowingUtils';
 export { default as PlatformPlugin } from './src/main/ets/plugin/PlatformPlugin';
 export { default as BasicMessageChannel, Reply } from './src/main/ets/plugin/common/BasicMessageChannel';
 export { default as BinaryCodec } from './src/main/ets/plugin/common/BinaryCodec';

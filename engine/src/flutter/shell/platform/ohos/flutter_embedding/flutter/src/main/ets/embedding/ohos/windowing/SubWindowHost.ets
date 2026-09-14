@@ -36,8 +36,9 @@ export class SubWindowHost extends FlutterWindowHost {
               parentViewId: number,
               archetype: WindowArchetype,
               width: number,
-              height: number) {
-    super(ctx, viewId, parentViewId, archetype, width, height);
+              height: number,
+              title: string = '') {
+    super(ctx, viewId, parentViewId, archetype, width, height, title);
   }
 
   attach(): void {
@@ -96,10 +97,6 @@ export class SubWindowHost extends FlutterWindowHost {
           this.failAttach('loadContent');
           return;
         }
-        // Sub-windows are born hidden and zero-size: loadContent alone does
-        // not lay the page out or surface the XComponent's RS node. The
-        // explicit resize + showWindow does — that is what raises the native
-        // OnSurfaceCreated (→ NotifyCreateForView) and starts rendering.
         try {
           const dpr = this.ctx.densityPixels();
           // Requested LOGICAL size, ×DPR → the PHYSICAL px resize() expects.
@@ -115,7 +112,7 @@ export class SubWindowHost extends FlutterWindowHost {
           }
           const physW = Math.round(logicalW * dpr);
           const physH = Math.round(logicalH * dpr);
-          await subWindow.resize(physW, physH);
+          await this.resizeToContent(subWindow, physW, physH, 'attach', true);
           // Per-archetype styling that must land BEFORE the first show.
           await this.styleAfterResize(subWindow);
           // Per-archetype placement; after resize so it anchors the final

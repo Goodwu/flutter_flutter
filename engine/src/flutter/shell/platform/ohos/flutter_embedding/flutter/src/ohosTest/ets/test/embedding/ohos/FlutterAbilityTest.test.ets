@@ -23,6 +23,12 @@ import FlutterEngine from '../../../../../main/ets/embedding/engine/FlutterEngin
 import { FlutterView } from '../../../../../main/ets/view/FlutterView';
 import Any from '../../../../../main/ets/plugin/common/Any';
 
+class TitleWindowAbility extends FlutterAbility {
+  callApplyWindowTitle(win?: window.Window): void {
+    this.applyWindowTitle(win);
+  }
+}
+
 const bundleName = abilityDelegatorRegistry.getArguments().bundleName;
 const want: Want = {
   bundleName: bundleName,
@@ -502,6 +508,49 @@ export default function FlutterAbilityTest() {
       ability.launchWant = { parameters: { 'cached_engine_group_id': 'cov_grp' } as Record<string, Object> } as Any;
       const v: string | null = ability.getCachedEngineGroupId();
       expect(v).assertEqual('cov_grp');
+    })
+
+    it('applyWindowTitle pushes the want title to the main window', 0, () => {
+      const ability: Any = new FlutterAbility();
+      ability.launchWant = { parameters: { 'flutter_window_title': 'cov_title' } as Record<string, Object> } as Any;
+      const titles: string[] = [];
+      ability.mainWindow = {
+        setWindowTitle: (t: string): Promise<void> => {
+          titles.push(t);
+          return Promise.resolve();
+        }
+      } as Any;
+      ability.applyWindowTitle();
+      expect(titles.length).assertEqual(1);
+      expect(titles[0]).assertEqual('cov_title');
+    })
+
+    it('applyWindowTitle skips the call when the title is unset', 0, () => {
+      const ability: Any = new FlutterAbility();
+      ability.launchWant = { parameters: {} as Record<string, Object> } as Any;
+      const titles: string[] = [];
+      ability.mainWindow = {
+        setWindowTitle: (t: string): Promise<void> => {
+          titles.push(t);
+          return Promise.resolve();
+        }
+      } as Any;
+      ability.applyWindowTitle();
+      expect(titles.length).assertEqual(0);
+    })
+
+    it('applyWindowTitle skips the call when the main window is missing', 0, () => {
+      const ability: Any = new FlutterAbility();
+      ability.launchWant = { parameters: { 'flutter_window_title': 'cov_title' } as Record<string, Object> } as Any;
+      // No mainWindow set — early return, no crash.
+      ability.applyWindowTitle();
+    })
+
+    it('applyWindowTitle override flow reads launchWant title safely', 0, () => {
+      const ability = new TitleWindowAbility();
+      ability.launchWant = { parameters: { 'flutter_window_title': 'cov_title' } as Record<string, Object> } as Want;
+      ability.callApplyWindowTitle();
+      expect(ability).not().assertNull();
     })
 
     it('onNewWant crash-cover', 0, () => {

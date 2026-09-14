@@ -376,14 +376,11 @@ export default class FlutterManager implements WindowHostContext {
     this.windowHosts.decorateTitleButtons(viewId);
   }
 
-  /**
-   * Multi-window (SubWindow path): creates the per-archetype window host for
-   * an auxiliary, parent-bound view and attaches it.
-   */
   createSubWindow(viewId: number,
                   parentViewId: number,
                   width: number,
                   height: number,
+                  title: string,
                   archetype: number): void {
     // Dialog here = modal BY DEFINITION. NEVER gate on parentViewId — the main window
     // IS view 0 (modal-to-main has parentViewId===0); has_parent (C++) is authoritative.
@@ -391,7 +388,7 @@ export default class FlutterManager implements WindowHostContext {
     let host: SubWindowHost;
     switch (type) {
       case WindowArchetype.DIALOG:
-        host = new DialogWindowHost(this, viewId, parentViewId, width, height);
+        host = new DialogWindowHost(this, viewId, parentViewId, width, height, title);
         break;
       case WindowArchetype.TOOLTIP:
         host = new TooltipWindowHost(this, viewId, parentViewId, width, height);
@@ -401,7 +398,7 @@ export default class FlutterManager implements WindowHostContext {
         break;
       default:
         // Regular (never routed here in practice) / unknown: generic host.
-        host = new SubWindowHost(this, viewId, parentViewId, type, width, height);
+        host = new SubWindowHost(this, viewId, parentViewId, type, width, height, title);
         break;
     }
     this.windowHosts.register(host);
@@ -507,13 +504,13 @@ export default class FlutterManager implements WindowHostContext {
     host.setWindowSize(width, height);
   }
 
-  setWindowTitle(viewId: number, title: string): void {
-    const host = this.windowHosts.get(String(viewId));
-    if (!host) {
+  setWindowTitle(viewId: string, title?: string): void {
+    const host = this.windowHosts.get(viewId);
+    if (!host && title !== undefined) {
       Log.e(TAG, `setWindowTitle: no window for viewId=${viewId}`);
       return;
     }
-    host.setWindowTitle(title);
+    host?.setWindowTitle(title);
   }
 
   setWindowMaximized(viewId: number, maximized: boolean): void {

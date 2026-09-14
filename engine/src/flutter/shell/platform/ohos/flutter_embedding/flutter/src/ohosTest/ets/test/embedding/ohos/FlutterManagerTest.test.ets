@@ -216,11 +216,11 @@ export default function FlutterManagerTest() {
       // No parent ability resolves in the UT process → every host fails attach
       // cleanly and removes itself. Covers the archetype switch + default.
       try {
-        flutterManager.createSubWindow(9101, 999, 200, 150, 0);
-        flutterManager.createSubWindow(9102, 999, 200, 150, 1);
-        flutterManager.createSubWindow(9103, 999, 200, 150, 2);
-        flutterManager.createSubWindow(9104, 999, 200, 150, 3);
-        flutterManager.createSubWindow(9105, 999, 200, 150, 99);
+        flutterManager.createSubWindow(9101, 999, 200, 150, 'host', 0);
+        flutterManager.createSubWindow(9102, 999, 200, 150, 'dialog', 1);
+        flutterManager.createSubWindow(9103, 999, 200, 150, '', 2);
+        flutterManager.createSubWindow(9104, 999, 200, 150, '', 3);
+        flutterManager.createSubWindow(9105, 999, 200, 150, '', 99);
       } catch (e) {
       }
       expect(flutterManager.getWindowHostOf('9101')).assertUndefined();
@@ -239,7 +239,7 @@ export default function FlutterManagerTest() {
     it('TestWindowPropertySettersNoHost', 0, (done: Function) => {
       try {
         flutterManager.setWindowSize(9201, 100, 100);
-        flutterManager.setWindowTitle(9201, 't');
+        flutterManager.setWindowTitle('9201', 't');
         flutterManager.setWindowMaximized(9201, true);
         flutterManager.setWindowMinimized(9201, true);
         flutterManager.setWindowFullscreen(9201, true);

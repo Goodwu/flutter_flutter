@@ -153,6 +153,59 @@ export default function flutterWindowHostTest() {
       expect(fake.resizeCalls.length).assertEqual(1);
       done();
     });
+
+    it('adds the decoration inset so the CONTENT area matches (2in1 title bar)',
+      Level.LEVEL0, () => {
+        const ctx: FakeHostContext = new FakeHostContext();
+        ctx.dpr = 2.0;
+        const fake = new FakeWindow();
+        fake.props.setDecorInsets(0, 74); // outer 1000x874, content 1000x800
+        const host: TestFlutterWindowHost = new TestFlutterWindowHost(ctx, 7);
+        host.windowForTest = fake as ESObject as window.Window;
+        host.setWindowSize(100, 50);
+        // phys 200x100 + decor 0x74 → outer 200x174 → drawable content 200x100.
+        expect(fake.resizeCalls.length).assertEqual(1);
+        expect(fake.resizeCalls[0][0]).assertEqual(200);
+        expect(fake.resizeCalls[0][1]).assertEqual(174);
+      });
+
+    it('degrades to a plain resize when getWindowProperties throws', Level.LEVEL0, () => {
+      const ctx: FakeHostContext = new FakeHostContext();
+      ctx.dpr = 2.0;
+      const fake = new FakeWindow();
+      fake.propsThrows = true;
+      const host: TestFlutterWindowHost = new TestFlutterWindowHost(ctx, 8);
+      host.windowForTest = fake as ESObject as window.Window;
+      host.setWindowSize(100, 50);
+      expect(fake.resizeCalls.length).assertEqual(1);
+      expect(fake.resizeCalls[0][0]).assertEqual(200);
+      expect(fake.resizeCalls[0][1]).assertEqual(100);
+    });
+
+    it('skips the resize when the frame is already at target (undecorated)',
+      Level.LEVEL0, () => {
+        const ctx: FakeHostContext = new FakeHostContext();
+        ctx.dpr = 1.0;
+        const fake = new FakeWindow(); // outer == drawable == 1000x800 (inset 0)
+        const host: TestFlutterWindowHost = new TestFlutterWindowHost(ctx, 32);
+        host.windowForTest = fake as ESObject as window.Window;
+        host.setWindowSize(1000, 800); // target 1000x800 == outer → no call
+        expect(fake.resizeCalls.length).assertEqual(0);
+      });
+
+    it('skips the resize when the decorated frame is already at target',
+      Level.LEVEL0, () => {
+        const ctx: FakeHostContext = new FakeHostContext();
+        ctx.dpr = 1.0;
+        const fake = new FakeWindow();
+        fake.props.setDecorInsets(0, 74); // outer 1000x874, content 1000x800
+        const host: TestFlutterWindowHost = new TestFlutterWindowHost(ctx, 33);
+        host.windowForTest = fake as ESObject as window.Window;
+        // content 1000x800 + decor 0x74 → target 1000x874 == outer → no call
+        // (proves the comparison is against the OUTER frame, not the content).
+        host.setWindowSize(1000, 800);
+        expect(fake.resizeCalls.length).assertEqual(0);
+      });
   });
 
   describe('FlutterWindowHost.setWindowConstraints', () => {
@@ -232,24 +285,31 @@ export default function flutterWindowHostTest() {
   });
 
   describe('FlutterWindowHost.setWindowTitle', () => {
-    it('sets the title', Level.LEVEL0, (done: Function) => {
+    // TEMPORARILY REVERTED: runtime Dart SetTitle pushes still arrive but are
+    // not applied to the OS window — sub-window/parent title application is
+    // disabled and no title is recorded.
+
+    it('applies no title to the OS window', Level.LEVEL0, (done: Function) => {
       const ctx: FakeHostContext = new FakeHostContext();
       const fake = new FakeWindow();
       const host: TestFlutterWindowHost = new TestFlutterWindowHost(ctx, 13);
       host.windowForTest = fake as ESObject as window.Window;
       host.setWindowTitle('hello');
-      expect(fake.titles[0]).assertEqual('hello');
+      host.setWindowTitle('');
+      host.setWindowTitle();
+      expect(fake.titles.length).assertEqual(0);
       done();
     });
 
-    it('returns early without a window', Level.LEVEL0, () => {
+    it('calls through safely without a window', Level.LEVEL0, () => {
       const ctx: FakeHostContext = new FakeHostContext();
       const host: TestFlutterWindowHost = new TestFlutterWindowHost(ctx, 14);
       host.setWindowTitle('hello');
+      host.setWindowTitle();
       expect(host.resolveWindow()).assertEqual(null);
     });
 
-    it('logs the rejection when the title set fails', Level.LEVEL0, async (done: Function) => {
+    it('never reaches the window even when a title set would fail', Level.LEVEL0, async (done: Function) => {
       const ctx: FakeHostContext = new FakeHostContext();
       const fake = new FakeWindow();
       fake.rejectTitle = true;
@@ -257,7 +317,7 @@ export default function flutterWindowHostTest() {
       host.windowForTest = fake as ESObject as window.Window;
       host.setWindowTitle('hello');
       await sleep(50);
-      expect(fake.titles.length).assertEqual(1);
+      expect(fake.titles.length).assertEqual(0);
       done();
     });
   });
