@@ -3,10 +3,15 @@
 // found in the LICENSE file.
 
 import 'package:flutter_tools/src/base/file_system.dart';
+import 'package:flutter_tools/src/base/logger.dart';
+import 'package:flutter_tools/src/base/utils.dart';
 import 'package:flutter_tools/src/build_info.dart';
+import 'package:flutter_tools/src/cache.dart';
 import 'package:flutter_tools/src/convert.dart';
+import 'package:flutter_tools/src/flutter_manifest.dart';
 import 'package:flutter_tools/src/globals.dart' as globals;
 import 'package:flutter_tools/src/ohos/hvigor.dart';
+import 'package:flutter_tools/src/ohos/hvigor_utils.dart';
 import 'package:flutter_tools/src/project.dart';
 import 'package:test/fake.dart';
 
@@ -92,6 +97,43 @@ void main() {
       expect(harness.flags(), <String, Object?>{'enable_ohos_hybrid_composition': 'false'});
     });
   });
+
+  group('updateLocalProperties', () {
+    testUsingContext('writes flutter.versionName/versionCode from the build info', () async {
+      Cache.flutterRoot = getFlutterRoot();
+      final harness = _LocalPropertiesHarness.create(pubspecVersion: '0.9.0+1');
+
+      updateLocalProperties(
+        project: harness.project,
+        buildInfo: const BuildInfo(
+          BuildMode.debug,
+          null,
+          buildNumber: '42',
+          buildName: '1.2.3',
+          treeShakeIcons: false,
+          packageConfigPath: '.dart_tool/package_config.json',
+        ),
+        requireHarmonySdk: false,
+      );
+
+      expect(harness.values['flutter.versionName'], '1.2.3');
+      expect(harness.values['flutter.versionCode'], '42');
+    });
+
+    testUsingContext('falls back to the pubspec version when the build info omits it', () async {
+      Cache.flutterRoot = getFlutterRoot();
+      final harness = _LocalPropertiesHarness.create(pubspecVersion: '1.0.0+2');
+
+      updateLocalProperties(
+        project: harness.project,
+        buildInfo: BuildInfo.debug,
+        requireHarmonySdk: false,
+      );
+
+      expect(harness.values['flutter.versionName'], '1.0.0');
+      expect(harness.values['flutter.versionCode'], '2');
+    });
+  });
 }
 
 OhosBuildInfo _ohosBuildInfo({bool? enableHcpp, bool? enableImpeller}) {
@@ -145,4 +187,51 @@ class _FakeOhosProject extends Fake implements OhosProject {
 
   @override
   final Directory flutterModuleDirectory;
+}
+
+/// Harness for [updateLocalProperties], which reads
+/// `project.ohos.localPropertiesFile` and `project.manifest` and writes
+/// through the real local file system.
+class _LocalPropertiesHarness {
+  _LocalPropertiesHarness._(this.project, this.localPropertiesFile);
+
+  factory _LocalPropertiesHarness.create({String pubspecVersion = '1.0.0+1'}) {
+    final Directory projectDir = globals.fs.systemTempDirectory.createTempSync(
+      'flutter_hvigor_test.',
+    );
+    addTearDown(() => tryToDelete(projectDir));
+    final File localPropertiesFile = globals.localFileSystem.file(
+      globals.fs.path.join(projectDir.path, 'ohos', 'local.properties'),
+    )..createSync(recursive: true);
+    final FlutterManifest? manifest = FlutterManifest.createFromString(
+      'name: test\nversion: $pubspecVersion\n',
+      logger: BufferLogger.test(),
+    );
+    return _LocalPropertiesHarness._(
+      _FakeFlutterProject(_FakeOhosProjectForProperties(localPropertiesFile), manifest!),
+      localPropertiesFile,
+    );
+  }
+
+  final FlutterProject project;
+  final File localPropertiesFile;
+
+  Map<String, String> get values => SettingsFile.parseFromFile(localPropertiesFile).values;
+}
+
+class _FakeFlutterProject extends Fake implements FlutterProject {
+  _FakeFlutterProject(this.ohos, this.manifest);
+
+  @override
+  final OhosProject ohos;
+
+  @override
+  final FlutterManifest manifest;
+}
+
+class _FakeOhosProjectForProperties extends Fake implements OhosProject {
+  _FakeOhosProjectForProperties(this.localPropertiesFile);
+
+  @override
+  final File localPropertiesFile;
 }
