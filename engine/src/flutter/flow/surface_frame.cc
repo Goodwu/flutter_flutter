@@ -52,14 +52,10 @@ SurfaceFrame::SurfaceFrame(sk_sp<SkSurface> surface,
 bool SurfaceFrame::Encode() {
   TRACE_EVENT0("flutter", "SurfaceFrame::Encode");
   if (encoded_) {
-    FML_LOG(WARNING) << "SurfaceFrame::Submit already submitted";
     return false;
   }
 
   encoded_ = PerformEncode();
-  if (!submitted_) {
-    FML_LOG(ERROR) << "SurfaceFrame::Submit failed";
- 	}
 
   return encoded_;
 }
@@ -71,10 +67,14 @@ bool SurfaceFrame::Submit() {
   }
 
   if (submitted_) {
+    FML_LOG(WARNING) << "SurfaceFrame::Submit already submitted";
     return false;
   }
 
   submitted_ = PerformSubmit();
+  if (!submitted_) {
+    FML_LOG(ERROR) << "SurfaceFrame::Submit failed";
+  }
 
   return submitted_;
 }
