@@ -16,18 +16,111 @@ import { describe, expect, it } from '@ohos/hypium';
 import { abilityDelegatorRegistry } from '@kit.TestKit';
 import AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import { Options } from '../../../../../main/ets/embedding/engine/FlutterEngineGroup';
-import { Want, ConfigurationConstant } from '@kit.AbilityKit';
+import { Want, ConfigurationConstant, UIAbility } from '@kit.AbilityKit';
 import { FlutterAbilityAndEntryDelegate, Host } from '../../../../../main/ets/embedding/ohos/FlutterAbilityAndEntryDelegate';
-import FlutterEngine from '../../../../../main/ets/embedding/engine/FlutterEngine';
 import window from '@ohos.window';
+import common from '@ohos.app.ability.common';
 import { FlutterPlugin, FlutterPluginBinding } from '../../../../../main/ets/embedding/engine/plugins/FlutterPlugin';
+import FlutterEngine from '../../../../../main/ets/embedding/engine/FlutterEngine';
+import FlutterShellArgs from '../../../../../main/ets/embedding/engine/FlutterShellArgs';
+import PlatformPlugin from '../../../../../main/ets/plugin/PlatformPlugin';
+import SensitiveContentPlugin from '../../../../../main/ets/plugin/view/SensitiveContentPlugin';
+import ExclusiveAppComponent from '../../../../../main/ets/embedding/ohos/ExclusiveAppComponent';
+import ActivityControlSurface from '../../../../../main/ets/embedding/engine/plugins/ability/AbilityControlSurface';
 
 const bundleName = abilityDelegatorRegistry.getArguments().bundleName;
+const delegator = abilityDelegatorRegistry.getAbilityDelegator();
 
 class TestPlugin implements FlutterPlugin {
   onAttachedToEngine(binding: FlutterPluginBinding): void {}
   onDetachedFromEngine(binding: FlutterPluginBinding): void {}
   getUniqueClassName(): string { return 'TestPlugin'; }
+}
+
+/**
+ * Host stub that reports shouldAttachEngineToAbility() as configurable,
+ * used to drive the plugin state restore branch of the delegate.
+ */
+class RestoreTestHost implements Host {
+  private ability: UIAbility;
+  private attachToAbility: boolean;
+  constructor(ability: UIAbility, attachToAbility: boolean) {
+    this.ability = ability;
+    this.attachToAbility = attachToAbility;
+  }
+  getAbility(): UIAbility { return this.ability; }
+  shouldDispatchAppLifecycleState(): boolean { return false; }
+  detachFromFlutterEngine(): void {}
+  shouldAttachEngineToAbility(): boolean { return this.attachToAbility; }
+  getCachedEngineId(): string { return ''; }
+  getCachedEngineGroupId(): string | null { return null; }
+  shouldDestroyEngineWithHost(): boolean { return true; }
+  getFlutterShellArgs(): FlutterShellArgs { return new FlutterShellArgs(); }
+  getDartEntrypointArgs(): Array<string> { return []; }
+  getDartEntrypointLibraryUri(): string { return ''; }
+  getAppBundlePath(): string { return ''; }
+  getDartEntrypointFunctionName(): string { return 'main'; }
+  getInitialRoute(): string { return '/'; }
+  getWant(): Want { return { bundleName: bundleName, abilityName: 'TestAbility' }; }
+  shouldRestoreAndSaveState(): boolean { return false; }
+  getExclusiveAppComponent(): ExclusiveAppComponent<UIAbility> | null { return null; }
+  providePlatformPlugin(flutterEngine: FlutterEngine): PlatformPlugin | undefined { return undefined; }
+  provideSensitiveContentPlugin(flutterEngine: FlutterEngine): SensitiveContentPlugin | undefined { return undefined; }
+  attachToEngineAutomatically(): boolean { return false; }
+  provideFlutterEngine(context: common.Context): FlutterEngine | null { return null; }
+  configureFlutterEngine(flutterEngine: FlutterEngine): void {}
+  cleanUpFlutterEngine(flutterEngine: FlutterEngine): void {}
+  popSystemNavigator(): boolean { return false; }
+}
+
+/**
+ * Records every onRestoreInstanceState call so tests can assert what the
+ * delegate distributed through onRestoreInstanceState.
+ */
+class SpyControlSurface implements ActivityControlSurface {
+  restoreCallCount: number = 0;
+  lastRestoredState: Record<string, Object> | null = null;
+  attachToAbility(exclusiveActivity: ExclusiveAppComponent<UIAbility>): void {}
+  detachFromAbility(): void {}
+  onNewWant(want: Want, launchParams: AbilityConstant.LaunchParam): void {}
+  onWindowFocusChanged(hasFocus: boolean): void {}
+  onSaveState(reason: AbilityConstant.StateType, wantParam: Record<string, Object>): AbilityConstant.OnSaveResult {
+    return AbilityConstant.OnSaveResult.ALL_REJECT;
+  }
+  onRestoreInstanceState(wantParam: Record<string, Object>): void {
+    this.restoreCallCount++;
+    this.lastRestoredState = wantParam;
+  }
+}
+
+/**
+ * Legacy ActivityControlSurface that intentionally does not implement the
+ * optional onRestoreInstanceState() method, simulating old implementations
+ * compiled against a previous version of the interface.
+ */
+class LegacyControlSurface implements ActivityControlSurface {
+  attachToAbility(exclusiveActivity: ExclusiveAppComponent<UIAbility>): void {}
+  detachFromAbility(): void {}
+  onNewWant(want: Want, launchParams: AbilityConstant.LaunchParam): void {}
+  onWindowFocusChanged(hasFocus: boolean): void {}
+  onSaveState(reason: AbilityConstant.StateType, wantParam: Record<string, Object>): AbilityConstant.OnSaveResult {
+    return AbilityConstant.OnSaveResult.ALL_REJECT;
+  }
+}
+
+/**
+ * Engine stub whose ActivityControlSurface can be replaced by any
+ * ActivityControlSurface implementation (spy or legacy).
+ */
+class SpyEngine extends FlutterEngine {
+  readonly controlSurface: ActivityControlSurface;
+  constructor(context: common.Context, controlSurface: ActivityControlSurface) {
+    super(context, null, null, null);
+    this.controlSurface = controlSurface;
+  }
+  getAbilityControlSurface(): ActivityControlSurface | null {
+    return this.controlSurface;
+  }
 }
 
 export default function FlutterAbilityAndEntryDelegateTest() {
@@ -287,6 +380,90 @@ export default function FlutterAbilityAndEntryDelegateTest() {
       let threw = false;
       try { d.onRestoreInstanceState(want); } catch (e) { threw = true; }
       expect(threw).assertEqual(false);
+      done();
+    });
+
+    it('TestOnRestoreInstanceState distributes plugin state to registered listeners', 0, async (done: Function) => {
+      const ability: UIAbility = await delegator.getCurrentTopAbility();
+      const spy = new SpyControlSurface();
+      const engine = new SpyEngine(ability.context, spy);
+      const d = new FlutterAbilityAndEntryDelegate(new RestoreTestHost(ability, true));
+      d.flutterEngine = engine;
+      const pluginState: Record<string, Object> = {};
+      pluginState['pluginA'] = 'savedValue';
+      const params: Record<string, Object> = {};
+      params['plugins'] = pluginState;
+      const want: Want = { bundleName: bundleName, abilityName: 'EntryAbility', parameters: params };
+      d.onRestoreInstanceState(want);
+      expect(spy.restoreCallCount).assertEqual(1);
+      expect(spy.lastRestoredState!['pluginA']).assertEqual('savedValue');
+      done();
+    });
+
+    it('TestOnRestoreInstanceState passes empty object when no plugin state key', 0, async (done: Function) => {
+      const ability: UIAbility = await delegator.getCurrentTopAbility();
+      const spy = new SpyControlSurface();
+      const engine = new SpyEngine(ability.context, spy);
+      const d = new FlutterAbilityAndEntryDelegate(new RestoreTestHost(ability, true));
+      d.flutterEngine = engine;
+      const params: Record<string, Object> = {};
+      params['other'] = 'value';
+      const want: Want = { bundleName: bundleName, abilityName: 'EntryAbility', parameters: params };
+      let threw = false;
+      try { d.onRestoreInstanceState(want); } catch (e) { threw = true; }
+      expect(threw).assertEqual(false);
+      expect(spy.restoreCallCount).assertEqual(1);
+      expect(Object.keys(spy.lastRestoredState!).length).assertEqual(0);
+      done();
+    });
+
+    it('TestOnRestoreInstanceState does not distribute when host does not attach engine', 0, async (done: Function) => {
+      const ability: UIAbility = await delegator.getCurrentTopAbility();
+      const spy = new SpyControlSurface();
+      const engine = new SpyEngine(ability.context, spy);
+      const d = new FlutterAbilityAndEntryDelegate(new RestoreTestHost(ability, false));
+      d.flutterEngine = engine;
+      const pluginState: Record<string, Object> = {};
+      pluginState['pluginA'] = 'savedValue';
+      const params: Record<string, Object> = {};
+      params['plugins'] = pluginState;
+      const want: Want = { bundleName: bundleName, abilityName: 'EntryAbility', parameters: params };
+      let threw = false;
+      try { d.onRestoreInstanceState(want); } catch (e) { threw = true; }
+      expect(threw).assertEqual(false);
+      expect(spy.restoreCallCount).assertEqual(0);
+      done();
+    });
+
+    it('TestOnRestoreInstanceState supports legacy ActivityControlSurface without restore callback', 0, async (done: Function) => {
+      const ability: UIAbility = await delegator.getCurrentTopAbility();
+      const controlSurface = new LegacyControlSurface();
+      const engine = new SpyEngine(ability.context, controlSurface);
+      const d = new FlutterAbilityAndEntryDelegate(new RestoreTestHost(ability, true));
+      d.flutterEngine = engine;
+      const pluginState: Record<string, Object> = {};
+      pluginState['pluginA'] = 'savedValue';
+      const params: Record<string, Object> = {};
+      params['plugins'] = pluginState;
+      const want: Want = { bundleName: bundleName, abilityName: 'EntryAbility', parameters: params };
+      let threw = false;
+      try { d.onRestoreInstanceState(want); } catch (e) { threw = true; }
+      expect(threw).assertEqual(false);
+      done();
+    });
+
+    it('TestOnRestoreInstanceState passes empty object for invalid plugin state', 0, async (done: Function) => {
+      const ability: UIAbility = await delegator.getCurrentTopAbility();
+      const spy = new SpyControlSurface();
+      const engine = new SpyEngine(ability.context, spy);
+      const d = new FlutterAbilityAndEntryDelegate(new RestoreTestHost(ability, true));
+      d.flutterEngine = engine;
+      const params: Record<string, Object> = {};
+      params['plugins'] = 'invalid';
+      const want: Want = { bundleName: bundleName, abilityName: 'EntryAbility', parameters: params };
+      d.onRestoreInstanceState(want);
+      expect(spy.restoreCallCount).assertEqual(1);
+      expect(Object.keys(spy.lastRestoredState!).length).assertEqual(0);
       done();
     });
 
