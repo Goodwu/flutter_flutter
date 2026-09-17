@@ -10,6 +10,7 @@
 
 import { ByteBuffer } from '../../util/ByteBuffer';
 import StringUtils from '../../util/StringUtils';
+import Log from '../../util/Log';
 import MessageCodec from './MessageCodec';
 import TreeMap from '@ohos.util.TreeMap';
 import HashMap from '@ohos.util.HashMap';
@@ -111,6 +112,20 @@ export default class StandardMessageCodec implements MessageCodec<Any> {
    * @returns The ByteBuffer stream
    */
   writeValue(stream: ByteBuffer, value: Any): Any {
+    try {
+      this.writeValueInternal(stream, value, new Set<ESObject>());
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("Circular reference detected")) {
+        Log.e(StandardMessageCodec.TAG, "writeValue caught", e);
+        stream.writeInt8(StandardMessageCodec.NULL);
+      } else {
+        throw e as Error;
+      }
+    }
+    return stream;
+  }
+
+  private writeValueInternal(stream: ByteBuffer, value: Any, visited: Set<ESObject>): void {
     if (value == null || value == undefined) {
       stream.writeInt8(StandardMessageCodec.NULL);
     } else if (typeof value === "boolean") {
@@ -179,35 +194,65 @@ export default class StandardMessageCodec implements MessageCodec<Any> {
     } else if (value instanceof Array || value instanceof Int8Array || value instanceof Int16Array
       || value instanceof Uint16Array || value instanceof Uint32Array || value instanceof List
       || value instanceof LinkedList || value instanceof ArrayList) {
-      stream.writeInt8(StandardMessageCodec.LIST)
-      this.writeSize(stream, value.length);
-      value.forEach((item: Any): void => this.writeValue(stream, item));
+      if (visited.has(value)) {
+        throw new Error("Circular reference detected (List)");
+      }
+      visited.add(value);
+      try {
+        stream.writeInt8(StandardMessageCodec.LIST)
+        this.writeSize(stream, value.length);
+        value.forEach((item: Any): void => this.writeValueInternal(stream, item, visited));
+      } finally {
+        visited.delete(value);
+      }
     } else if (value instanceof Map) {
-      stream.writeInt8(StandardMessageCodec.MAP);
-      this.writeSize(stream, value.size);
-      value.forEach((value: Any, key: Any) => {
-        this.writeValue(stream, key);
-        this.writeValue(stream, value);
-      });
+      if (visited.has(value)) {
+        throw new Error("Circular reference detected (Map)");
+      }
+      visited.add(value);
+      try {
+        stream.writeInt8(StandardMessageCodec.MAP);
+        this.writeSize(stream, value.size);
+        value.forEach((value: Any, key: Any) => {
+          this.writeValueInternal(stream, key, visited);
+          this.writeValueInternal(stream, value, visited);
+        });
+      } finally {
+        visited.delete(value);
+      }
     } else if (value instanceof HashMap || value instanceof TreeMap || value instanceof LightWeightMap
       || value instanceof PlainArray) {
-      stream.writeInt8(StandardMessageCodec.MAP);
-      this.writeSize(stream, value.length);
-      value.forEach((value: Any, key: Any) => {
-        this.writeValue(stream, key);
-        this.writeValue(stream, value);
-      });
+      if (visited.has(value)) {
+        throw new Error("Circular reference detected (HashMap)");
+      }
+      visited.add(value);
+      try {
+        stream.writeInt8(StandardMessageCodec.MAP);
+        this.writeSize(stream, value.length);
+        value.forEach((value: Any, key: Any) => {
+          this.writeValueInternal(stream, key, visited);
+          this.writeValueInternal(stream, value, visited);
+        });
+      } finally {
+        visited.delete(value);
+      }
     } else if (typeof value == 'object') {
-      let map: Map<string, Any> = new Map();
-      Object.keys(value).forEach(key => {
-        map.set(key, value[key]);
-      });
-      this.writeValue(stream, map);
+      if (visited.has(value)) {
+        throw new Error("Circular reference detected (object)");
+      }
+      visited.add(value);
+      try {
+        let map: Map<string, Any> = new Map();
+        Object.keys(value).forEach(key => {
+          map.set(key, value[key]);
+        });
+        this.writeValueInternal(stream, map, visited);
+      } finally {
+        visited.delete(value);
+      }
     } else {
       throw new Error("Unsupported value: " + value);
-      stream.writeInt8(StandardMessageCodec.NULL);
     }
-    return stream;
   }
 
   /**
