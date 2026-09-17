@@ -572,6 +572,18 @@ void PlatformViewOHOS::NotifyDestroyed() {
   FML_LOG(WARNING) << "GpuReclaim: NotifyDestroyed completed";
 }
 
+double PlatformViewOHOS::GetScreenToPlatformViewLayoutScale() const {
+  const double flutter_dpr = viewport_metrics_.device_pixel_ratio;
+  const double system_density = PlatformViewOHOSNapi::display_density_pixels;
+  // NaN-safe: NaN > 0.0 evaluates to false, so !(x > 0.0) covers NaN, zero
+  // and negative values, falling back to 1.0 and leaving forwarded pointer
+  // coordinates untouched.
+  if (!(flutter_dpr > 0.0) || !(system_density > 0.0)) {
+    return 1.0;
+  }
+  return system_density / flutter_dpr;
+}
+
 void PlatformViewOHOS::SetViewportMetrics(int64_t view_id,
                                           ViewportMetrics& metrics) {
   if (display_width_ != 0 && display_height_ != 0) {

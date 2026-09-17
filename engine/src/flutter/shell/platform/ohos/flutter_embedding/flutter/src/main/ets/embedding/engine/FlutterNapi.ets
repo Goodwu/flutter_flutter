@@ -149,6 +149,7 @@ export default class FlutterNapi {
    * @param densityPixels - The pixel density value (dots per inch)
    */
   updateDensity(densityPixels: number) {
+    Log.i(TAG, "updateDensity called: " + densityPixels);
     flutter.nativeUpdateDensity(densityPixels);
   }
 

@@ -13,6 +13,7 @@
 #include <atomic>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -940,6 +941,72 @@ TEST_F(PlatformViewOHOSUt, SetViewportMetricsUsesDisplaySizeWhenSet) {
 
   view()->UpdateDisplaySize(640, 480);
   EXPECT_EQ(delegate().metrics_count(), 3u);
+}
+
+namespace {
+
+// Saves and restores the process-wide static system display density used by
+// PlatformViewOHOS::GetScreenToPlatformViewLayoutScale.
+class ScopedSystemDensity {
+ public:
+  explicit ScopedSystemDensity(double value)
+      : saved_(PlatformViewOHOSNapi::display_density_pixels) {
+    PlatformViewOHOSNapi::display_density_pixels = value;
+  }
+  ~ScopedSystemDensity() {
+    PlatformViewOHOSNapi::display_density_pixels = saved_;
+  }
+
+ private:
+  double saved_;
+};
+
+}  // namespace
+
+// ===== GetScreenToPlatformViewLayoutScale =====
+// Regression tests for the WebView click-drift bug after a custom DPI scale
+// (flutter/displaymetrics 'updateDpiScale'): pointer packets forwarded to
+// platform views must be mapped between physical screen pixels and the ArkUI
+// layout space with system_density / flutter_dpr, and the mapping must be the
+// identity (1.0) when both densities match.
+
+TEST_F(PlatformViewOHOSUt, ScreenToLayoutScaleIdentityWhenDprsMatch) {
+  ScopedSystemDensity density(3.25);
+  ViewportMetrics metrics;
+  metrics.device_pixel_ratio = 3.25;
+  view()->SetViewportMetrics(kFlutterImplicitViewId, metrics);
+  EXPECT_DOUBLE_EQ(view()->GetScreenToPlatformViewLayoutScale(), 1.0);
+}
+
+TEST_F(PlatformViewOHOSUt, ScreenToLayoutScaleForCustomDpi) {
+  ScopedSystemDensity density(3.25);
+  ViewportMetrics metrics;
+  // Custom DPR from an 'updateDpiScale(0.9787...)' request (system 3.25).
+  metrics.device_pixel_ratio = 3.181;
+  view()->SetViewportMetrics(kFlutterImplicitViewId, metrics);
+  EXPECT_NEAR(view()->GetScreenToPlatformViewLayoutScale(), 3.25 / 3.181, 1e-9);
+}
+
+TEST_F(PlatformViewOHOSUt, ScreenToLayoutScaleInvalidValuesFallBackToOne) {
+  ScopedSystemDensity density(3.25);
+
+  ViewportMetrics zero_dpr;
+  zero_dpr.device_pixel_ratio = 0.0;
+  view()->SetViewportMetrics(kFlutterImplicitViewId, zero_dpr);
+  EXPECT_DOUBLE_EQ(view()->GetScreenToPlatformViewLayoutScale(), 1.0);
+
+  ViewportMetrics nan_dpr;
+  nan_dpr.device_pixel_ratio = std::numeric_limits<double>::quiet_NaN();
+  view()->SetViewportMetrics(kFlutterImplicitViewId, nan_dpr);
+  EXPECT_DOUBLE_EQ(view()->GetScreenToPlatformViewLayoutScale(), 1.0);
+
+  // A zero system density must also fall back to the identity scale even
+  // when the viewport DPR is valid.
+  ScopedSystemDensity zero_density(0.0);
+  ViewportMetrics metrics;
+  metrics.device_pixel_ratio = 3.25;
+  view()->SetViewportMetrics(kFlutterImplicitViewId, metrics);
+  EXPECT_DOUBLE_EQ(view()->GetScreenToPlatformViewLayoutScale(), 1.0);
 }
 
 TEST_F(PlatformViewOHOSUt, UpdateSemanticsQueuedUntilNotifyCreateDrains) {
