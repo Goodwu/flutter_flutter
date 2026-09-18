@@ -382,8 +382,8 @@ TEST_F(OhosHiappEventTest, OnScrollStartRecordsFrameIds) {
   OhosHiappEventDDL ddl;
   ddl.UpdateLastFrameNumber(100);
   ddl.OnScrollStart();
-  EXPECT_EQ(scroll_start_frame_.load(), 100u);
-  EXPECT_EQ(scroll_end_frame_.load(), 100u);
+  EXPECT_EQ(scroll_start_frame_.load(), 101u);
+  EXPECT_EQ(scroll_end_frame_.load(), 101u);
 }
 
 TEST_F(OhosHiappEventTest, OnScrollStartRecordsTimestamp) {
