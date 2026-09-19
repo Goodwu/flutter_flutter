@@ -377,10 +377,12 @@ export default class StandardMessageCodec implements MessageCodec<Any> {
         break;
       case StandardMessageCodec.BIGINT:
         let bytes: Uint8Array = this.readBytes(buffer);
-      // Convert the byte array to a UTF-8 encoded string
+        // Convert the byte array to a UTF-8 encoded string
         const hexString: string = String.fromCharCode(...bytes);
-      // Parse the string as a hexadecimal BigInt
-        result = BigInt(`0x${hexString}`);
+        // Parse the magnitude as a hexadecimal BigInt, then restore the sign.
+        const isNegative = hexString.startsWith('-');
+        const magnitude = BigInt(`0x${isNegative ? hexString.substring(1) : hexString}`);
+        result = isNegative ? -magnitude : magnitude;
         break;
       case StandardMessageCodec.FLOAT64:
         this.readAlignment(buffer, 8);
