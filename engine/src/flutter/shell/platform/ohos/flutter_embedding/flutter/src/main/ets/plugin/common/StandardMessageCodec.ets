@@ -104,6 +104,7 @@ export default class StandardMessageCodec implements MessageCodec<Any> {
   private static FLOAT32_ARRAY = 14;
   private INT64_MAX = 9223372036854775807;
   private INT64_MIN = -9223372036854775808;
+  private _visited: Set<ESObject> | null = null;
 
   /**
    * Writes a value to the byte buffer using the standard encoding.
@@ -112,14 +113,22 @@ export default class StandardMessageCodec implements MessageCodec<Any> {
    * @returns The ByteBuffer stream
    */
   writeValue(stream: ByteBuffer, value: Any): Any {
+    const isTopLevel = this._visited === null;
+    if (isTopLevel) {
+      this._visited = new Set<ESObject>();
+    }
     try {
-      this.writeValueInternal(stream, value, new Set<ESObject>());
+      this.writeValueInternal(stream, value, this._visited!);
     } catch (e) {
       if (e instanceof Error && e.message.includes("Circular reference detected")) {
         Log.e(StandardMessageCodec.TAG, "writeValue caught", e);
         stream.writeInt8(StandardMessageCodec.NULL);
       } else {
         throw e as Error;
+      }
+    } finally {
+      if (isTopLevel) {
+        this._visited = null;
       }
     }
     return stream;
@@ -201,7 +210,7 @@ export default class StandardMessageCodec implements MessageCodec<Any> {
       try {
         stream.writeInt8(StandardMessageCodec.LIST)
         this.writeSize(stream, value.length);
-        value.forEach((item: Any): void => this.writeValueInternal(stream, item, visited));
+        value.forEach((item: Any): void => this.writeValue(stream, item));
       } finally {
         visited.delete(value);
       }
@@ -214,8 +223,8 @@ export default class StandardMessageCodec implements MessageCodec<Any> {
         stream.writeInt8(StandardMessageCodec.MAP);
         this.writeSize(stream, value.size);
         value.forEach((value: Any, key: Any) => {
-          this.writeValueInternal(stream, key, visited);
-          this.writeValueInternal(stream, value, visited);
+          this.writeValue(stream, key);
+          this.writeValue(stream, value);
         });
       } finally {
         visited.delete(value);
@@ -230,8 +239,8 @@ export default class StandardMessageCodec implements MessageCodec<Any> {
         stream.writeInt8(StandardMessageCodec.MAP);
         this.writeSize(stream, value.length);
         value.forEach((value: Any, key: Any) => {
-          this.writeValueInternal(stream, key, visited);
-          this.writeValueInternal(stream, value, visited);
+          this.writeValue(stream, key);
+          this.writeValue(stream, value);
         });
       } finally {
         visited.delete(value);
@@ -246,7 +255,7 @@ export default class StandardMessageCodec implements MessageCodec<Any> {
         Object.keys(value).forEach(key => {
           map.set(key, value[key]);
         });
-        this.writeValueInternal(stream, map, visited);
+        this.writeValue(stream, map);
       } finally {
         visited.delete(value);
       }
