@@ -74,7 +74,9 @@ class FakePlatformViewsHandler implements PlatformViewsHandler {
     onComplete.run(new PlatformViewBufferSize(100, 200));
   }
 
-  offset(viewId: number, top: number, left: number, transform?: Array<number>): void {}
+  offset(viewId: number, top: number, left: number): void {}
+
+  transform(viewId: number, transform?: Array<number>): void {}
 
   onTouch(touch: PlatformViewTouch): void {}
 
@@ -394,6 +396,17 @@ export default function platformViewsChannelTest() {
       args.set('top', 10);
       args.set('left', 20);
       dispatchPvcMethodCall(setup, 'offset', args);
+      expect(true).assertEqual(true);
+    });
+
+    it('onMethodCall handles transform', Level.LEVEL0, () => {
+      const setup = new PvcTestSetup();
+      const handler = new FakePlatformViewsHandler();
+      setup.channel.setPlatformViewsHandler(handler);
+      const args = new Map<string, Object>();
+      args.set('viewId', 1);
+      args.set('transform', [1, 0, 0, 1, 10, 20]);
+      dispatchPvcMethodCall(setup, 'transform', args);
       expect(true).assertEqual(true);
     });
 
