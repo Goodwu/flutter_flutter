@@ -94,10 +94,8 @@ export default class LocalizationPlugin {
    * Sends the system locale to Flutter.
    */
   sendLocaleToFlutter(): void {
-    let systemLocale: string = i18n.System.getSystemLocale();
-    let data: Array<string> = [];
-    data.push(systemLocale);
-    this.localizationChannel.sendLocales(data);
+    let preferredLocales: Array<string> = i18n.System.getPreferredLanguageList();
+    this.localizationChannel.sendLocales(preferredLocales);
   }
 
   /**
