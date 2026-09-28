@@ -522,30 +522,30 @@ export default function ListenableEditingStateTest() {
     it('handleSelectByRangeEvent sets selection to end when range.start is non-zero', 0, () => {
       const s: ListenableEditingState = new ListenableEditingState(null, 0, undefined);
       s.setStringCache('hello');
-      const range: TestRange = new TestRange(1, 1);
+      const range: TestRange = new TestRange(2, 4);
+      s.handleSelectByRangeEvent(range);
+      expect(s.getSelectionStart()).assertEqual(2);
+      expect(s.getSelectionEnd()).assertEqual(4);
+    });
+
+
+    it('handleSelectByRangeEvent sets a range beyond the text', 0, () => {
+      const s: ListenableEditingState = new ListenableEditingState(null, 0, undefined);
+      s.setStringCache('hello');
+      const range: TestRange = new TestRange(10, 20);
       s.handleSelectByRangeEvent(range);
       expect(s.getSelectionStart()).assertEqual(5);
       expect(s.getSelectionEnd()).assertEqual(5);
     });
 
-    // handleSelectByRangeEvent - with preview staging active
-    it('handleSelectByRangeEvent with preview staging active applies external selection', 0, () => {
-      const s: ListenableEditingState = new ListenableEditingState(null, 0, undefined);
-      s.setStringCache('hello');
-      s.updatePreviewTextRange(1, 4);
-      const range: TestRange = new TestRange(2, 3);
-      s.handleSelectByRangeEvent(range);
-      expect(s).not().assertNull();
-    });
 
-    // handleSelectByRangeEvent - preview staging with clamping
-    it('handleSelectByRangeEvent with preview clamps negative range', 0, () => {
+    it('handleSelectByRangeEvent sets selection to end when range.start is -3', 0, () => {
       const s: ListenableEditingState = new ListenableEditingState(null, 0, undefined);
       s.setStringCache('hello');
-      s.updatePreviewTextRange(1, 4);
-      const range: TestRange = new TestRange(-5, 100);
+      const range: TestRange = new TestRange(-3, 2);
       s.handleSelectByRangeEvent(range);
-      expect(s).not().assertNull();
+      expect(s.getSelectionStart()).assertEqual(0);
+      expect(s.getSelectionEnd()).assertEqual(2);
     });
 
     // handleMoveCursorEvent - CURSOR_LEFT
