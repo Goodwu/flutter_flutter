@@ -1549,8 +1549,6 @@ export default class PlatformViewsControllerHybrid implements HybridCompositionH
 
     // 多管齐下隐藏 PV，缩短 ArkUI 声明式滞后的可见窗口
     // 恢复显示时 onDisplayMutatorsHybrid 每帧重设 opacity/pathCommands。
-    this.setParam(params, "width", 0);
-    this.setParam(params, "height", 0);
     this.setParam(params, "opacity", 0);
     this.setParam(params, "pathCommands", 'M0 0 L0 0 Z');
     this.setParam(params, "pathWidth", 1);
