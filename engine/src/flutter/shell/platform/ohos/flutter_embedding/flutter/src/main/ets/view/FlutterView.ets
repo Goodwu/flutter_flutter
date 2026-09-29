@@ -1139,6 +1139,8 @@ export class FlutterView {
     this.flutterEngine?.getPlatformViewsController()?.detachTextInputPlugin();
     this.flutterEngine = null;
     this.keyboardManager = null;
+    this.mouseCursorPlugin?.destroy();
+    this.mouseCursorPlugin = undefined;
     this.textInputPlugin?.destroy();
   }
 
