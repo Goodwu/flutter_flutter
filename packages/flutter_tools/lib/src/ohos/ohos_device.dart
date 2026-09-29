@@ -63,6 +63,12 @@ class OhosDevice extends Device {
   HdcLogReader? _logReader;
   HdcLogReader? _pastLogReader;
 
+  /// The device marketing name (`const.product.name`, falling back to
+  /// `const.product.model`), cached when the properties are loaded; null
+  /// when the properties could not be read, so `name` falls back to the
+  /// serial number.
+  String? _cachedMarketingName;
+
   @override
   FutureOr<DeviceLogReader> getLogReader({
     ApplicationPackage? app,
@@ -184,7 +190,7 @@ class OhosDevice extends Device {
   }
 
   @override
-  String get name => deviceCodeName ?? 'unknown';
+  String get name => _cachedMarketingName ?? deviceCodeName ?? 'unknown';
 
   @override
   late final DevicePortForwarder? portForwarder = () {
@@ -202,11 +208,22 @@ class OhosDevice extends Device {
 
   @override
   Future<String> get sdkNameAndVersion async =>
-      'Ohos ${await _sdkVersion} (API ${await apiVersion})';
+      '${await _sdkVersion} (API ${await apiVersion})';
 
+  /// `const.ohos.fullname` is e.g. `OpenHarmony-6.0.2.130`; reported
+  /// verbatim (like Android reports `ro.build.version.release`).
   Future<String?> get _sdkVersion => _getProperty('const.ohos.fullname');
 
   Future<String?> get apiVersion => _getProperty('const.ohos.apiversion');
+
+  @override
+  Future<Map<String, Object>> toJson() async {
+    // Warm the properties cache before `name` (a synchronous getter) is
+    // read by super.toJson, so machine-readable output carries the
+    // marketing name.
+    await _properties;
+    return super.toJson();
+  }
 
   @override
   Future<LaunchResult> startApp(
@@ -314,6 +331,15 @@ class OhosDevice extends Device {
         logger: _logger,
       );
     }
+    final bool traceStartup = platformArgs['trace-startup'] as bool? ?? false;
+    final String? traceSkiaAllowlist = debuggingOptions.traceSkiaAllowlist;
+    // Dart VM flags start with `-` (e.g. `--random-seed=99`), but `aa start`
+    // rejects `--ps` values beginning with `-` as unknown options. Prefix a
+    // space so the value passes through; the embedding trims it back off in
+    // FlutterShellArgs.fromWant when rebuilding `--dart-flags=`.
+    final String dartFlags = debuggingOptions.dartFlags.startsWith('-')
+        ? ' ${debuggingOptions.dartFlags}'
+        : debuggingOptions.dartFlags;
     final cmd = <String>[
       'shell',
       'aa',
@@ -322,15 +348,65 @@ class OhosDevice extends Device {
       builtPackage.ohosBuildData.moduleInfo.mainElement!,
       '-b',
       builtPackage.ohosBuildData.appInfo!.bundleName,
+      // Forward engine switches to the ability as Want parameters
+      // (`--pb` boolean / `--ps` string), mirroring Android's
+      // `am start --ez/--es` mechanism. Keys match what
+      // FlutterShellArgs.ets parses on the embedding side.
+      if (debuggingOptions.enableDartProfiling) ...<String>[
+        '--pb',
+        'enable-dart-profiling',
+        'true',
+      ],
+      if (debuggingOptions.profileStartup) ...<String>['--pb', 'profile-startup', 'true'],
+      if (traceStartup) ...<String>['--pb', 'trace-startup', 'true'],
+      // Pass the initial route to the OHOS ability via Want parameters.
+      // FlutterAbility.getInitialRoute() reads the "route" key from launchWant.parameters.
+      if (route != null) ...<String>['--ps', 'route', route],
+      if (debuggingOptions.enableSoftwareRendering) ...<String>[
+        '--pb',
+        'enable-software-rendering',
+        'true',
+      ],
+      if (debuggingOptions.skiaDeterministicRendering) ...<String>[
+        '--pb',
+        'skia-deterministic-rendering',
+        'true',
+      ],
+      if (debuggingOptions.traceSkia) ...<String>['--pb', 'trace-skia', 'true'],
+      if (traceSkiaAllowlist != null) ...<String>[
+        '--ps',
+        'trace-skia-allowlist',
+        traceSkiaAllowlist,
+      ],
+      if (debuggingOptions.traceSystrace) ...<String>['--pb', 'trace-systrace', 'true'],
+      if (debuggingOptions.endlessTraceBuffer) ...<String>['--pb', 'endless-trace-buffer', 'true'],
+      if (debuggingOptions.purgePersistentCache) ...<String>[
+        '--pb',
+        'purge-persistent-cache',
+        'true',
+      ],
+      if (debuggingOptions.enableImpeller == ImpellerStatus.enabled) ...<String>[
+        '--pb',
+        'enable-impeller',
+        'true',
+      ],
+      if (debuggingOptions.enableImpeller == ImpellerStatus.disabled) ...<String>[
+        '--pb',
+        'enable-impeller',
+        'false',
+      ],
+      if (debuggingOptions.debuggingEnabled) ...<String>[
+        if (debuggingOptions.startPaused) ...<String>['--pb', 'start-paused', 'true'],
+        if (debuggingOptions.disableServiceAuthCodes) ...<String>[
+          '--pb',
+          'disable-service-auth-codes',
+          'true',
+        ],
+        if (debuggingOptions.dartFlags.isNotEmpty) ...<String>['--ps', 'dart-flags', dartFlags],
+        if (debuggingOptions.useTestFonts) ...<String>['--pb', 'use-test-fonts', 'true'],
+        if (debuggingOptions.verboseSystemLogs) ...<String>['--pb', 'verbose-logging', 'true'],
+      ],
     ];
-    if (debuggingOptions.debuggingEnabled && debuggingOptions.startPaused) {
-      cmd.addAll(<String>['--pb', 'start-paused', 'true']);
-    }
-    // Pass the initial route to the OHOS ability via Want parameters.
-    // FlutterAbility.getInitialRoute() reads the "route" key from launchWant.parameters.
-    if (route != null) {
-      cmd.addAll(<String>['--ps', 'route', route]);
-    }
     final String result = (await runHdcCheckedAsync(cmd)).stdout;
     // This invocation returns 0 even when it fails.
     if (result.toLowerCase().contains('error')) {
@@ -473,11 +549,22 @@ class OhosDevice extends Device {
 
     final List<String> propCommand = hdcCommandForDevice(<String>['shell', 'param', 'get']);
     _logger.printTrace(propCommand.join(' '));
-    final RunResult result = _processUtils.runSync(propCommand, throwOnError: true);
+    try {
+      final RunResult result = _processUtils.runSync(propCommand, throwOnError: true);
 
-    if (result.exitCode == 0) {
-      properties = parseHdcDeviceProperties(result.stdout);
+      if (result.exitCode == 0) {
+        properties = parseHdcDeviceProperties(result.stdout);
+      }
+    } on Exception catch (err) {
+      _logger.printTrace('reading device properties failed: $err');
     }
+    final String? productName = properties['const.product.name'];
+    final String? productModel = properties['const.product.model'];
+    _cachedMarketingName = (productName != null && productName.isNotEmpty)
+        ? productName
+        : (productModel != null && productModel.isNotEmpty)
+        ? productModel
+        : null;
     return properties;
   }();
 
@@ -695,6 +782,15 @@ class HdcLogReader extends DeviceLogReader {
     RegExp(r'^[F]\/[\S^:]+:\s+'),
   ];
 
+  // The engine's log_message_callback emits Dart `print` output as
+  // '<tag> settings log message: <message>' (engine ohos_main.cpp), so a raw
+  // hilog line looks like
+  // '... XComFlutterOHOS_Native: flutter settings log message: hello'.
+  // Rewrite it to the standard 'flutter: <message>' prefix used on other
+  // platforms so log filters (`grep "flutter:"`) and devicelab log matching
+  // keep working.
+  static final RegExp _settingsLogMessage = RegExp(r'flutter settings log message: (.*)$');
+
   // 'F/libc(pid): Fatal signal 11'
 
   // 'I/DEBUG(pid): ...'
@@ -745,6 +841,10 @@ class HdcLogReader extends DeviceLogReader {
       }
 
       if (acceptLine) {
+        final Match? settingsLog = _settingsLogMessage.firstMatch(line);
+        if (settingsLog != null) {
+          line = 'flutter: ${settingsLog.group(1)}';
+        }
         _acceptedLastLine = true;
         _linesController.add(line);
         return;
