@@ -109,32 +109,45 @@ class OhosUpgrade {
   /// OHOS stable release tags: `<flutter version>-ohos-<ohos version>` or
   /// `<flutter version>+ohos-<ohos version>`. Tags with a suffix (for example
   /// '-beta' or '-canary1') do not match and are excluded.
-  static final _stableTagPattern = RegExp(r'^(\d+)\.(\d+)\.(\d+)[+-]ohos-(\d+)\.(\d+)\.(\d+)$');
+  static final _stableTagPattern = RegExp(r'^(\d+)\.(\d+)\.(\d+)([+-])ohos-(\d+)\.(\d+)\.(\d+)$');
 
   /// Loose variant of the release tag pattern: matches the version prefix
   /// and ignores any suffix, so pre-release versions (for example
   /// '3.44.9+ohos-0.0.1-canary1') still resolve for comparison purposes.
   /// An ohos segment is always present on OHOS checkouts.
-  static final _looseVersionPattern = RegExp(r'^(\d+)\.(\d+)\.(\d+)[+-]ohos-(\d+)\.(\d+)\.(\d+)');
+  static final _looseVersionPattern = RegExp(r'^(\d+)\.(\d+)\.(\d+)([+-])ohos-(\d+)\.(\d+)\.(\d+)');
 
-  /// Parses an OHOS stable release tag into seven numeric segments
-  /// [flutterMajor, flutterMinor, flutterPatch, ohosMajor, ohosMinor,
-  /// ohosPatch, release], where the last segment is the release rank: 1 for
-  /// a stable release and 0 for a pre-release, so a stable tag outranks its
-  /// own pre-releases. Returns null if [tag] is not a stable release tag.
+  /// Parses an OHOS stable release tag into eight numeric segments
+  /// [flutterMajor, flutterMinor, naming, flutterPatch, ohosMajor, ohosMinor,
+  /// ohosPatch, release]. The third segment ranks the separator, so at the
+  /// same major.minor the '+' naming ('3.41.9+ohos-x') outranks the legacy
+  /// '-' one ('3.41.10-ohos-x'). The last segment is the release rank: 1
+  /// for a stable release and 0 for a pre-release, so a stable tag outranks
+  /// its own pre-releases. Returns null if [tag] is not a stable release
+  /// tag.
   static List<int>? parseStableTag(String tag) {
     final RegExpMatch? match = _stableTagPattern.firstMatch(tag.trim());
     if (match == null) {
       return null;
     }
-    return <int>[for (int i = 1; i <= 6; i++) int.parse(match.group(i)!), 1];
+    return <int>[
+      int.parse(match.group(1)!),
+      int.parse(match.group(2)!),
+      if (match.group(4) == '+') 1 else 0,
+      int.parse(match.group(3)!),
+      int.parse(match.group(5)!),
+      int.parse(match.group(6)!),
+      int.parse(match.group(7)!),
+      1,
+    ];
   }
 
-  /// Parses a version string of the current checkout into seven numeric
-  /// segments. A pre-release suffix is ignored for the version segments but
-  /// sets the release rank (the last segment) to 0, so a stable release
-  /// outranks its own pre-releases. Returns null if [version] does not
-  /// start with an OHOS version (an ohos segment is required).
+  /// Parses a version string of the current checkout into eight numeric
+  /// segments (see [parseStableTag] for the segment order and ranks). A
+  /// pre-release suffix is ignored for the version segments but sets the
+  /// release rank (the last segment) to 0, so a stable release outranks its
+  /// own pre-releases. Returns null if [version] does not start with an
+  /// OHOS version (an ohos segment is required).
   static List<int>? parseLooseVersion(String version) {
     final String trimmed = version.trim();
     if (trimmed.isEmpty || trimmed == kUnknownFrameworkVersion) {
@@ -145,18 +158,24 @@ class OhosUpgrade {
       return null;
     }
     return <int>[
-      for (int i = 1; i <= 6; i++) int.parse(match.group(i)!),
+      int.parse(match.group(1)!),
+      int.parse(match.group(2)!),
+      if (match.group(4) == '+') 1 else 0,
+      int.parse(match.group(3)!),
+      int.parse(match.group(5)!),
+      int.parse(match.group(6)!),
+      int.parse(match.group(7)!),
       if (match.end == trimmed.length) 1 else 0,
     ];
   }
 
-  /// Compares two seven-segment versions returned by [parseStableTag].
+  /// Compares two eight-segment versions returned by [parseStableTag].
   /// Returns a negative number if [a] is older than [b], 0 if equal, and a
-  /// positive number if newer. The last segment (release rank) puts a
-  /// stable release above its own pre-releases once the six version segments
-  /// are equal.
+  /// positive number if newer. Segments compare left to right: at the same
+  /// major.minor the '+' naming outranks the legacy '-', and once the
+  /// version segments are equal a stable release outranks its pre-releases.
   static int compareVersions(List<int> a, List<int> b) {
-    for (var i = 0; i < 7; i++) {
+    for (var i = 0; i < 8; i++) {
       if (a[i] != b[i]) {
         return a[i] - b[i];
       }
@@ -164,7 +183,7 @@ class OhosUpgrade {
     return 0;
   }
 
-  /// The current SDK version as seven segments: from the OHOS release tag
+  /// The current SDK version as eight segments: from the OHOS release tag
   /// pointing at HEAD, or parsed from the cached framework version.
   Future<List<int>?> currentVersion({
     required String? workingDirectory,
