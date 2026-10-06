@@ -1890,7 +1890,7 @@ class RawScrollbarState<T extends RawScrollbar> extends State<T> with TickerProv
     // dragging on the trackpad or with a stylus.
     final TargetPlatform platform = ScrollConfiguration.of(context).getPlatform(context);
     final Velocity adjustedVelocity = switch (platform) {
-      TargetPlatform.iOS || TargetPlatform.android => -velocity,
+      TargetPlatform.iOS || TargetPlatform.android || TargetPlatform.ohos => -velocity,
       _ => Velocity.zero,
     };
     final renderBox = _scrollbarPainterKey.currentContext!.findRenderObject()! as RenderBox;

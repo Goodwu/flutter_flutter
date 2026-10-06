@@ -3308,6 +3308,7 @@ class _RouteEntry extends RouteTransitionRecord {
           .then((dynamic result) async {
             switch (defaultTargetPlatform) {
               case TargetPlatform.android:
+              case TargetPlatform.ohos:
                 // In the Android platform, we have to wait for the system refocus to complete before
                 // sending the refocus message. Otherwise, the refocus message will be ignored.
                 // TODO(hangyujin): update this logic if Android provide a better way to do so.
