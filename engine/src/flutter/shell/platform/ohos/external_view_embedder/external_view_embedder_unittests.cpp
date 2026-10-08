@@ -1440,5 +1440,125 @@ TEST(OHOSWindowingViewEmbedderTest, EmbeddedViewOverridesAreNoOps) {
   EXPECT_EQ(embedder.CompositeEmbeddedView(1), nullptr);
 }
 
+// ---------------------------------------------------------------------------
+// OHOSWindowingViewEmbedder: sized-to-content frame-size reports
+// (win32 OnFrameGenerated -> DidUpdateViewSize parity)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct ReportedSize {
+  int64_t view_id = -1;
+  double width = 0;
+  double height = 0;
+};
+
+}  // namespace
+
+TEST(OHOSWindowingViewEmbedderTest,
+     SizedToContentViewReportsSizeOnlyOnChange) {
+  ReportedSize reported;
+  OHOSWindowingViewEmbedder embedder(
+      [&](int64_t view_id, double width, double height) {
+        reported = {view_id, width, height};
+      });
+
+  auto surface = std::make_unique<NiceMock<SurfaceMock>>();
+  EXPECT_CALL(*surface, AcquireFrame(_))
+      .Times(3)
+      // InvokeWithoutArgs: a fresh frame per call (Return(ByMove) would be
+      // moved-from after the first invocation).
+      .WillRepeatedly(::testing::InvokeWithoutArgs(
+          []() { return MakeTestFrame(nullptr); }));
+  embedder.RegisterViewSurface(7, std::move(surface));
+  embedder.SetViewSizedToContent(7, true);
+
+  // Frame 1: 300x200 — first report.
+  embedder.PrepareFlutterView(DlISize(300, 200), 1.0);
+  embedder.SubmitFlutterView(7, nullptr, nullptr, MakeTestFrame(nullptr));
+  EXPECT_EQ(reported.view_id, 7);
+  EXPECT_EQ(reported.width, 300);
+  EXPECT_EQ(reported.height, 200);
+
+  // Frame 2: same size — deduped, no report.
+  reported = {};
+  embedder.PrepareFlutterView(DlISize(300, 200), 1.0);
+  embedder.SubmitFlutterView(7, nullptr, nullptr, MakeTestFrame(nullptr));
+  EXPECT_EQ(reported.view_id, -1);
+
+  // Frame 3: content grew — reported again.
+  embedder.PrepareFlutterView(DlISize(320, 210), 1.0);
+  embedder.SubmitFlutterView(7, nullptr, nullptr, MakeTestFrame(nullptr));
+  EXPECT_EQ(reported.view_id, 7);
+  EXPECT_EQ(reported.width, 320);
+  EXPECT_EQ(reported.height, 210);
+}
+
+TEST(OHOSWindowingViewEmbedderTest, NonSizedToContentViewNeverReports) {
+  ReportedSize reported;
+  OHOSWindowingViewEmbedder embedder(
+      [&](int64_t view_id, double width, double height) {
+        reported = {view_id, width, height};
+      });
+
+  auto surface = std::make_unique<NiceMock<SurfaceMock>>();
+  EXPECT_CALL(*surface, AcquireFrame(_))
+      .Times(2)
+      .WillRepeatedly(::testing::InvokeWithoutArgs(
+          []() { return MakeTestFrame(nullptr); }));
+  embedder.RegisterViewSurface(9, std::move(surface));
+  // NOT marked sized-to-content (regular/dialog parity): silent.
+
+  embedder.PrepareFlutterView(DlISize(300, 200), 1.0);
+  embedder.SubmitFlutterView(9, nullptr, nullptr, MakeTestFrame(nullptr));
+  embedder.PrepareFlutterView(DlISize(500, 400), 1.0);
+  embedder.SubmitFlutterView(9, nullptr, nullptr, MakeTestFrame(nullptr));
+  EXPECT_EQ(reported.view_id, -1);
+}
+
+TEST(OHOSWindowingViewEmbedderTest,
+     UnregisterAndCollectResetSizeReportingState) {
+  ReportedSize reported;
+  OHOSWindowingViewEmbedder embedder(
+      [&](int64_t view_id, double width, double height) {
+        reported = {view_id, width, height};
+      });
+
+  auto surface = std::make_unique<NiceMock<SurfaceMock>>();
+  EXPECT_CALL(*surface, AcquireFrame(_))
+      .Times(1)
+      .WillOnce(::testing::InvokeWithoutArgs([]() { return MakeTestFrame(nullptr); }));
+  embedder.RegisterViewSurface(7, std::move(surface));
+  embedder.SetViewSizedToContent(7, true);
+  embedder.PrepareFlutterView(DlISize(300, 200), 1.0);
+  embedder.SubmitFlutterView(7, nullptr, nullptr, MakeTestFrame(nullptr));
+  EXPECT_EQ(reported.view_id, 7);
+
+  // Unregister drops the last-size memory: the next submit re-reports even
+  // at the same size (fresh surface, win32 parity).
+  reported = {};
+  embedder.UnregisterViewSurface(7);
+  auto surface2 = std::make_unique<NiceMock<SurfaceMock>>();
+  EXPECT_CALL(*surface2, AcquireFrame(_))
+      .Times(1)
+      .WillOnce(::testing::InvokeWithoutArgs([]() { return MakeTestFrame(nullptr); }));
+  embedder.RegisterViewSurface(7, std::move(surface2));
+  embedder.PrepareFlutterView(DlISize(300, 200), 1.0);
+  embedder.SubmitFlutterView(7, nullptr, nullptr, MakeTestFrame(nullptr));
+  EXPECT_EQ(reported.view_id, 7);
+
+  // CollectView drops BOTH the flag and the memory.
+  reported = {};
+  embedder.CollectView(7);
+  auto surface3 = std::make_unique<NiceMock<SurfaceMock>>();
+  EXPECT_CALL(*surface3, AcquireFrame(_))
+      .Times(1)
+      .WillOnce(::testing::InvokeWithoutArgs([]() { return MakeTestFrame(nullptr); }));
+  embedder.RegisterViewSurface(7, std::move(surface3));
+  embedder.PrepareFlutterView(DlISize(300, 200), 1.0);
+  embedder.SubmitFlutterView(7, nullptr, nullptr, MakeTestFrame(nullptr));
+  EXPECT_EQ(reported.view_id, -1);
+}
+
 }  // namespace testing
 }  // namespace flutter

@@ -397,6 +397,16 @@ export default class FlutterManager implements WindowHostContext {
     }
   }
 
+  /** Raster content-size report (napi didUpdateViewSize, PHYSICAL px;
+   * win32 HostWindowTooltip::DidUpdateViewSize parity): re-place the
+   * sized-to-content tooltip/popup. Unknown or other views no-op. */
+  didUpdateViewSize(viewId: number, width: number, height: number): void {
+    const host = this.windowHosts.get(viewId);
+    if (host instanceof TooltipWindowHost || host instanceof PopupWindowHost) {
+      host.didUpdateViewSize(width, height);
+    }
+  }
+
   /**
    * ADOPT path, view 0 only (C++ CreateWindow routes it here): adopt the
    * EntryAbility's main window as the FIRST Dart Regular window's surface.

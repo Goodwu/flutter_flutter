@@ -137,6 +137,17 @@ class OHOSWindowController {
                          double physical_height,
                          double density);
 
+  // win32 is_sized_to_content queries for the view-metrics and raster-notify
+  // plumbing: true => the view's metrics carry a constraint RANGE and the
+  // raster thread reports its per-frame content size (tooltip only, win32
+  // parity). Unknown views answer false. Thread-safe (windows_mutex_).
+  bool IsViewSizedToContent(int64_t view_id) const;
+
+  // The sized-to-content view's request constraints, LOGICAL px (win32
+  // GetConstraints parity); false = pin metrics min=max=size (also what
+  // unknown/non-tooltip views get). Thread-safe (windows_mutex_).
+  bool GetViewConstraints(int64_t view_id, WindowConstraints* out) const;
+
   // Fires the window's notify_listeners Dart callback (window-state changes
   // observed on the ArkTS side; entered from the napi
   // nativeNotifyWindowActivated bridge when focus changes).

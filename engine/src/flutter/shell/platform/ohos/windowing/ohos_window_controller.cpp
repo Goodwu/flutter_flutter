@@ -111,6 +111,19 @@ OHOSWindow* OHOSWindowController::LookupWindow(void* window) {
   return it == windows_.end() ? nullptr : it->second.get();
 }
 
+bool OHOSWindowController::IsViewSizedToContent(int64_t view_id) const {
+  const OHOSWindow* const win =
+      LookupWindow(HandleForViewId(view_id));
+  return win != nullptr && win->IsSizedToContent();
+}
+
+bool OHOSWindowController::GetViewConstraints(int64_t view_id,
+                                              WindowConstraints* out) const {
+  const OHOSWindow* const win =
+      LookupWindow(HandleForViewId(view_id));
+  return win != nullptr && win->GetConstraints(out);
+}
+
 const OHOSWindow* OHOSWindowController::LookupWindow(void* window) const {
   std::lock_guard<std::mutex> lock(windows_mutex_);
   auto it = windows_.find(window);
