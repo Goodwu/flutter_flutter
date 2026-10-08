@@ -828,11 +828,12 @@ void main() {
   });
   group('parseStableTag', () {
     test('parses a stable tag with the -ohos- spelling', () {
-      expect(OhosUpgrade.parseStableTag('3.35.8-ohos-1.0.4'), <int>[3, 35, 8, 1, 0, 4, 1]);
+      expect(OhosUpgrade.parseStableTag('3.35.8-ohos-1.0.4'), <int>[3, 35, 0, 8, 1, 0, 4, 1]);
     });
 
     test('parses a stable tag with the +ohos- spelling', () {
-      expect(OhosUpgrade.parseStableTag('3.44.9+ohos-1.0.0'), <int>[3, 44, 9, 1, 0, 0, 1]);
+      expect(OhosUpgrade.parseStableTag('3.44.9+ohos-1.0.0'), <int>[3, 44, 1, 9, 1, 0, 0, 1]);
+      expect(OhosUpgrade.parseStableTag('3.41.9+ohos-1.0.2'), <int>[3, 41, 1, 9, 1, 0, 2, 1]);
     });
 
     test('rejects pre-release suffixes', () {
@@ -853,19 +854,29 @@ void main() {
       expect(OhosUpgrade.parseLooseVersion('3.44.9+ohos-0.0.1-canary1'), <int>[
         3,
         44,
+        1,
         9,
         0,
         0,
         1,
         0,
       ]);
-      expect(OhosUpgrade.parseLooseVersion('3.35.8-ohos-1.0.4-beta'), <int>[3, 35, 8, 1, 0, 4, 0]);
+      expect(OhosUpgrade.parseLooseVersion('3.35.8-ohos-1.0.4-beta'), <int>[
+        3,
+        35,
+        0,
+        8,
+        1,
+        0,
+        4,
+        0,
+      ]);
     });
 
     test('returns null for a version without an ohos segment', () {
       expect(OhosUpgrade.parseLooseVersion('3.47.2'), isNull);
       expect(OhosUpgrade.parseLooseVersion('3.35.8'), isNull);
-      expect(OhosUpgrade.parseLooseVersion('3.35.8-ohos-1.0.4'), <int>[3, 35, 8, 1, 0, 4, 1]);
+      expect(OhosUpgrade.parseLooseVersion('3.35.8-ohos-1.0.4'), <int>[3, 35, 0, 8, 1, 0, 4, 1]);
     });
 
     test('returns null for empty or unrecognized input', () {
@@ -881,21 +892,60 @@ void main() {
   group('compareVersions', () {
     test('compares flutter segments before ohos segments', () {
       expect(
-        OhosUpgrade.compareVersions(<int>[3, 41, 10, 1, 0, 1, 1], <int>[3, 44, 9, 0, 0, 1, 0]),
+        OhosUpgrade.compareVersions(
+          <int>[3, 41, 0, 10, 1, 0, 1, 1],
+          <int>[3, 44, 1, 9, 0, 0, 1, 0],
+        ),
         isNegative,
       );
       expect(
-        OhosUpgrade.compareVersions(<int>[3, 35, 8, 2, 0, 0, 1], <int>[3, 35, 8, 1, 9, 9, 1]),
+        OhosUpgrade.compareVersions(<int>[3, 35, 0, 8, 2, 0, 0, 1], <int>[3, 35, 0, 8, 1, 9, 9, 1]),
         isPositive,
       );
       expect(
-        OhosUpgrade.compareVersions(<int>[3, 35, 8, 1, 0, 4, 1], <int>[3, 35, 8, 1, 0, 4, 1]),
+        OhosUpgrade.compareVersions(<int>[3, 35, 0, 8, 1, 0, 4, 1], <int>[3, 35, 0, 8, 1, 0, 4, 1]),
         isZero,
       );
       // A stable release outranks its own pre-releases.
       expect(
-        OhosUpgrade.compareVersions(<int>[3, 44, 9, 0, 0, 1, 1], <int>[3, 44, 9, 0, 0, 1, 0]),
+        OhosUpgrade.compareVersions(<int>[3, 44, 1, 9, 0, 0, 1, 1], <int>[3, 44, 1, 9, 0, 0, 1, 0]),
         isPositive,
+      );
+    });
+
+    test('prefers the current +ohos naming over the legacy -ohos one', () {
+      // 3.41.9+ohos-1.0.2 (current naming) outranks 3.41.10-ohos-1.0.1
+      // (legacy naming) at the same major.minor, even though the legacy
+      // flutter patch number is larger.
+      expect(
+        OhosUpgrade.compareVersions(
+          <int>[3, 41, 0, 10, 1, 0, 1, 1],
+          <int>[3, 41, 1, 9, 1, 0, 2, 1],
+        ),
+        isNegative,
+      );
+      expect(
+        OhosUpgrade.compareVersions(<int>[3, 22, 0, 4, 1, 1, 5, 1], <int>[3, 22, 1, 3, 1, 1, 6, 1]),
+        isNegative,
+      );
+      // Different major.minor lines still compare by the flutter version.
+      expect(
+        OhosUpgrade.compareVersions(
+          <int>[3, 41, 0, 10, 1, 0, 1, 1],
+          <int>[3, 44, 1, 9, 0, 0, 1, 1],
+        ),
+        isNegative,
+      );
+    });
+
+    test('still compares the flutter patch within the same naming', () {
+      expect(
+        OhosUpgrade.compareVersions(<int>[3, 41, 1, 9, 1, 0, 2, 1], <int>[3, 41, 1, 9, 1, 0, 3, 1]),
+        isNegative,
+      );
+      expect(
+        OhosUpgrade.compareVersions(<int>[3, 35, 0, 7, 1, 0, 5, 1], <int>[3, 35, 0, 8, 1, 0, 4, 1]),
+        isNegative,
       );
     });
   });
@@ -931,6 +981,34 @@ void main() {
 
         expect(latest.tag, '3.41.10-ohos-1.0.1');
         expect(latest.revision, 'ccc301');
+        expect(processManager, hasNoRemainingExpectations);
+      },
+      overrides: <Type, Generator>{
+        ProcessManager: () => processManager,
+        Platform: () => FakePlatform(),
+      },
+    );
+
+    testUsingContext(
+      'prefers the +ohos naming over the -ohos one when both are stable',
+      () async {
+        processManager.addCommands(<FakeCommand>[
+          const FakeCommand(
+            command: <String>['git', 'ls-remote', '--tags', 'origin'],
+            stdout:
+                'ccc300\trefs/tags/3.41.10-ohos-1.0.1\n'
+                'ccc301\trefs/tags/3.41.10-ohos-1.0.1^{}\n'
+                'fff600\trefs/tags/3.41.9+ohos-1.0.2\n'
+                'fff601\trefs/tags/3.41.9+ohos-1.0.2^{}\n',
+          ),
+        ]);
+
+        final ({String tag, String revision}) latest = await OhosUpgrade().fetchLatestStableTag(
+          workingDirectory: '/flutter',
+        );
+
+        expect(latest.tag, '3.41.9+ohos-1.0.2');
+        expect(latest.revision, 'fff601');
         expect(processManager, hasNoRemainingExpectations);
       },
       overrides: <Type, Generator>{
@@ -1009,7 +1087,7 @@ void main() {
           localVersion: FakeFlutterVersion(),
         );
 
-        expect(version, <int>[3, 35, 8, 1, 0, 4, 1]);
+        expect(version, <int>[3, 35, 0, 8, 1, 0, 4, 1]);
         expect(processManager, hasNoRemainingExpectations);
       },
       overrides: <Type, Generator>{
@@ -1030,7 +1108,7 @@ void main() {
           localVersion: FakeFlutterVersion(frameworkVersion: '3.41.10-ohos-1.0.1'),
         );
 
-        expect(version, <int>[3, 41, 10, 1, 0, 1, 1]);
+        expect(version, <int>[3, 41, 0, 10, 1, 0, 1, 1]);
         expect(processManager, hasNoRemainingExpectations);
       },
       overrides: <Type, Generator>{
