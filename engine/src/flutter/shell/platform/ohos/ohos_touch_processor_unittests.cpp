@@ -1988,6 +1988,24 @@ class ScopedNapiStringRecorder {
   }
 };
 
+// The napi stub rejects napi_create_string_utf8 calls made with a null env
+// (they return napi_invalid_arg before the recording hook runs), and the
+// static PlatformViewOHOSNapi::env_ used by the FlutterViewOn*Event callouts
+// is only populated by nativeAttach on a real device. Tests that need the
+// recorder to observe the serialized packets must therefore install a fake
+// non-null env for the lifetime of the test (same trick as FakeNapiEnv() in
+// platform_view_ohos_napi_unittests.cpp).
+class ScopedNapiEnv {
+ public:
+  ScopedNapiEnv() : saved_(PlatformViewOHOSNapi::env_) {
+    PlatformViewOHOSNapi::env_ = reinterpret_cast<napi_env>(0xF00D);
+  }
+  ~ScopedNapiEnv() { PlatformViewOHOSNapi::env_ = saved_; }
+
+ private:
+  napi_env saved_;
+};
+
 // Two-finger event whose main-event and per-point coordinates differ so that
 // field offsets can be told apart in the serialized packet.
 OH_NativeXComponent_TouchEvent MakeScalingTestTouchEvent() {
@@ -2116,6 +2134,7 @@ TEST(OhosTouchProcessorTest, HandleTouchEventScalesPacketWhenCustomDpiActive) {
   OhosTouchProcessor processor;
   OH_NativeXComponent_TouchEvent touchEvent = MakeScalingTestTouchEvent();
 
+  ScopedNapiEnv env_guard;
   ScopedNapiStringRecorder recorder;
   processor.HandleTouchEvent(shell_id, nullptr, &touchEvent);
 
@@ -2161,6 +2180,7 @@ TEST(OhosTouchProcessorTest,
   OhosTouchProcessor processor;
   OH_NativeXComponent_TouchEvent touchEvent = MakeScalingTestTouchEvent();
 
+  ScopedNapiEnv env_guard;
   ScopedNapiStringRecorder recorder;
   processor.HandleTouchEvent(shell_id, nullptr, &touchEvent);
 
@@ -2197,6 +2217,7 @@ TEST(OhosTouchProcessorTest, HandleMouseEventScalesPacketWhenCustomDpiActive) {
   mouseEvent.button = OH_NATIVEXCOMPONENT_NONE_BUTTON;
   mouseEvent.action = OH_NATIVEXCOMPONENT_MOUSE_MOVE;
 
+  ScopedNapiEnv env_guard;
   ScopedNapiStringRecorder recorder;
   processor.HandleMouseEvent(shell_id, nullptr, mouseEvent, 0.0, false, 200.0,
                              200.0);
@@ -2232,6 +2253,7 @@ TEST(OhosTouchProcessorTest,
   // y/windowY/displayY = 200 (defaults reset by StubStateResetter).
   auto* event = reinterpret_cast<ArkUI_UIInputEvent*>(0x1);
 
+  ScopedNapiEnv env_guard;
   ScopedNapiStringRecorder recorder;
   processor.HandleScrollEvent(shell_id, nullptr, event);
 
@@ -2266,6 +2288,7 @@ TEST(OhosTouchProcessorTest,
 
   auto* event = reinterpret_cast<ArkUI_UIInputEvent*>(0x1);
 
+  ScopedNapiEnv env_guard;
   ScopedNapiStringRecorder recorder;
   processor.HandleScaleEvent(shell_id, nullptr, event);
 
@@ -2302,6 +2325,7 @@ TEST(OhosTouchProcessorTest,
 
   auto* event = reinterpret_cast<ArkUI_UIInputEvent*>(0x1);
 
+  ScopedNapiEnv env_guard;
   ScopedNapiStringRecorder recorder;
   processor.HandlePanZooomEvent(shell_id, nullptr, event);
 
