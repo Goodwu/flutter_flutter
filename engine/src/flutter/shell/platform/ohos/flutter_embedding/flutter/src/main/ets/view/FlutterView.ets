@@ -424,6 +424,13 @@ export class FlutterView {
       // Get display information
       this.displayInfo = display.getDefaultDisplaySync();
 
+      // Keep the native system-density snapshot in sync. Platform-view
+      // pointer packets are mapped with system_density / flutter_dpr on the
+      // native side; a snapshot taken only at engine attach goes stale when
+      // the system display zoom changes and skews every forwarded
+      // coordinate by system_density_stale / flutter_dpr.
+      this.flutterEngine?.getFlutterNapi()?.updateDensity(this.displayInfo.densityPixels);
+
       // Set DPI for text input channel
       this.flutterEngine?.getTextInputChannel()?.setDevicePixelRatio(this.displayInfo.densityPixels);
 
@@ -508,15 +515,17 @@ export class FlutterView {
   private densityUpdateCallback = (info: uiObserver.DensityInfo) => {
     try {
       const sysDensity = display.getDefaultDisplaySync().densityPixels;
+      // Sync the native system-density snapshot (see onDevicePixelRatioChange).
+      this.flutterEngine?.getFlutterNapi()?.updateDensity(sysDensity);
       const customDensity = info.density;
       if (sysDensity > 0 && customDensity > 0 && Number.isFinite(customDensity)) {
         const scale = customDensity / sysDensity;
         Log.i(TAG, "densityUpdateCallback: customDensity=" + customDensity + ", sysDensity=" +
           sysDensity + ", scale=" + scale);
         const currentUri = this.flutterEngine?.getDisplayMetricsChannel()?.getCurrentUri() ?? '';
- 	      if (currentUri) {
- 	        this.flutterEngine?.getDisplayMetricsChannel()?.setCustomDpiActive(true);
- 	      }
+        if (currentUri && scale !== 1) {
+          this.flutterEngine?.getDisplayMetricsChannel()?.setCustomDpiActive(true);
+        }
         this.onDevicePixelRatioChange(scale);
       }
     } catch (e) {
@@ -558,11 +567,12 @@ export class FlutterView {
   private windowSizeChangeCallback = (data: window.Size) => {
     Log.i(TAG, `windowSizeChangeCallback: width=${data.width}, height=${data.height}, lastHeight=${this.lastHeight}`);
     // Only handle when height changes
-    if (this.lastHeight !== data.height) {
-      try {
-        // If DPI has been customized, do not process system DPI changes
-        this.displayInfo = display.getDefaultDisplaySync();
-        this.flutterEngine?.getTextInputChannel()?.setDevicePixelRatio(this.displayInfo.densityPixels);
+      if (this.lastHeight !== data.height) {
+        try {
+          // If DPI has been customized, do not process system DPI changes
+          this.displayInfo = display.getDefaultDisplaySync();
+          this.flutterEngine?.getFlutterNapi()?.updateDensity(this.displayInfo.densityPixels);
+          this.flutterEngine?.getTextInputChannel()?.setDevicePixelRatio(this.displayInfo.densityPixels);
 
         let devicePixelRatio: number = this.displayInfo.densityPixels;
         Log.i(TAG, `windowSizeChangeCallback devicePixelRatio: ${devicePixelRatio}, viewportMetrics.devicePixelRatio: ${this.viewportMetrics.devicePixelRatio}`);
@@ -599,12 +609,18 @@ export class FlutterView {
     }
   };
   private displayChangeCallback = (data: number) => {
+    // Refresh the display info and keep the native system-density snapshot
+    // in sync even when a custom DPI scale is active (see
+    // onDevicePixelRatioChange for why the snapshot must track the current
+    // system density). The viewport update below is still skipped for
+    // custom DPI, but pointer mapping must not use a stale density.
+    this.displayInfo = display.getDefaultDisplaySync();
+    this.flutterEngine?.getFlutterNapi()?.updateDensity(this.displayInfo.densityPixels);
     // If DPI has been customized, do not process system DPI changes
     if (this.isDevicePixelRatioAdaptive) {
       Log.d(TAG, "Skipping display change callback due to custom DPI setting");
       return;
     }
-    this.displayInfo = display.getDefaultDisplaySync();
     this.flutterEngine?.getTextInputChannel()?.setDevicePixelRatio(this.displayInfo.densityPixels);
     let devicePixelRatio: number = this.displayInfo?.densityPixels;
     Log.i(TAG, "Display on: " + JSON.stringify(this.displayInfo) + ". Display id:" + JSON.stringify(data))

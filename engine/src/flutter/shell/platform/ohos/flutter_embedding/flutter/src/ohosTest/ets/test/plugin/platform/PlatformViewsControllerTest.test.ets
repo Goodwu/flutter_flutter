@@ -817,8 +817,9 @@ export default function PlatformViewsControllerTest() {
     it('applyTransformOffset falls back on non-finite coefficients', 0, () => {
       const controller: ESObject = new PlatformViewsController();
       const params: Record<string, Any> = new DVModelParameters() as Record<string, Any>;
-      // signature is (top, left, params, transform)
-      controller.applyTransformOffset(10, 5, params, [Number.NaN, 0, 0, 1, 2, 3]);
+      controller.setParams(params, 'left', 5);
+      controller.setParams(params, 'top', 10);
+      controller.applyTransformOffset(params, [Number.NaN, 0, 0, 1, 2, 3]);
       expect(controller.getParams(params, 'left')).assertEqual(5);
       expect(controller.getParams(params, 'top')).assertEqual(10);
       expect(params['affineTransform']).assertEqual(undefined);
@@ -827,10 +828,9 @@ export default function PlatformViewsControllerTest() {
     it('applyTransformOffset falls back on singular determinant', 0, () => {
       const controller: ESObject = new PlatformViewsController();
       const params: Record<string, Any> = new DVModelParameters() as Record<string, Any>;
-      // signature is (top, left, params, transform)
-      controller.applyTransformOffset(10, 5, params, [1, 0, 0, 0, 2, 3]);
-      expect(controller.getParams(params, 'left')).assertEqual(5);
-      expect(controller.getParams(params, 'top')).assertEqual(10);
+      controller.applyTransformOffset(params, [1, 0, 0, 0, 2, 3]);
+      expect(controller.getParams(params, 'left')).assertEqual(2);
+      expect(controller.getParams(params, 'top')).assertEqual(3);
       expect(params['affineTransform']).assertEqual(undefined);
     });
 
@@ -839,7 +839,7 @@ export default function PlatformViewsControllerTest() {
       const params: Record<string, Any> = new DVModelParameters() as Record<string, Any>;
       controller.setParams(params, 'width', 100);
       controller.setParams(params, 'height', 50);
-      controller.applyTransformOffset(0, 0, params, [1, 0, 0, 1, 20, 30]);
+      controller.applyTransformOffset(params, [1, 0, 0, 1, 20, 30]);
       expect(controller.getParams(params, 'left')).assertEqual(20);
       expect(controller.getParams(params, 'top')).assertEqual(30);
       const affine: Any = params['affineTransform'];
@@ -854,7 +854,7 @@ export default function PlatformViewsControllerTest() {
     it('applyTransformOffset falls back to origin corner when dimensions unknown', 0, () => {
       const controller: ESObject = new PlatformViewsController();
       const params: Record<string, Any> = new DVModelParameters() as Record<string, Any>;
-      controller.applyTransformOffset(0, 0, params, [1, 0, 0, 1, 20, 30]);
+      controller.applyTransformOffset(params, [1, 0, 0, 1, 20, 30]);
       expect(controller.getParams(params, 'left')).assertEqual(20);
       expect(controller.getParams(params, 'top')).assertEqual(30);
       expect(params['affineTransform']).not().assertNull();
@@ -965,7 +965,8 @@ export default function PlatformViewsControllerTest() {
       const factory: FakePlatformViewFactory = new FakePlatformViewFactory();
       const host: FakeFlutterViewHost = attachController(controller as Any as PlatformViewsController, factory);
       controller.createForTextureLayer(makeRequest(63));
-      controller.offset(63, 5, 6, [1, 0, 0, 1, 20, 30]);
+      controller.offset(63, 5, 6);
+      controller.transform(63, [1, 0, 0, 1, 20, 30]);
       const params: Record<string, Any> = controller.viewWrappers.get(63).getDvModel().getLayoutParams() as Record<string, Any>;
       expect(params['left']).assertEqual(20);
       expect(params['top']).assertEqual(30);

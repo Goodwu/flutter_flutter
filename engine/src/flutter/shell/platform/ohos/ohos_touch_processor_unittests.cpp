@@ -18,6 +18,7 @@
 #include "flutter/shell/platform/ohos/ohos_shell_holder.h"
 #include "flutter/shell/platform/ohos/ohos_touch_processor.h"
 #include "flutter/shell/platform/ohos/test_stubs/ace_graphic_ndk_stub.h"
+#include "flutter/shell/platform/ohos/test_stubs/ace_napi_stub.h"
 
 namespace flutter {
 namespace testing {
@@ -1939,6 +1940,383 @@ TEST(OhosTouchProcessorTest, LogSeverityReplayRemainingEdges) {
     processor.PlatformViewOnAxisEvent(
         0, reinterpret_cast<ArkUI_UIInputEvent*>(0x1), 0.0);
   }
+}
+
+// ===== Screen-to-layout coordinate scaling for platform-view packets =====
+//
+// Regression tests for the WebView click-drift bug: when a custom DPI scale
+// (flutter/displaymetrics 'updateDpiScale', e.g. the OHOS Column overflow
+// adaptation) makes the Flutter DPR diverge from the system display density,
+// pointer packets forwarded to platform views must be mapped from physical
+// screen pixels onto the ArkUI layout pixel space (x system_density /
+// flutter_dpr), otherwise clicks drift linearly with the coordinate value.
+// See GetScreenToLayoutScale / ScaleTouchEventCoordinates in
+// ohos_touch_processor.cpp and PlatformViewOHOS::
+// GetScreenToPlatformViewLayoutScale.
+
+namespace {
+
+// Saves and restores the process-wide static system display density.
+class ScopedSystemDensity {
+ public:
+  explicit ScopedSystemDensity(double value)
+      : saved_(PlatformViewOHOSNapi::display_density_pixels) {
+    PlatformViewOHOSNapi::display_density_pixels = value;
+  }
+  ~ScopedSystemDensity() {
+    PlatformViewOHOSNapi::display_density_pixels = saved_;
+  }
+
+ private:
+  double saved_;
+};
+
+// Enables the opt-in napi stub string recording for the lifetime of the
+// object and exposes the strings that were forwarded to the JS side.
+class ScopedNapiStringRecorder {
+ public:
+  ScopedNapiStringRecorder() {
+    StubNapiClearRecordedStrings();
+    StubNapiSetRecordStrings(true);
+  }
+  ~ScopedNapiStringRecorder() { StubNapiSetRecordStrings(false); }
+
+  size_t size() const { return StubNapiRecordedStringCount(); }
+  std::string at(size_t index) const {
+    const char* s = StubNapiRecordedStringAt(index);
+    return s != nullptr ? std::string(s) : std::string();
+  }
+};
+
+// Two-finger event whose main-event and per-point coordinates differ so that
+// field offsets can be told apart in the serialized packet.
+OH_NativeXComponent_TouchEvent MakeScalingTestTouchEvent() {
+  OH_NativeXComponent_TouchEvent event = {};
+  event.id = 7;
+  event.screenX = 164.0f;
+  event.screenY = 590.0f;
+  event.x = 100.0f;
+  event.y = 200.0f;
+  event.type = OH_NATIVEXCOMPONENT_DOWN;
+  event.size = 1.5;
+  event.force = 0.5f;
+  event.deviceId = 42;
+  event.timeStamp = 1234567890;
+  event.numPoints = 2;
+  event.touchPoints[0].id = 0;
+  event.touchPoints[0].screenX = 164.0f;
+  event.touchPoints[0].screenY = 590.0f;
+  event.touchPoints[0].x = 100.0f;
+  event.touchPoints[0].y = 200.0f;
+  event.touchPoints[0].type = OH_NATIVEXCOMPONENT_DOWN;
+  event.touchPoints[0].size = 1.0;
+  event.touchPoints[0].force = 0.5f;
+  event.touchPoints[0].timeStamp = 111;
+  event.touchPoints[0].isPressed = true;
+  event.touchPoints[1].id = 1;
+  event.touchPoints[1].screenX = 300.0f;
+  event.touchPoints[1].screenY = 600.0f;
+  event.touchPoints[1].x = 250.0f;
+  event.touchPoints[1].y = 350.0f;
+  event.touchPoints[1].type = OH_NATIVEXCOMPONENT_DOWN;
+  event.touchPoints[1].size = 2.0;
+  event.touchPoints[1].force = 0.8f;
+  event.touchPoints[1].timeStamp = 222;
+  event.touchPoints[1].isPressed = true;
+  return event;
+}
+
+}  // namespace
+
+TEST(OhosTouchProcessorTest, ScaleTouchEventCoordinatesIdentityAtUnitScale) {
+  const OH_NativeXComponent_TouchEvent event = MakeScalingTestTouchEvent();
+  const OH_NativeXComponent_TouchEvent scaled =
+      OhosTouchProcessor::ScaleTouchEventCoordinates(event, 1.0);
+  EXPECT_EQ(scaled.id, event.id);
+  EXPECT_EQ(scaled.screenX, event.screenX);
+  EXPECT_EQ(scaled.screenY, event.screenY);
+  EXPECT_EQ(scaled.x, event.x);
+  EXPECT_EQ(scaled.y, event.y);
+  EXPECT_EQ(scaled.type, event.type);
+  EXPECT_EQ(scaled.size, event.size);
+  EXPECT_EQ(scaled.force, event.force);
+  EXPECT_EQ(scaled.deviceId, event.deviceId);
+  EXPECT_EQ(scaled.timeStamp, event.timeStamp);
+  EXPECT_EQ(scaled.numPoints, event.numPoints);
+  for (uint32_t i = 0; i < scaled.numPoints; ++i) {
+    EXPECT_EQ(scaled.touchPoints[i].id, event.touchPoints[i].id);
+    EXPECT_EQ(scaled.touchPoints[i].screenX, event.touchPoints[i].screenX);
+    EXPECT_EQ(scaled.touchPoints[i].screenY, event.touchPoints[i].screenY);
+    EXPECT_EQ(scaled.touchPoints[i].x, event.touchPoints[i].x);
+    EXPECT_EQ(scaled.touchPoints[i].y, event.touchPoints[i].y);
+    EXPECT_EQ(scaled.touchPoints[i].type, event.touchPoints[i].type);
+    EXPECT_EQ(scaled.touchPoints[i].size, event.touchPoints[i].size);
+    EXPECT_EQ(scaled.touchPoints[i].force, event.touchPoints[i].force);
+    EXPECT_EQ(scaled.touchPoints[i].timeStamp, event.touchPoints[i].timeStamp);
+    EXPECT_EQ(scaled.touchPoints[i].isPressed, event.touchPoints[i].isPressed);
+  }
+}
+
+TEST(OhosTouchProcessorTest, ScaleTouchEventCoordinatesScalesCoordinatesOnly) {
+  const OH_NativeXComponent_TouchEvent event = MakeScalingTestTouchEvent();
+  // system_density 3.25, custom flutter_dpr 3.181 (matches the on-device
+  // repro of the click-drift bug).
+  const double scale = 3.25 / 3.181;
+  const OH_NativeXComponent_TouchEvent scaled =
+      OhosTouchProcessor::ScaleTouchEventCoordinates(event, scale);
+
+  EXPECT_NEAR(scaled.screenX, event.screenX * scale, 1e-3);
+  EXPECT_NEAR(scaled.screenY, event.screenY * scale, 1e-3);
+  EXPECT_NEAR(scaled.x, event.x * scale, 1e-3);
+  EXPECT_NEAR(scaled.y, event.y * scale, 1e-3);
+  EXPECT_NEAR(scaled.touchPoints[0].screenX,
+              event.touchPoints[0].screenX * scale, 1e-3);
+  EXPECT_NEAR(scaled.touchPoints[0].screenY,
+              event.touchPoints[0].screenY * scale, 1e-3);
+  EXPECT_NEAR(scaled.touchPoints[0].x, event.touchPoints[0].x * scale, 1e-3);
+  EXPECT_NEAR(scaled.touchPoints[0].y, event.touchPoints[0].y * scale, 1e-3);
+  EXPECT_NEAR(scaled.touchPoints[1].screenX,
+              event.touchPoints[1].screenX * scale, 1e-3);
+  EXPECT_NEAR(scaled.touchPoints[1].screenY,
+              event.touchPoints[1].screenY * scale, 1e-3);
+  EXPECT_NEAR(scaled.touchPoints[1].x, event.touchPoints[1].x * scale, 1e-3);
+  EXPECT_NEAR(scaled.touchPoints[1].y, event.touchPoints[1].y * scale, 1e-3);
+
+  // Non-coordinate fields must be preserved.
+  EXPECT_EQ(scaled.id, event.id);
+  EXPECT_EQ(scaled.type, event.type);
+  EXPECT_EQ(scaled.size, event.size);
+  EXPECT_EQ(scaled.force, event.force);
+  EXPECT_EQ(scaled.deviceId, event.deviceId);
+  EXPECT_EQ(scaled.timeStamp, event.timeStamp);
+  EXPECT_EQ(scaled.numPoints, event.numPoints);
+  EXPECT_EQ(scaled.touchPoints[0].id, event.touchPoints[0].id);
+  EXPECT_EQ(scaled.touchPoints[0].type, event.touchPoints[0].type);
+  EXPECT_EQ(scaled.touchPoints[0].size, event.touchPoints[0].size);
+  EXPECT_EQ(scaled.touchPoints[0].force, event.touchPoints[0].force);
+  EXPECT_EQ(scaled.touchPoints[0].timeStamp, event.touchPoints[0].timeStamp);
+  EXPECT_EQ(scaled.touchPoints[1].id, event.touchPoints[1].id);
+  EXPECT_EQ(scaled.touchPoints[1].type, event.touchPoints[1].type);
+  EXPECT_EQ(scaled.touchPoints[1].size, event.touchPoints[1].size);
+  EXPECT_EQ(scaled.touchPoints[1].force, event.touchPoints[1].force);
+  EXPECT_EQ(scaled.touchPoints[1].timeStamp, event.touchPoints[1].timeStamp);
+}
+
+TEST(OhosTouchProcessorTest, HandleTouchEventScalesPacketWhenCustomDpiActive) {
+  GraphicStubKnobGuard knob_guard;
+  std::unique_ptr<OHOSShellHolder> holder;
+  int64_t shell_id = CreateShellHolderForTest(holder);
+  auto platform_view = holder->GetPlatformView();
+  ASSERT_TRUE(platform_view);
+
+  // System density 3.25, custom Flutter DPR 3.181 -> scale 3.25/3.181.
+  ScopedSystemDensity density(3.25);
+  platform_view->viewport_metrics_.device_pixel_ratio = 3.181;
+
+  OhosTouchProcessor processor;
+  OH_NativeXComponent_TouchEvent touchEvent = MakeScalingTestTouchEvent();
+
+  ScopedNapiStringRecorder recorder;
+  processor.HandleTouchEvent(shell_id, nullptr, &touchEvent);
+
+  // Serialized packet layout:
+  // [0] numPoints, [1] id, [2] screenX, [3] screenY, [4] x, [5] y,
+  // [6] type, ... then 10 fields per point starting at [11]:
+  // id, screenX, screenY, x, y, type, size, force, timeStamp, isPressed.
+  ASSERT_GE(recorder.size(), 26u);
+  EXPECT_EQ(recorder.at(0), std::to_string(2u));
+  const double scale = 3.25 / 3.181;
+  EXPECT_NEAR(std::stod(recorder.at(2)), 164.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(3)), 590.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(4)), 100.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(5)), 200.0 * scale, 1e-3);
+  // First touch point coordinates start at [12].
+  EXPECT_NEAR(std::stod(recorder.at(12)), 164.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(13)), 590.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(14)), 100.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(15)), 200.0 * scale, 1e-3);
+  // Second touch point coordinates start at [22].
+  EXPECT_NEAR(std::stod(recorder.at(22)), 300.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(23)), 600.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(24)), 250.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(25)), 350.0 * scale, 1e-3);
+  // Non-coordinate fields must not change.
+  EXPECT_EQ(recorder.at(1), std::to_string(7));
+  EXPECT_EQ(recorder.at(6), std::to_string(OH_NATIVEXCOMPONENT_DOWN));
+  EXPECT_EQ(recorder.at(10), std::to_string(1234567890));
+}
+
+TEST(OhosTouchProcessorTest,
+     HandleTouchEventKeepsPacketUnchangedWhenDprsMatch) {
+  GraphicStubKnobGuard knob_guard;
+  std::unique_ptr<OHOSShellHolder> holder;
+  int64_t shell_id = CreateShellHolderForTest(holder);
+  auto platform_view = holder->GetPlatformView();
+  ASSERT_TRUE(platform_view);
+
+  // System density and Flutter DPR both 3.25 -> identity scale.
+  ScopedSystemDensity density(3.25);
+  platform_view->viewport_metrics_.device_pixel_ratio = 3.25;
+
+  OhosTouchProcessor processor;
+  OH_NativeXComponent_TouchEvent touchEvent = MakeScalingTestTouchEvent();
+
+  ScopedNapiStringRecorder recorder;
+  processor.HandleTouchEvent(shell_id, nullptr, &touchEvent);
+
+  ASSERT_GE(recorder.size(), 26u);
+  EXPECT_EQ(recorder.at(0), std::to_string(2u));
+  // std::to_string(float) prints 6 decimals; unscaled values pass through.
+  EXPECT_EQ(recorder.at(2), std::to_string(164.0f));
+  EXPECT_EQ(recorder.at(3), std::to_string(590.0f));
+  EXPECT_EQ(recorder.at(4), std::to_string(100.0f));
+  EXPECT_EQ(recorder.at(5), std::to_string(200.0f));
+  EXPECT_EQ(recorder.at(12), std::to_string(164.0f));
+  EXPECT_EQ(recorder.at(22), std::to_string(300.0f));
+  EXPECT_EQ(recorder.at(25), std::to_string(350.0f));
+}
+
+TEST(OhosTouchProcessorTest, HandleMouseEventScalesPacketWhenCustomDpiActive) {
+  GraphicStubKnobGuard knob_guard;
+  std::unique_ptr<OHOSShellHolder> holder;
+  int64_t shell_id = CreateShellHolderForTest(holder);
+  auto platform_view = holder->GetPlatformView();
+  ASSERT_TRUE(platform_view);
+
+  ScopedSystemDensity density(3.25);
+  platform_view->viewport_metrics_.device_pixel_ratio = 3.181;
+
+  OhosTouchProcessor processor;
+  processor.apiVersion_ = 20;  // >= 20 forwards the mouse packet to napi.
+
+  OH_NativeXComponent_MouseEvent mouseEvent = {};
+  mouseEvent.x = 50.0f;
+  mouseEvent.y = 60.0f;
+  mouseEvent.screenX = 100.0f;
+  mouseEvent.screenY = 200.0f;
+  mouseEvent.button = OH_NATIVEXCOMPONENT_NONE_BUTTON;
+  mouseEvent.action = OH_NATIVEXCOMPONENT_MOUSE_MOVE;
+
+  ScopedNapiStringRecorder recorder;
+  processor.HandleMouseEvent(shell_id, nullptr, mouseEvent, 0.0, false, 200.0,
+                             200.0);
+
+  // Serialized packet layout: [0] x, [1] y, [2] screenX, [3] screenY,
+  // [4] timestamp, [5] action, [6] button.
+  ASSERT_GE(recorder.size(), 7u);
+  const double scale = 3.25 / 3.181;
+  EXPECT_NEAR(std::stod(recorder.at(0)), 50.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(1)), 60.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(2)), 100.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(3)), 200.0 * scale, 1e-3);
+  // Non-coordinate fields must not change.
+  EXPECT_EQ(recorder.at(5), std::to_string(OH_NATIVEXCOMPONENT_MOUSE_MOVE));
+}
+
+TEST(OhosTouchProcessorTest,
+     HandleScrollEventScalesAxisPacketWhenCustomDpiActive) {
+  GraphicStubKnobGuard knob_guard;
+  std::unique_ptr<OHOSShellHolder> holder;
+  int64_t shell_id = CreateShellHolderForTest(holder);
+  auto platform_view = holder->GetPlatformView();
+  ASSERT_TRUE(platform_view);
+
+  ScopedSystemDensity density(3.25);
+  platform_view->viewport_metrics_.device_pixel_ratio = 3.181;
+
+  OhosTouchProcessor processor;
+  processor.apiVersion_ = 20;  // >= 20 forwards the axis packet to napi.
+  NULL_OUT_DYNAMIC_PTRS(processor)
+
+  // Stubbed pointer coordinates: x/windowX/displayX = 100,
+  // y/windowY/displayY = 200 (defaults reset by StubStateResetter).
+  auto* event = reinterpret_cast<ArkUI_UIInputEvent*>(0x1);
+
+  ScopedNapiStringRecorder recorder;
+  processor.HandleScrollEvent(shell_id, nullptr, event);
+
+  // Serialized packet layout: [0] action, [1] x, [2] y, [3] windowX,
+  // [4] windowY, [5] displayX, [6] displayY, [7] scroll delta.
+  ASSERT_GE(recorder.size(), 8u);
+  const double scale = 3.25 / 3.181;
+  EXPECT_NEAR(std::stod(recorder.at(1)), 100.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(2)), 200.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(3)), 100.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(4)), 200.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(5)), 100.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(6)), 200.0 * scale, 1e-3);
+}
+
+TEST(OhosTouchProcessorTest,
+     HandleScaleEventScalesAxisPacketWhenCustomDpiActive) {
+  GraphicStubKnobGuard knob_guard;
+  std::unique_ptr<OHOSShellHolder> holder;
+  int64_t shell_id = CreateShellHolderForTest(holder);
+  auto platform_view = holder->GetPlatformView();
+  ASSERT_TRUE(platform_view);
+
+  ScopedSystemDensity density(3.25);
+  platform_view->viewport_metrics_.device_pixel_ratio = 3.181;
+
+  OhosTouchProcessor processor;
+  processor.apiVersion_ = 20;  // >= 20 forwards the axis packet to napi.
+  NULL_OUT_DYNAMIC_PTRS(processor)
+
+  g_stub_vertical_axis_value = -2.5;  // zoom delta, not a coordinate.
+
+  auto* event = reinterpret_cast<ArkUI_UIInputEvent*>(0x1);
+
+  ScopedNapiStringRecorder recorder;
+  processor.HandleScaleEvent(shell_id, nullptr, event);
+
+  // Serialized packet layout: [0] action, [1] x, [2] y, [3] windowX,
+  // [4] windowY, [5] displayX, [6] displayY, [7] zoom delta.
+  ASSERT_GE(recorder.size(), 8u);
+  const double scale = 3.25 / 3.181;
+  EXPECT_NEAR(std::stod(recorder.at(1)), 100.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(2)), 200.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(3)), 100.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(4)), 200.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(5)), 100.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(6)), 200.0 * scale, 1e-3);
+  // The zoom delta is not a coordinate and must not be scaled.
+  EXPECT_EQ(recorder.at(7), std::to_string(-2.5));
+}
+
+TEST(OhosTouchProcessorTest,
+     HandlePanZooomEventScalesAxisPacketWhenCustomDpiActive) {
+  GraphicStubKnobGuard knob_guard;
+  std::unique_ptr<OHOSShellHolder> holder;
+  int64_t shell_id = CreateShellHolderForTest(holder);
+  auto platform_view = holder->GetPlatformView();
+  ASSERT_TRUE(platform_view);
+
+  ScopedSystemDensity density(3.25);
+  platform_view->viewport_metrics_.device_pixel_ratio = 3.181;
+
+  OhosTouchProcessor processor;
+  processor.apiVersion_ = 20;  // >= 20 forwards the axis packet to napi.
+  NULL_OUT_DYNAMIC_PTRS(processor)
+
+  g_stub_vertical_axis_value = -2.5;  // pan/scroll delta, not a coordinate.
+
+  auto* event = reinterpret_cast<ArkUI_UIInputEvent*>(0x1);
+
+  ScopedNapiStringRecorder recorder;
+  processor.HandlePanZooomEvent(shell_id, nullptr, event);
+
+  // Serialized packet layout: [0] action, [1] x, [2] y, [3] windowX,
+  // [4] windowY, [5] displayX, [6] displayY, [7] pan/scroll delta.
+  ASSERT_GE(recorder.size(), 8u);
+  const double scale = 3.25 / 3.181;
+  EXPECT_NEAR(std::stod(recorder.at(1)), 100.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(2)), 200.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(3)), 100.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(4)), 200.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(5)), 100.0 * scale, 1e-3);
+  EXPECT_NEAR(std::stod(recorder.at(6)), 200.0 * scale, 1e-3);
+  // The pan/scroll delta is not a coordinate and must not be scaled.
+  EXPECT_EQ(recorder.at(7), std::to_string(-2.5));
 }
 
 }  // namespace testing

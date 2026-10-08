@@ -56,6 +56,12 @@ void StubNapiSetLastErrorNull(int enable);
 void StubNapiSetLastErrorMessageNull(int enable);
 void StubNapiSetExceptionPending(int enable);
 napi_module* StubNapiGetRegisteredModule(void);
+
+// Opt-in recording of the strings passed to napi_create_string_utf8.
+void StubNapiSetRecordStrings(int enable);
+size_t StubNapiRecordedStringCount(void);
+const char* StubNapiRecordedStringAt(size_t index);
+void StubNapiClearRecordedStrings(void);
 }
 
 #endif  // FLUTTER_SHELL_PLATFORM_OHOS_TESTING_ACE_NAPI_STUB_H_

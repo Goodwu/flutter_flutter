@@ -7,6 +7,8 @@
 #include <array>
 #include <cstring>
 #include <new>
+#include <string>
+#include <vector>
 #include "napi/native_api.h"
 
 namespace {
@@ -90,6 +92,13 @@ struct NapiStubState {
 };
 
 NapiStubState g_napi_stub;
+
+// Opt-in recording of the strings passed to napi_create_string_utf8. Tests
+// that need to inspect the strings forwarded to the JS side (e.g.
+// platform-view pointer packets) enable this explicitly; everything else is
+// unaffected.
+bool g_record_strings = false;
+std::vector<std::string> g_recorded_strings;
 
 }  // namespace
 
@@ -729,6 +738,9 @@ extern "C" napi_status napi_create_string_utf8(napi_env env,
       return s;
     }
   }
+  if (g_record_strings && str != nullptr) {
+    g_recorded_strings.emplace_back(str);
+  }
   if (result) {
     *result = reinterpret_cast<napi_value>(0x3);
   }
@@ -792,6 +804,25 @@ extern "C" void StubNapiReset(void) {
   napi_module* mod = g_napi_stub.registered_module;
   g_napi_stub = NapiStubState{};
   g_napi_stub.registered_module = mod;
+  g_record_strings = false;
+  g_recorded_strings.clear();
+}
+
+extern "C" void StubNapiSetRecordStrings(int enable) {
+  g_record_strings = enable != 0;
+}
+
+extern "C" size_t StubNapiRecordedStringCount(void) {
+  return g_recorded_strings.size();
+}
+
+extern "C" const char* StubNapiRecordedStringAt(size_t index) {
+  return index < g_recorded_strings.size() ? g_recorded_strings[index].c_str()
+                                           : nullptr;
+}
+
+extern "C" void StubNapiClearRecordedStrings(void) {
+  g_recorded_strings.clear();
 }
 
 extern "C" void StubNapiSetValuetype(napi_valuetype t) {

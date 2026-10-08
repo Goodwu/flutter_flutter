@@ -120,6 +120,20 @@ export default function FlutterShellArgsTest() {
       expect(arr.length).assertEqual(0);
     })
 
+    it('fromWant_dartFlags_valueIsAppended', Level.LEVEL1, () => {
+      const want = makeWant({ 'dart-flags': '--random-seed=99' } as Record<string, Object>);
+      const arr = FlutterShellArgs.fromWant(want).toArray();
+      expect(arr.includes('--dart-flags=--random-seed=99')).assertEqual(true);
+    })
+
+    it('fromWant_dartFlags_leadingSpaceIsTrimmed', Level.LEVEL1, () => {
+      // flutter_tools prefixes a space when the value starts with `-`,
+      // because `aa start` rejects `--ps` values beginning with `-`.
+      const want = makeWant({ 'dart-flags': ' --random-seed=99' } as Record<string, Object>);
+      const arr = FlutterShellArgs.fromWant(want).toArray();
+      expect(arr.includes('--dart-flags=--random-seed=99')).assertEqual(true);
+    })
+
     it('checkArg_noParameters_doesNotThrowOrAdd', Level.LEVEL1, () => {
       const shellArgs = new FlutterShellArgs();
       const wantNoParams: Want = { bundleName: 'x', abilityName: 'y' };

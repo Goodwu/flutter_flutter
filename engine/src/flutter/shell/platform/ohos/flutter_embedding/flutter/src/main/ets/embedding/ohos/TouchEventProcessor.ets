@@ -421,8 +421,8 @@ export default class TouchEventProcessor {
 
         let offset: number = 0;
         const action: number = parseFloat(strings[offset++]);
-        const x: number = vp2px((parseInt(strings[offset++])) / densityPixels - left);
-        const y: number = vp2px((parseInt(strings[offset++])) / densityPixels - top);
+        const x: number = vp2px((parseFloat(strings[offset++])) / densityPixels - left);
+        const y: number = vp2px((parseFloat(strings[offset++])) / densityPixels - top);
         const windowX: number = vp2px(parseFloat(strings[offset++]) / densityPixels);
         const windowY: number = vp2px(parseFloat(strings[offset++]) / densityPixels);
         const displayX: number = vp2px(parseFloat(strings[offset++]) / densityPixels);
@@ -520,8 +520,8 @@ export default class TouchEventProcessor {
 
   private decodeMousePacket(strings: Array<string>, densityPixels: number, top: number, left: number): MousePacket {
     let offset: number = 0;
-    let x: number = vp2px((parseInt(strings[offset++])) / densityPixels - left);
-    let y: number = vp2px((parseInt(strings[offset++])) / densityPixels - top);
+    let x: number = vp2px((parseFloat(strings[offset++])) / densityPixels - left);
+    let y: number = vp2px((parseFloat(strings[offset++])) / densityPixels - top);
     let screenX: number = vp2px(parseFloat(strings[offset++]) / densityPixels);
     let screenY: number = vp2px(parseFloat(strings[offset++]) / densityPixels);
     let timestamp: number = parseFloat(strings[offset++]);
