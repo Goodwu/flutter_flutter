@@ -629,6 +629,10 @@ export default function PlatformViewsControllerHybridTest() {
       controller.onEndFrameHybrid();
 
       controller.hidePlatformViewHybrid(viewId);
+      const paramsHidden: Record<string, Any> =
+        fakeView.getDVModel().children[0].params as Record<string, Any>;
+      expect(paramsHidden['width']).assertEqual(0);
+      expect(paramsHidden['height']).assertEqual(0);
 
       controller.dispose(viewId);
       expect(controller.owns(viewId)).assertEqual(false);
@@ -1260,6 +1264,10 @@ export default function PlatformViewsControllerHybridTest() {
       // no displayOffsets yet → nodeW=0 branch
       controller.onDisplayMutatorsHybrid(viewId, makeMutatorsClipRectOnly(dpr));
       controller.hidePlatformViewHybrid(viewId);
+      const params: Record<string, Any> =
+        fakeView.getDVModel().children[0].params as Record<string, Any>;
+      expect(params['width']).assertEqual(0);
+      expect(params['height']).assertEqual(0);
       controller.dispose(viewId);
       controller.detachFromView();
       controller.detach();
@@ -1399,6 +1407,25 @@ export default function PlatformViewsControllerHybridTest() {
       expect(params['pathWidth']).assertEqual(1);
       expect(params['pathHeight']).assertEqual(1);
       expect(params['pathCommands']).assertEqual('M0 0 L0 0 Z');
+      controller.dispose(viewId);
+      controller.detachFromView();
+      controller.detach();
+    });
+
+    it('display_after_hide_restores_size', 0, () => {
+      const pair = makeControllerWithFactory();
+      const controller: PlatformViewsControllerHybrid = pair[0];
+      const fakeView: FakeFlutterViewHost = attachContextAndView(controller);
+      const viewId: number = 341;
+      controller.createForPlatformViewLayer(makeCreateRequest(viewId, 90, 60));
+      controller.onDisplayPlatformViewHybrid(viewId, 1, 2, 90, 60, 90, 60);
+      controller.hidePlatformViewHybrid(viewId);
+      let params: Record<string, Any> =
+        fakeView.getDVModel().children[0].params as Record<string, Any>;
+      expect(params['width']).assertEqual(0);
+      controller.onDisplayPlatformViewHybrid(viewId, 1, 2, 90, 60, 90, 60);
+      params = fakeView.getDVModel().children[0].params as Record<string, Any>;
+      expect((params['width'] as number) > 0).assertEqual(true);
       controller.dispose(viewId);
       controller.detachFromView();
       controller.detach();
