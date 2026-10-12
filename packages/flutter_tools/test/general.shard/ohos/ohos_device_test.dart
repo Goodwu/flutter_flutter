@@ -395,7 +395,188 @@ void main() {
       ProcessManager: () => FakeProcessManager.any(),
     },
   );
+
+  testUsingContext(
+    'parseHidumperMemDump extracts the total PSS from a HarmonyOS NEXT table dump',
+    () {
+      final OhosMemoryInfo? info = parseHidumperMemDump(hidumperMemDumpFixture);
+      expect(info, isNotNull);
+      expect(info!.totalPss, 255902);
+      expect(info.toJson(), <String, Object>{
+        'platform': 'Ohos',
+        'Realtime': 0,
+        'Java Heap': 0,
+        'Native Heap': 0,
+        'Code': 0,
+        'Stack': 0,
+        'Graphics': 0,
+        'Private Other': 0,
+        'System': 0,
+        'Total': 255902,
+      });
+    },
+  );
+
+  testUsingContext('parseHidumperMemDump extracts the total PSS from a legacy Total PSS line', () {
+    final OhosMemoryInfo? info = parseHidumperMemDump(legacyHidumperMemDumpFixture);
+    expect(info, isNotNull);
+    expect(info!.totalPss, 401840);
+    expect(info.toJson(), <String, Object>{
+      'platform': 'Ohos',
+      'Realtime': 0,
+      'Java Heap': 0,
+      'Native Heap': 0,
+      'Code': 0,
+      'Stack': 0,
+      'Graphics': 0,
+      'Private Other': 0,
+      'System': 0,
+      'Total': 401840,
+    });
+  });
+
+  testUsingContext('parseHidumperMemDump returns null when the dump has no total row', () {
+    expect(parseHidumperMemDump('hidumper: no such process'), isNull);
+  });
+
+  testUsingContext('parseHidumperMemDump returns null for unparseable output', () {
+    expect(parseHidumperMemDump('no total pss in here'), isNull);
+  });
+
+  testUsingContext(
+    'queryMemoryInfo returns parsed hidumper memory info for the launched package',
+    () async {
+      final processManager = FakeProcessManager.list(<FakeCommand>[
+        ..._launchSequence(<String>['--pb', 'enable-dart-profiling', 'true']),
+        const FakeCommand(
+          command: <String>['hdc', '-t', '123', 'shell', 'pidof', 'com.example.test'],
+          stdout: '4321\n',
+        ),
+        const FakeCommand(
+          command: <String>['hdc', '-t', '123', 'shell', 'hidumper', '--mem', '4321'],
+          stdout: hidumperMemDumpFixture,
+        ),
+      ]);
+
+      final device = OhosDevice(
+        '123',
+        logger: BufferLogger.test(),
+        processManager: processManager,
+        ohosSdk: _FakeHarmonySdk(),
+      );
+
+      final LaunchResult launchResult = await device.startApp(
+        _createTestHap(),
+        prebuiltApplication: true,
+        debuggingOptions: DebuggingOptions.disabled(BuildInfo.release),
+        platformArgs: <String, dynamic>{},
+      );
+      expect(launchResult.started, true);
+
+      final MemoryInfo info = await device.queryMemoryInfo();
+      expect(info, isA<OhosMemoryInfo>());
+      expect((info as OhosMemoryInfo).totalPss, 255902);
+      expect(processManager, hasNoRemainingExpectations);
+    },
+    overrides: <Type, Generator>{
+      FileSystem: () => MemoryFileSystem.test(),
+      ProcessManager: () => FakeProcessManager.any(),
+    },
+  );
+
+  testUsingContext(
+    'queryMemoryInfo returns empty MemoryInfo when the app has exited',
+    () async {
+      final processManager = FakeProcessManager.list(<FakeCommand>[
+        ..._launchSequence(<String>['--pb', 'enable-dart-profiling', 'true']),
+        const FakeCommand(
+          command: <String>['hdc', '-t', '123', 'shell', 'pidof', 'com.example.test'],
+        ),
+      ]);
+
+      final device = OhosDevice(
+        '123',
+        logger: BufferLogger.test(),
+        processManager: processManager,
+        ohosSdk: _FakeHarmonySdk(),
+      );
+
+      final LaunchResult launchResult = await device.startApp(
+        _createTestHap(),
+        prebuiltApplication: true,
+        debuggingOptions: DebuggingOptions.disabled(BuildInfo.release),
+        platformArgs: <String, dynamic>{},
+      );
+      expect(launchResult.started, true);
+
+      final MemoryInfo info = await device.queryMemoryInfo();
+      expect(info.toJson(), isEmpty);
+      expect(processManager, hasNoRemainingExpectations);
+    },
+    overrides: <Type, Generator>{
+      FileSystem: () => MemoryFileSystem.test(),
+      ProcessManager: () => FakeProcessManager.any(),
+    },
+  );
+
+  testUsingContext(
+    'queryMemoryInfo returns empty MemoryInfo when no app was launched',
+    () async {
+      final processManager = FakeProcessManager.empty();
+      final device = OhosDevice(
+        '123',
+        logger: BufferLogger.test(),
+        processManager: processManager,
+        ohosSdk: _FakeHarmonySdk(),
+      );
+
+      final MemoryInfo info = await device.queryMemoryInfo();
+      expect(info.toJson(), isEmpty);
+      expect(processManager, hasNoRemainingExpectations);
+    },
+    overrides: <Type, Generator>{
+      FileSystem: () => MemoryFileSystem.test(),
+      ProcessManager: () => FakeProcessManager.any(),
+    },
+  );
 }
+
+/// Sample `hidumper --mem <pid>` output modeled on the real-device capture
+/// (HUAWEI Mate 60, OpenHarmony 7.0.0.102, `Total 401840`).
+/// Real `hidumper --mem <pid>` output captured on a HarmonyOS NEXT device
+/// (HUAWEI Mate 70 Pro): a column table whose last row is the `Total`
+/// summary. The header rows deliberately stay in the fixture so a parser
+/// regression that matches the header `Total` is caught.
+const String hidumperMemDumpFixture = '''
+-------------------------------[memory]-------------------------------
+
+                          Pss         Shared         Shared        Private        Private           Swap        SwapPss           Heap           Heap           Heap
+                        Total          Clean          Dirty          Clean          Dirty          Total          Total           Size           Alloc           Free
+                       ( kB )         ( kB )         ( kB )         ( kB )         ( kB )         ( kB )         ( kB )         ( kB )         ( kB )         ( kB )
+              ------------------------------------------------------------------------------------------------------------------------------------------------------
+            GL          15184              0              0              0          15184              0              0              0              0              0
+         Graph          15004              0              0              0          15004              0              0              0              0              0
+   ark ts heap           7229           6016              0           6980              0              0              0              0              0              0
+   native heap          54192          32328              0          52844              0           1916           1905          82156          77052          10209
+          .hap          37556              0              0          37556              0              0              0              0              0              0
+AnonPage other          95135           5980              0          94944              0             12             12              0              0              0
+         stack           1160              0              0           1160              0              4              4              0              0              0
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------
+         Total         255902         113484          34876         211488          31884           1940           1929          82156          77052          10209
+''';
+
+/// Older OHOS builds print `Total PSS:` lines instead of the column table.
+const String legacyHidumperMemDumpFixture = '''
+----------------------------[Memory Usage Information]----------------------------
+Total PSS:               401840 kB
+Total Kernel PSS:          1024 kB
+Total SWAP PSS:               0 kB
+
+                          Pss  Shared_Clean  Shared_Dirty  Private_Clean  Private_Dirty
+Native Heap             231408              0          4096              0          219136
+ArkTS Heap              81920              0             0              0           81920
+File Backend Pages      65536          20480             0          16384           28672
+''';
 
 /// The full hdc command sequence for a startApp call: query the device
 /// properties, stop and (re)install the app, then start it with the given

@@ -5,6 +5,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:meta/meta.dart';
 import 'package:process/process.dart';
 
 import '../application_package.dart';
@@ -62,6 +63,10 @@ class OhosDevice extends Device {
 
   HdcLogReader? _logReader;
   HdcLogReader? _pastLogReader;
+
+  /// The bundle name of the most recently launched application, used by
+  /// [queryMemoryInfo] to resolve the pid of the app DevTools is attached to.
+  String? _lastLaunchedPackage;
 
   /// The device marketing name (`const.product.name`, falling back to
   /// `const.product.model`), cached when the properties are loaded; null
@@ -207,8 +212,7 @@ class OhosDevice extends Device {
   }();
 
   @override
-  Future<String> get sdkNameAndVersion async =>
-      '${await _sdkVersion} (API ${await apiVersion})';
+  Future<String> get sdkNameAndVersion async => '${await _sdkVersion} (API ${await apiVersion})';
 
   /// `const.ohos.fullname` is e.g. `OpenHarmony-6.0.2.130`; reported
   /// verbatim (like Android reports `ro.build.version.release`).
@@ -414,6 +418,8 @@ class OhosDevice extends Device {
       return LaunchResult.failed();
     }
 
+    _lastLaunchedPackage = builtPackage.ohosBuildData.appInfo!.bundleName;
+
     if (!debuggingOptions.debuggingEnabled) {
       return LaunchResult.succeeded();
     }
@@ -497,6 +503,31 @@ class OhosDevice extends Device {
       hdcCommandForDevice(<String>['shell', 'aa', 'force-stop', app.id]),
     );
     return result.exitCode == 0;
+  }
+
+  @override
+  Future<MemoryInfo> queryMemoryInfo() async {
+    final String? packageName = _lastLaunchedPackage;
+    if (packageName == null) {
+      _logger.printTrace('No OHOS package was launched, skipping hidumper meminfo.');
+      return const MemoryInfo.empty();
+    }
+    // `pidof` prints an empty stdout once the app has exited, so treat that
+    // as "no memory info" instead of running hidumper against a stale pid.
+    final RunResult pidResult = await _processUtils.run(
+      hdcCommandForDevice(<String>['shell', 'pidof', packageName]),
+    );
+    final String pid = pidResult.stdout.trim().split(RegExp(r'\s+')).first;
+    if (pidResult.exitCode != 0 || pid.isEmpty) {
+      return const MemoryInfo.empty();
+    }
+    final RunResult memResult = await _processUtils.run(
+      hdcCommandForDevice(<String>['shell', 'hidumper', '--mem', pid]),
+    );
+    if (memResult.exitCode != 0) {
+      return const MemoryInfo.empty();
+    }
+    return parseHidumperMemDump(memResult.stdout) ?? const MemoryInfo.empty();
   }
 
   @override
@@ -872,4 +903,72 @@ class HdcLogReader extends DeviceLogReader {
 
   @override
   Future<void> provideVmService(FlutterVmService connectedVmService) async {}
+}
+
+/// Parse the output of `hidumper --mem <pid>` and extract the total PSS of
+/// the process, in kB.
+///
+/// Supports the two dump formats seen across OHOS builds: HarmonyOS NEXT
+/// prints a column table whose summary row starts with `Total <kB>`, while
+/// older builds print a `Total PSS: <kB>` line.
+///
+/// Returns null when the dump contains no total PSS row.
+@visibleForTesting
+OhosMemoryInfo? parseHidumperMemDump(String input) {
+  // Table summary row, e.g. `         Total         255902  ...`. The table
+  // header row (` Total  Clean  Dirty ...`) never matches because a digit
+  // must follow the row label.
+  final Match? tableTotal = _kTotalRowPattern.firstMatch(input);
+  if (tableTotal != null) {
+    return OhosMemoryInfo(totalPss: int.parse(tableTotal.group(1)!));
+  }
+  final Match? totalPss = _kTotalPssLinePattern.firstMatch(input);
+  if (totalPss == null) {
+    return null;
+  }
+  return OhosMemoryInfo(totalPss: int.parse(totalPss.group(1)!));
+}
+
+final RegExp _kTotalRowPattern = RegExp(r'^\s*Total\s+(\d+)', multiLine: true);
+final RegExp _kTotalPssLinePattern = RegExp(r'Total\s+PSS[^\d\n]*(\d+)', caseSensitive: false);
+
+/// OHOS specific implementation of memory info.
+class OhosMemoryInfo extends MemoryInfo {
+  OhosMemoryInfo({required this.totalPss});
+
+  static const String _kPlatformKey = 'platform';
+  // Keys mirror AndroidMemoryInfo.toJson: DevTools' flutterMemoryInfo
+  // parser reads the full set and throws when a key is missing, so every
+  // key must always be present.
+  static const String _kRealTimeKey = 'Realtime';
+  static const String _kJavaHeapKey = 'Java Heap';
+  static const String _kNativeHeapKey = 'Native Heap';
+  static const String _kCodeKey = 'Code';
+  static const String _kStackKey = 'Stack';
+  static const String _kGraphicsKey = 'Graphics';
+  static const String _kPrivateOtherKey = 'Private Other';
+  static const String _kSystemKey = 'System';
+  static const String _kTotalKey = 'Total';
+
+  /// Total PSS of the process, in kB.
+  final int totalPss;
+
+  @override
+  Map<String, Object> toJson() {
+    // Only the total PSS is collected on OHOS today; the per-category
+    // entries stay 0 until hidumper's rows are mapped to the Android
+    // categories.
+    return <String, Object>{
+      _kPlatformKey: 'Ohos',
+      _kRealTimeKey: 0,
+      _kJavaHeapKey: 0,
+      _kNativeHeapKey: 0,
+      _kCodeKey: 0,
+      _kStackKey: 0,
+      _kGraphicsKey: 0,
+      _kPrivateOtherKey: 0,
+      _kSystemKey: 0,
+      _kTotalKey: totalPss,
+    };
+  }
 }
