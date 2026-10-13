@@ -781,8 +781,9 @@ class PlatformViewOHOSUt : public ::testing::Test {
 };
 
 // HCPP 默认关闭：开关未打开时 IsHybridCompositionEnabled() 为 false，
-// CreateExternalViewEmbedder() 返回非 null 的默认 embedder
-// （HCPP embedder 仅在 hybrid_composition_enabled_ 时创建）。
+// 且软件渲染后端下窗口化 embedder 被禁用，
+// CreateExternalViewEmbedder() 返回 null
+// （窗口化 embedder 仅在 kImpellerVulkan 渲染后端创建）。
 TEST_F(PlatformViewOHOSUt, DisabledByDefault) {
   auto settings = MakeTestSettings();
   EXPECT_FALSE(settings.enable_ohos_hybrid_composition);
@@ -797,8 +798,7 @@ TEST_F(PlatformViewOHOSUt, DisabledByDefault) {
   // 经基类 public 虚接口调用触发虚表分发。
   PlatformView* base_view = platform_view;
   auto embedder = base_view->CreateExternalViewEmbedder();
-  ASSERT_NE(embedder, nullptr);
-  EXPECT_EQ(embedder->CompositeEmbeddedView(1), nullptr);
+  ASSERT_EQ(embedder, nullptr);
 }
 
 // HCPP 以 Settings.enable_ohos_hybrid_composition 方式打开，但软件渲染后端
@@ -815,8 +815,7 @@ TEST_F(PlatformViewOHOSUt, DisabledWithSoftwareRenderingDespiteSettings) {
   EXPECT_FALSE(platform_view->IsHybridCompositionEnabled());
   PlatformView* base_view = platform_view;
   auto embedder = base_view->CreateExternalViewEmbedder();
-  ASSERT_NE(embedder, nullptr);
-  EXPECT_EQ(embedder->CompositeEmbeddedView(1), nullptr);
+  ASSERT_EQ(embedder, nullptr);
 }
 
 // HCPP 关闭时 overlay 窗口的生命周期方法必须安全：
@@ -1026,12 +1025,13 @@ TEST_F(PlatformViewOHOSUt, UpdateSemanticsQueuedUntilNotifyCreateDrains) {
   view()->NotifyCreate(MakePvUtWindow(kPvUtHandleA));
   EXPECT_NE(bridge()->tree_.FindNodeById(1), nullptr);
   FlushTasks();
-  EXPECT_EQ(delegate().created_count(), 0);
+  // 无窗口化 embedder 时直接使用主 GPU surface，NotifyCreated 成功。
+  EXPECT_EQ(delegate().created_count(), 1);
   EXPECT_EQ(delegate().next_frame_callback_count(), 1);
 }
 
 TEST_F(PlatformViewOHOSUt, NotifyCreateNotifiesCreatedWithEmbedder) {
-  ASSERT_NE(base()->CreateExternalViewEmbedder(), nullptr);
+  ASSERT_EQ(base()->CreateExternalViewEmbedder(), nullptr);
   view()->NotifyCreate(MakePvUtWindow(kPvUtHandleB));
   FlushTasks();
   EXPECT_EQ(delegate().created_count(), 1);
@@ -1041,12 +1041,13 @@ TEST_F(PlatformViewOHOSUt, NotifyCreateNotifiesCreatedWithEmbedder) {
 TEST_F(PlatformViewOHOSUt, NotifyCreateSetDisplayWindowFailure) {
   view()->NotifyCreate(MakePvUtWindow(nullptr));
   FlushTasks();
-  EXPECT_EQ(delegate().created_count(), 0);
+  // SetDisplayWindow 失败不再阻断 NotifyCreated（主 GPU surface 直连）。
+  EXPECT_EQ(delegate().created_count(), 1);
   EXPECT_EQ(delegate().next_frame_callback_count(), 1);
 }
 
 TEST_F(PlatformViewOHOSUt, PreloadOffscreenThenSecondPreloadSkips) {
-  ASSERT_NE(base()->CreateExternalViewEmbedder(), nullptr);
+  ASSERT_EQ(base()->CreateExternalViewEmbedder(), nullptr);
   auto preload_texture = std::make_shared<WbFakeTexture>(91);
   view()->all_external_texture_[91] = preload_texture;
   view()->Preload(640, 480);
@@ -1060,7 +1061,7 @@ TEST_F(PlatformViewOHOSUt, PreloadOffscreenThenSecondPreloadSkips) {
 }
 
 TEST_F(PlatformViewOHOSUt, PreloadRetriesWhenOffscreenPrepareFails) {
-  ASSERT_NE(base()->CreateExternalViewEmbedder(), nullptr);
+  ASSERT_EQ(base()->CreateExternalViewEmbedder(), nullptr);
   PvUtKnobGuard guard;
   PvUtInjectOffscreenAcquireFailure();
   view()->Preload(100, 100);
@@ -1076,7 +1077,8 @@ TEST_F(PlatformViewOHOSUt, PreloadRetriesWhenOffscreenPrepareFails) {
 }
 
 TEST_F(PlatformViewOHOSUt, NotifyCreateForViewRegistersSurfaceAndMetrics) {
-  ASSERT_NE(base()->CreateExternalViewEmbedder(), nullptr);
+  view()->external_view_embedder_ =
+      std::make_shared<OHOSWindowingViewEmbedder>();
   EXPECT_TRUE(
       view()->NotifyCreateForView(7, MakePvUtWindow(kPvUtHandleA), 300, 400));
   auto metrics = delegate().metrics_for(7);
@@ -1105,14 +1107,16 @@ TEST_F(PlatformViewOHOSUt, NotifyCreateForViewFailsWithoutEmbedder) {
 }
 
 TEST_F(PlatformViewOHOSUt, NotifyCreateForViewFailsWithNullWindow) {
-  ASSERT_NE(base()->CreateExternalViewEmbedder(), nullptr);
+  view()->external_view_embedder_ =
+      std::make_shared<OHOSWindowingViewEmbedder>();
   EXPECT_FALSE(view()->NotifyCreateForView(5, fml::RefPtr<OHOSNativeWindow>(),
                                            100, 100));
   EXPECT_TRUE(delegate().metrics_for(5).empty());
 }
 
 TEST_F(PlatformViewOHOSUt, NotifyCreateForViewZeroSizeSkipsMetrics) {
-  ASSERT_NE(base()->CreateExternalViewEmbedder(), nullptr);
+  view()->external_view_embedder_ =
+      std::make_shared<OHOSWindowingViewEmbedder>();
   EXPECT_TRUE(
       view()->NotifyCreateForView(9, MakePvUtWindow(kPvUtHandleA), 0, 0));
   EXPECT_TRUE(delegate().metrics_for(9).empty());
@@ -1231,7 +1235,7 @@ TEST_F(PlatformViewOHOSUt, OnSurfaceCreatedForcesRestoreFromDestroyedLevel) {
 }
 
 TEST_F(PlatformViewOHOSUt, AggressiveReclaimCoreTeardownThenRestoreRebuild) {
-  ASSERT_NE(base()->CreateExternalViewEmbedder(), nullptr);
+  ASSERT_EQ(base()->CreateExternalViewEmbedder(), nullptr);
   view()->NotifyCreate(MakePvUtWindow(kPvUtHandleA));
   FlushTasks();
   EXPECT_EQ(delegate().created_count(), 1);
@@ -1249,7 +1253,7 @@ TEST_F(PlatformViewOHOSUt, AggressiveReclaimCoreTeardownThenRestoreRebuild) {
 }
 
 TEST_F(PlatformViewOHOSUt, AggressiveReclaimSkippedWhenContextInvalid) {
-  ASSERT_NE(base()->CreateExternalViewEmbedder(), nullptr);
+  ASSERT_EQ(base()->CreateExternalViewEmbedder(), nullptr);
   view()->NotifyCreate(MakePvUtWindow(kPvUtHandleA));
   FlushTasks();
   view()->NotifyDestroyed();
@@ -1269,7 +1273,8 @@ TEST_F(PlatformViewOHOSUt,
        AggressiveReclaimRebuildFailsWithInvalidCachedWindow) {
   view()->NotifyCreate(MakePvUtWindow(nullptr));
   FlushTasks();
-  EXPECT_EQ(delegate().created_count(), 0);
+  // 无效缓存窗口下 NotifyCreated 仍成功（主 GPU surface 直连）。
+  EXPECT_EQ(delegate().created_count(), 1);
   SendLifecycle("AppLifecycleState.paused");
   FlushTasks();
   ASSERT_TRUE(WaitForPlatformIdleAfter(fml::TimeDelta::FromMilliseconds(1400)));
@@ -1311,11 +1316,11 @@ TEST_F(PlatformViewOHOSUt, ExternalTextureApiWithoutRegisteredTextures) {
 TEST_F(PlatformViewOHOSUt, CreateRenderingSurfaceRequiresWindowingEmbedder) {
   view()->NotifyCreated();
   FlushTasks();
-  EXPECT_EQ(delegate().created_count(), 0);
-  ASSERT_NE(base()->CreateExternalViewEmbedder(), nullptr);
+  EXPECT_EQ(delegate().created_count(), 1);
+  EXPECT_EQ(base()->CreateExternalViewEmbedder(), nullptr);
   view()->NotifyCreated();
   FlushTasks();
-  EXPECT_EQ(delegate().created_count(), 1);
+  EXPECT_EQ(delegate().created_count(), 2);
 }
 
 TEST_F(PlatformViewOHOSUt, SnapshotProducerAndSoftwareContexts) {
@@ -1519,7 +1524,7 @@ TEST_F(PlatformViewOHOSUt, NapiForwardingAndPreEngineRestartSafe) {
 }
 
 TEST_F(PlatformViewOHOSUt, PreloadThenNotifyCreateFiresFirstFrameCallback) {
-  ASSERT_NE(base()->CreateExternalViewEmbedder(), nullptr);
+  ASSERT_EQ(base()->CreateExternalViewEmbedder(), nullptr);
   view()->Preload(640, 480);
   FlushTasks();
   EXPECT_EQ(delegate().created_count(), 1);
@@ -1534,7 +1539,7 @@ TEST_F(PlatformViewOHOSUt, PreloadThenNotifyCreateFiresFirstFrameCallback) {
 TEST_F(PlatformViewOHOSUt, PreloadThenNotifyCreateSchedulesWhenSizeMatches) {
   PvUtKnobGuard guard;
   PvUtSetWindowGeometry(100, 100);
-  ASSERT_NE(base()->CreateExternalViewEmbedder(), nullptr);
+  ASSERT_EQ(base()->CreateExternalViewEmbedder(), nullptr);
   view()->Preload(100, 100);
   FlushTasks();
   EXPECT_EQ(delegate().created_count(), 1);
@@ -1546,7 +1551,8 @@ TEST_F(PlatformViewOHOSUt, PreloadThenNotifyCreateSchedulesWhenSizeMatches) {
 }
 
 TEST_F(PlatformViewOHOSUt, NotifySurfaceChangedForViewZeroSizeKeepsMetrics) {
-  ASSERT_NE(base()->CreateExternalViewEmbedder(), nullptr);
+  view()->external_view_embedder_ =
+      std::make_shared<OHOSWindowingViewEmbedder>();
   ASSERT_TRUE(
       view()->NotifyCreateForView(11, MakePvUtWindow(kPvUtHandleA), 300, 400));
   ASSERT_EQ(delegate().metrics_for(11).size(), 1u);
@@ -1565,7 +1571,7 @@ TEST_F(PlatformViewOHOSUt, OnSurfaceCreatedInertAtRestoreLevel) {
 }
 
 TEST_F(PlatformViewOHOSUt, DeferredAggressiveSupersededSkipsTeardown) {
-  ASSERT_NE(base()->CreateExternalViewEmbedder(), nullptr);
+  ASSERT_EQ(base()->CreateExternalViewEmbedder(), nullptr);
   view()->NotifyCreate(MakePvUtWindow(kPvUtHandleA));
   FlushTasks();
   SendLifecycle("AppLifecycleState.paused");
@@ -2163,7 +2169,8 @@ TEST_F(PlatformViewOHOSUt, NotifyCreateForViewContextAndFactoryGuards) {
 }
 
 TEST_F(PlatformViewOHOSUt, NotifyCreateForViewHeightZeroAndNullGpuSurface) {
-  ASSERT_NE(base()->CreateExternalViewEmbedder(), nullptr);
+  view()->external_view_embedder_ =
+      std::make_shared<OHOSWindowingViewEmbedder>();
   EXPECT_TRUE(
       view()->NotifyCreateForView(26, MakePvUtWindow(kPvUtHandleA), 100, 0));
 }
@@ -2210,7 +2217,8 @@ TEST_F(PlatformViewOHOSUt,
       view()->ohos_context_, false, nullptr);
   view()->NotifySurfaceChangedForView(42, MakePvUtWindow(kPvUtHandleA), 10, 10);
 
-  ASSERT_NE(base()->CreateExternalViewEmbedder(), nullptr);
+  view()->external_view_embedder_ =
+      std::make_shared<OHOSWindowingViewEmbedder>();
   ASSERT_TRUE(
       view()->NotifyCreateForView(43, MakePvUtWindow(kPvUtHandleA), 120, 80));
   view()->NotifySurfaceChangedForView(43, fml::RefPtr<OHOSNativeWindow>(), 50,
@@ -2259,7 +2267,8 @@ TEST_F(PlatformViewOHOSUt, CreateRenderingSurfaceNullSurfaceAndNullGpu) {
   EXPECT_EQ(view()->CreateRenderingSurface(), nullptr);
 
   view()->hybrid_composition_enabled_ = false;
-  ASSERT_NE(base()->CreateExternalViewEmbedder(), nullptr);
+  view()->external_view_embedder_ =
+      std::make_shared<OHOSWindowingViewEmbedder>();
   view()->ohos_surface_ = std::make_shared<PvUtFakeOhosSurface>(
       view()->ohos_context_, true, nullptr);
   EXPECT_EQ(view()->CreateRenderingSurface(), nullptr);
