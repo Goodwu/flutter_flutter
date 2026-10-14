@@ -17,7 +17,11 @@ import LocalizationPlugin from '../../plugin/localization/LocalizationPlugin';
 import i18n from '@ohos.i18n';
 import Any from '../../plugin/common/Any';
 import FlutterManager from '../ohos/FlutterManager';
+import { DialogWindowCreationRequest, PopupWindowCreationRequest,
+  RegularWindowCreationRequest, TooltipWindowCreationRequest,
+  WindowConstraints } from '../ohos/windowing/WindowingUtils';
 import deviceInfo from '@ohos.deviceInfo';
+import window from '@ohos.window';
 import TouchEventProcessor from '../ohos/TouchEventProcessor';
 import BuildProfile from '../../../../../BuildProfile';
 import { Action } from '../engine/systemchannels/AccessibilityChannel';
@@ -317,11 +321,11 @@ export default class FlutterNapi {
    * placement. Caller scales to physical px for moveWindowTo.
    */
   static nativeComputeWindowPosition(out: WindowPositionResult, viewId: number,
-    childW: number, childH: number,
-    parentLeft: number, parentTop: number, parentW: number, parentH: number,
-    workLeft: number, workTop: number, workW: number, workH: number): number {
-    return flutter.nativeComputeWindowPosition(out, viewId, childW, childH,
-      parentLeft, parentTop, parentW, parentH, workLeft, workTop, workW, workH);
+    childSize: window.Size, parentRect: window.Rect, workArea: window.Rect): number {
+    return flutter.nativeComputeWindowPosition(out, viewId,
+      childSize.width, childSize.height,
+      parentRect.left, parentRect.top, parentRect.width, parentRect.height,
+      workArea.left, workArea.top, workArea.width, workArea.height);
   }
 
   /**
@@ -693,37 +697,29 @@ export default class FlutterNapi {
     });
   }
 
-  /**
-   * Native entry (InvokeJsMethod "requestWindowHost"): create a sub-window
-   * host for a non-implicit view. width/height are the LOGICAL preferred
-   * size (0 = sized-to-content); archetype is
-   * OHOSWindowController::WindowType.
-   */
-  requestWindowHost(viewId: number,
-                    parentViewId: number,
-                    width: number,
-                    height: number,
-                    title: string,
-                    archetype: number): void {
-    Log.d(TAG, `requestWindowHost viewId=${viewId} parentViewId=${parentViewId}` +
-      ` size=${width}x${height} title="${title}" archetype=${archetype}`);
-    FlutterManager.getInstance().createSubWindow(
-      viewId, parentViewId, width, height, title, archetype);
+  // Native entries (InvokeJsMethod), one per archetype — the same names as
+  // the C++ facade. req carries the creation fields (preferred size / constraints / title /
+  // parentViewId, LOGICAL px), field-for-field with the C++ structs in
+  // ohos_window_types.h.
+
+  createRegularWindow(viewId: number, req: RegularWindowCreationRequest): void {
+    FlutterManager.getInstance().createRegularWindow(viewId, req);
   }
 
-  /** Native entry (InvokeJsMethod "createRegularAbility"): launch a Regular
-   * window as its own UIAbility so it gets a task-center card (contrast
-   * requestWindowHost, the SubWindow path). */
-  createRegularAbility(viewId: number,
-                       requestId: number,
-                       width: number,
-                       height: number,
-                       title: string,
-                       archetype: number): void {
-    Log.d(TAG, `createRegularAbility viewId=${viewId} requestId=${requestId}` +
-      ` size=${width}x${height} title="${title}" archetype=${archetype}`);
-    FlutterManager.getInstance().createRegularAbilityWindow(
-      viewId, requestId, width, height, title, archetype);
+  /** Dialog: modal (parentViewId set) → SubWindow; modeless (sentinel) →
+   * UIAbility spawn. */
+  createDialogWindow(viewId: number, req: DialogWindowCreationRequest): void {
+    FlutterManager.getInstance().createDialogWindow(viewId, req);
+  }
+
+  /** Tooltip: anchored, parent-bound SubWindow. */
+  createTooltipWindow(viewId: number, req: TooltipWindowCreationRequest): void {
+    FlutterManager.getInstance().createTooltipWindow(viewId, req);
+  }
+
+  /** Popup: anchored, parent-bound SubWindow. */
+  createPopupWindow(viewId: number, req: PopupWindowCreationRequest): void {
+    FlutterManager.getInstance().createPopupWindow(viewId, req);
   }
 
   /**
@@ -731,21 +727,29 @@ export default class FlutterNapi {
    * EntryAbility's pre-created main window as the surface host for the
    * FIRST Dart-requested Regular window — the first RegularWindow IS the
    * main window, keeping `main.dart` identical across platforms.
-   * Subsequent Regular windows use createRegularAbility.
+   * Subsequent Regular windows use createRegularWindow.
    */
-  bindEntryAbilityToView(viewId: number,
-                         width: number,
-                         height: number,
-                         title: string): void {
-    Log.d(TAG, `bindEntryAbilityToView viewId=${viewId} size=${width}x${height} title="${title}"`);
-    FlutterManager.getInstance().bindEntryAbilityToView(viewId, width, height, title);
+  bindEntryAbilityToView(viewId: number, req: RegularWindowCreationRequest): void {
+    FlutterManager.getInstance().bindEntryAbilityToView(viewId, req);
+  }
+
+  /** Native entry (InvokeJsMethod "updateTooltipPosition"): Dart pushed a
+   * fresh anchorRect/positioner (controller.updatePosition) — re-run the
+   * positioner and move the tooltip sub-window. */
+  updateTooltipPosition(viewId: number): void {
+    FlutterManager.getInstance().updateTooltipPosition(viewId);
   }
 
   /** Native entry (InvokeJsMethod "destroyWindowHost"): tear down the OS
    * window host when Dart closes it (controller.destroy()). */
   destroyWindowHost(viewId: number): void {
     Log.d(TAG, `destroyWindowHost viewId=${viewId}`);
-    FlutterManager.getInstance().destroyWindowHost(viewId);
+    const host = FlutterManager.getInstance().getHostWindowByView(viewId);
+    if (!host) {
+      Log.w(TAG, `destroyWindowHost: no host for ${viewId} (already closed?)`);
+      return;
+    }
+    host.destroy();
   }
 
   exitApplication(): void {
@@ -755,40 +759,82 @@ export default class FlutterNapi {
 
   setWindowSize(viewId: number, width: number, height: number): void {
     Log.d(TAG, `setWindowSize viewId=${viewId} size=${width}x${height}`);
-    FlutterManager.getInstance().setWindowSize(viewId, width, height);
+    const host = FlutterManager.getInstance().getHostWindowByView(viewId);
+    if (!host) {
+      Log.e(TAG, `setWindowSize: no window for viewId=${viewId}`);
+      return;
+    }
+    host.setWindowSize(width, height);
   }
 
   setWindowTitle(viewId: number, title: string): void {
     Log.d(TAG, `setWindowTitle viewId=${viewId} title="${title}"`);
-    FlutterManager.getInstance().setWindowTitle(String(viewId), title);
+    const host = FlutterManager.getInstance().getHostWindowByView(viewId);
+    if (!host) {
+      Log.e(TAG, `setWindowTitle: no window for viewId=${viewId}`);
+      return;
+    }
+    host.setWindowTitle(title);
   }
 
   setWindowMaximized(viewId: number, maximized: boolean): void {
     Log.d(TAG, `setWindowMaximized viewId=${viewId} maximized=${maximized}`);
-    FlutterManager.getInstance().setWindowMaximized(viewId, maximized);
+    const host = FlutterManager.getInstance().getHostWindowByView(viewId);
+    if (!host) {
+      Log.e(TAG, `setWindowMaximized: no window for viewId=${viewId}`);
+      return;
+    }
+    host.setWindowMaximized(maximized);
   }
 
   setWindowMinimized(viewId: number, minimized: boolean): void {
     Log.d(TAG, `setWindowMinimized viewId=${viewId} minimized=${minimized}`);
-    FlutterManager.getInstance().setWindowMinimized(viewId, minimized);
+    const host = FlutterManager.getInstance().getHostWindowByView(viewId);
+    if (!host) {
+      Log.e(TAG, `setWindowMinimized: no window for viewId=${viewId}`);
+      return;
+    }
+    host.setWindowMinimized(minimized);
   }
 
   setWindowFullscreen(viewId: number, fullscreen: boolean): void {
     Log.d(TAG, `setWindowFullscreen viewId=${viewId} fullscreen=${fullscreen}`);
-    FlutterManager.getInstance().setWindowFullscreen(viewId, fullscreen);
+    const host = FlutterManager.getInstance().getHostWindowByView(viewId);
+    if (!host) {
+      Log.e(TAG, `setWindowFullscreen: no window for viewId=${viewId}`);
+      return;
+    }
+    host.setWindowFullscreen(fullscreen);
   }
 
   // LOGICAL-px runtime constraint update (max 0 == unbounded).
-  setWindowConstraints(viewId: number, minWidth: number, maxWidth: number,
-                       minHeight: number, maxHeight: number): void {
-    Log.d(TAG, `setWindowConstraints viewId=${viewId} min=${minWidth}x${minHeight} max=${maxWidth}x${maxHeight}`);
-    FlutterManager.getInstance().setWindowConstraints(viewId, minWidth, maxWidth, minHeight, maxHeight);
+  setWindowConstraints(viewId: number, constraints: WindowConstraints): void {
+    // Wrap the raw napi object (creation bridges do the same).
+    const c = new WindowConstraints(constraints);
+    Log.d(TAG, `setWindowConstraints viewId=${viewId} ${c.toString()}`);
+    const host = FlutterManager.getInstance().getHostWindowByView(viewId);
+    if (!host) {
+      Log.e(TAG, `setWindowConstraints: no window for viewId=${viewId}`);
+      return;
+    }
+    const limits: window.WindowLimits = {
+      minWidth: c.viewMinWidth,
+      minHeight: c.viewMinHeight,
+      maxWidth: c.viewMaxWidth,
+      maxHeight: c.viewMaxHeight
+    };
+    host.setWindowLimits(limits);
   }
 
   // Brings the window to front.
   activateWindow(viewId: number): void {
     Log.d(TAG, `activateWindow viewId=${viewId}`);
-    FlutterManager.getInstance().activateWindow(viewId);
+    const host = FlutterManager.getInstance().getHostWindowByView(viewId);
+    if (!host) {
+      Log.e(TAG, `activateWindow: no window for viewId=${viewId}`);
+      return;
+    }
+    host.activate();
   }
 
   /**

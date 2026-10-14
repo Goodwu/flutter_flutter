@@ -420,6 +420,10 @@ export class FlutterView {
     this.registerDefaultCallbacks();
   }
 
+  getContext(): Context {
+    return this.context;
+  }
+
   onBackPressCallback = () => {
     /// [LTPO] Notifying the VSync signal may require a high frame rate.
     if (this.ltpoSwitchState == LTPOSwitchState.ON) {
@@ -1214,7 +1218,6 @@ export class FlutterView {
     if (this.uiContext !== undefined && this.autofillUiContext === undefined) {
       this.applyAutofillUiContext(this.uiContext);
     }
-    FlutterManager.getInstance().decorateTitleButtons(this.id);
     Log.d(TAG, "uiContext init and sendSettings finished.");
   }
 

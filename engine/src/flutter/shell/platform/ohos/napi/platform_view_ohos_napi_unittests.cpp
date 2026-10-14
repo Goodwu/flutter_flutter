@@ -75,26 +75,47 @@ class PlatformViewOHOSNapiTest : public ::testing::Test {
   double saved_density_pixels_ = 0.0;
 };
 
-TEST_F(PlatformViewOHOSNapiTest, RequestWindowHostNullEnv) {
-  PlatformViewOHOSNapi facade(nullptr);
-  EXPECT_NO_FATAL_FAILURE(
-      facade.RequestWindowHost(9401, 0, 640.0, 480.0, "title", 1));
+RegularWindowCreationRequest MakeHostRequest() {
+  RegularWindowCreationRequest request;
+  request.preferred_size.has_preferred_view_size = true;
+  request.preferred_size.preferred_view_width = 640.0;
+  request.preferred_size.preferred_view_height = 480.0;
+  request.title = "title";
+  return request;
 }
 
-// createRegularAbility: 6 args — int64 view_id, int64 request_id,
-// double width, double height, string title, int32 archetype.
-TEST(PlatformViewOHOSNapi, CreateRegularAbilityNullEnv) {
+DialogWindowCreationRequest MakeDialogHostRequest() {
+  return DialogWindowCreationRequest{};
+}
+
+TooltipWindowCreationRequest MakeTooltipHostRequest() {
+  return TooltipWindowCreationRequest{};
+}
+
+PopupWindowCreationRequest MakePopupHostRequest() {
+  return PopupWindowCreationRequest{};
+}
+
+// requestWindowHost: 3 args — int64 view_id, request object, int32 archetype.
+TEST_F(PlatformViewOHOSNapiTest, CreateDialogWindowNullEnv) {
   PlatformViewOHOSNapi facade(nullptr);
-  facade.CreateRegularAbility(9401, 1001, 640.0, 480.0, "title", 1);
+  EXPECT_NO_FATAL_FAILURE(
+      facade.CreateDialogWindow(9401, MakeDialogHostRequest()));
+}
+
+// createRegularAbility: 3 args — int64 view_id, request object, int32
+// archetype.
+TEST(PlatformViewOHOSNapi, CreateRegularWindowNullEnv) {
+  PlatformViewOHOSNapi facade(nullptr);
+  facade.CreateRegularWindow(9401, MakeHostRequest());
   SUCCEED();
 }
 
-// bindEntryAbilityToView: 4 args — int64 view_id, double width, double height,
-// string title.
+// bindEntryAbilityToView: 2 args — int64 view_id, request object.
 TEST_F(PlatformViewOHOSNapiTest, BindEntryAbilityToViewNullEnv) {
   PlatformViewOHOSNapi facade(nullptr);
   EXPECT_NO_FATAL_FAILURE(
-      facade.BindEntryAbilityToView(9401, 640.0, 480.0, "title"));
+      facade.BindEntryAbilityToView(9401, MakeHostRequest()));
 }
 
 // destroyWindowHost: 1 arg — int64 view_id.
@@ -139,11 +160,13 @@ TEST_F(PlatformViewOHOSNapiTest, SetWindowFullscreenNullEnv) {
   EXPECT_NO_FATAL_FAILURE(facade.SetWindowFullscreen(9401, false));
 }
 
-// setWindowConstraints: 5 args — int64 view_id, double min/max width/height.
+// setWindowConstraints: 2 args — int64 view_id + the constraints object
+// (hasViewConstraints + viewMin/Max doubles, creation-request-shaped).
 TEST_F(PlatformViewOHOSNapiTest, SetWindowConstraintsNullEnv) {
   PlatformViewOHOSNapi facade(nullptr);
-  EXPECT_NO_FATAL_FAILURE(
-      facade.SetWindowConstraints(9401, 320.0, 640.0, 240.0, 480.0));
+  // Struct order: has, min_w, min_h, max_w, max_h.
+  WindowConstraints constraints{true, 320.0, 240.0, 640.0, 480.0};
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowConstraints(9401, constraints));
 }
 
 // activateWindow: 1 arg — int64 view_id.
@@ -228,25 +251,31 @@ std::unique_ptr<OHOSShellHolder> MakeSoftwareHolder() {
 
 void InsertNapiWindow(OHOSWindowController* controller,
                       int64_t view_id,
-                      const FlutterWindowCreationRequest& request) {
-  OHOSWindow::InitParams params;
-  params.type = WindowType::kTooltip;
-  params.host_kind = WindowHostKind::kSubWindow;
-  params.view_id = view_id;
-  params.parent_view_id = 0;
+                      const RegularWindowCreationRequest& request =
+                          RegularWindowCreationRequest{}) {
   void* host_handle = OHOSWindowController::HandleForViewId(view_id);
   std::lock_guard<std::mutex> lock(controller->windows_mutex_);
   controller->windows_[host_handle] =
-      std::make_unique<OHOSWindow>(controller, params, request);
+      std::make_unique<OHOSWindow>(view_id, request);
 }
 
-FlutterWindowRect g_napi_position_rect{1.0, 2.0, 3.0, 4.0};
+// Tooltip overload: the anchored archetypes carry a positioner.
+void InsertNapiWindow(OHOSWindowController* controller,
+                      int64_t view_id,
+                      const TooltipWindowCreationRequest& request) {
+  void* host_handle = OHOSWindowController::HandleForViewId(view_id);
+  std::lock_guard<std::mutex> lock(controller->windows_mutex_);
+  controller->windows_[host_handle] =
+      std::make_unique<OHOSWindow>(view_id, request);
+}
 
-FlutterWindowRect* NapiOnGetWindowPosition(const FlutterWindowSize&,
-                                           const FlutterWindowRect&,
-                                           const FlutterWindowRect&) {
+WindowRect g_napi_position_rect{1.0, 2.0, 3.0, 4.0};
+
+WindowRect* NapiOnGetWindowPosition(const WindowSize&,
+                                           const WindowRect&,
+                                           const WindowRect&) {
   auto* out =
-      static_cast<FlutterWindowRect*>(malloc(sizeof(FlutterWindowRect)));
+      static_cast<WindowRect*>(malloc(sizeof(WindowRect)));
   *out = g_napi_position_rect;
   return out;
 }
@@ -359,9 +388,11 @@ TEST_F(PlatformViewOHOSNapiTest, WindowingCalloutsCompleteMarshaling) {
   PlatformViewOHOSNapi::env_ = FakeNapiEnv();
   PlatformViewOHOSNapi facade(nullptr);
   auto body = [&] {
-    facade.RequestWindowHost(9401, 0, 640.0, 480.0, "title", 1);
-    facade.CreateRegularAbility(9401, 1001, 640.0, 480.0, "title", 0);
-    facade.BindEntryAbilityToView(9401, 640.0, 480.0, "title");
+    facade.CreateDialogWindow(9401, MakeDialogHostRequest());
+    facade.CreateRegularWindow(9401, MakeHostRequest());
+    facade.CreateTooltipWindow(9401, MakeTooltipHostRequest());
+    facade.CreatePopupWindow(9401, MakePopupHostRequest());
+    facade.BindEntryAbilityToView(9401, MakeHostRequest());
     facade.DestroyWindowHost(9401);
     facade.ExitApplication();
     facade.SetWindowSize(9401, 640.0, 480.0);
@@ -369,7 +400,7 @@ TEST_F(PlatformViewOHOSNapiTest, WindowingCalloutsCompleteMarshaling) {
     facade.SetWindowMaximized(9401, true);
     facade.SetWindowMinimized(9401, false);
     facade.SetWindowFullscreen(9401, true);
-    facade.SetWindowConstraints(9401, 320.0, 640.0, 240.0, 480.0);
+    facade.SetWindowConstraints(9401, WindowConstraints{true, 320.0, 240.0, 640.0, 480.0});
     facade.ActivateWindow(9401);
   };
   EXPECT_NO_FATAL_FAILURE(body());
@@ -452,9 +483,9 @@ TEST_F(PlatformViewOHOSNapiTest, CalloutsInvokeJsMethodFailureBranches) {
   PlatformViewOHOSNapi::env_ = FakeNapiEnv();
   PlatformViewOHOSNapi facade(nullptr);
   const std::vector<std::function<void()>> callouts = {
-      [&] { facade.RequestWindowHost(1, 0, 1.0, 2.0, "t", 3); },
-      [&] { facade.CreateRegularAbility(1, 2, 1.0, 2.0, "t", 1); },
-      [&] { facade.BindEntryAbilityToView(1, 1.0, 2.0, "t"); },
+      [&] { facade.CreateTooltipWindow(1, MakeTooltipHostRequest()); },
+      [&] { facade.CreateDialogWindow(1, MakeDialogHostRequest()); },
+      [&] { facade.BindEntryAbilityToView(1, MakeHostRequest()); },
       [&] { facade.DestroyWindowHost(1); },
       [&] { facade.ExitApplication(); },
       [&] { facade.SetWindowSize(1, 1.0, 2.0); },
@@ -462,7 +493,7 @@ TEST_F(PlatformViewOHOSNapiTest, CalloutsInvokeJsMethodFailureBranches) {
       [&] { facade.SetWindowMaximized(1, true); },
       [&] { facade.SetWindowMinimized(1, false); },
       [&] { facade.SetWindowFullscreen(1, true); },
-      [&] { facade.SetWindowConstraints(1, 1.0, 2.0, 1.0, 2.0); },
+      [&] { facade.SetWindowConstraints(1, {true, 1.0, 2.0, 1.0, 2.0}); },
       [&] { facade.ActivateWindow(1); },
       [&] { facade.FlutterViewOnFirstFrame(true); },
       [&] { facade.FlutterViewOnPreEngineRestart(); },
@@ -2049,9 +2080,9 @@ TEST_F(PlatformViewOHOSNapiTest,
                "unittest/reach", fml::MallocMapping::Copy(payload, payload + 7),
                nullptr));
     StubNapiFailCreateStringUtf8(kStubFailure, 0);
-    facade.CreateRegularAbility(1, 2, 3.0, 4.0, "title", 0);
+    facade.CreateRegularWindow(1, MakeHostRequest());
     StubNapiFailCreateStringUtf8(kStubFailure, 0);
-    facade.BindEntryAbilityToView(1, 3.0, 4.0, "title");
+    facade.BindEntryAbilityToView(1, MakeHostRequest());
     StubNapiFailCreateStringUtf8(kStubFailure, 0);
     facade.SetWindowTitle(1, "title");
     facade.FlutterViewHandlePlatformMessage(
@@ -2167,7 +2198,7 @@ TEST_F(PlatformViewOHOSNapiTest, HandleOsWindowClosedTearsDownSeededWindow) {
   auto holder = MakeSoftwareHolder();
   OHOSWindowController* controller = holder->GetWindowController();
   ASSERT_NE(controller, nullptr);
-  InsertNapiWindow(controller, 0, FlutterWindowCreationRequest{});
+  InsertNapiWindow(controller, 0, RegularWindowCreationRequest{});
   void* const handle = OHOSWindowController::HandleForViewId(0);
   ASSERT_EQ(controller->windows_.count(handle), 1u);
   // The stub feeds the seeded window's view id: the call routes to
@@ -2824,13 +2855,13 @@ TEST_F(PlatformViewOHOSNapiTest, NativeComputeWindowPositionStages) {
       PlatformViewOHOSNapi::nativeComputeWindowPosition(env, nullptr));
 
   constexpr int64_t kView = 7;
-  InsertNapiWindow(holder->GetWindowController(), kView, {});
+  InsertNapiWindow(holder->GetWindowController(), kView, RegularWindowCreationRequest{});
   StubNapiSetInt64Value(kView);
   EXPECT_NO_FATAL_FAILURE(
       PlatformViewOHOSNapi::nativeComputeWindowPosition(env, nullptr));
 
-  FlutterWindowCreationRequest request{};
-  request.on_get_window_position = &NapiOnGetWindowPosition;
+  TooltipWindowCreationRequest request{};
+  request.get_position_callback = &NapiOnGetWindowPosition;
   InsertNapiWindow(holder->GetWindowController(), kView, request);
   StubNapiFailCreateReference(kStubFailure);
   EXPECT_NO_FATAL_FAILURE(
@@ -2872,7 +2903,7 @@ TEST_F(PlatformViewOHOSNapiTest, NativeNotifyWindowActivatedStages) {
   EXPECT_EQ(PlatformViewOHOSNapi::nativeNotifyWindowActivated(env, nullptr),
             nullptr);
   constexpr int64_t kView = 8;
-  InsertNapiWindow(holder->GetWindowController(), kView, {});
+  InsertNapiWindow(holder->GetWindowController(), kView, RegularWindowCreationRequest{});
   StubNapiSetInt64Value(kView);
   StubNapiSetBoolValue(true);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeNotifyWindowActivated(env, nullptr),
@@ -3290,9 +3321,9 @@ TEST_F(PlatformViewOHOSNapiTest, LogSeverityReplayRemainingEdges) {
     fml::ScopedSetLogSettings quiet({fml::kLogFatal});
     PlatformViewOHOSNapi facade(nullptr);
     const std::vector<std::function<void()>> callouts = {
-        [&] { facade.RequestWindowHost(1, 0, 1.0, 2.0, "t", 3); },
-        [&] { facade.CreateRegularAbility(1, 2, 1.0, 2.0, "t", 1); },
-        [&] { facade.BindEntryAbilityToView(1, 1.0, 2.0, "t"); },
+        [&] { facade.CreateTooltipWindow(1, MakeTooltipHostRequest()); },
+        [&] { facade.CreateDialogWindow(1, MakeDialogHostRequest()); },
+        [&] { facade.BindEntryAbilityToView(1, MakeHostRequest()); },
         [&] { facade.DestroyWindowHost(1); },
         [&] { facade.ExitApplication(); },
         [&] { facade.SetWindowSize(1, 1.0, 2.0); },
@@ -3300,7 +3331,7 @@ TEST_F(PlatformViewOHOSNapiTest, LogSeverityReplayRemainingEdges) {
         [&] { facade.SetWindowMaximized(1, true); },
         [&] { facade.SetWindowMinimized(1, false); },
         [&] { facade.SetWindowFullscreen(1, true); },
-        [&] { facade.SetWindowConstraints(1, 1.0, 2.0, 1.0, 2.0); },
+        [&] { facade.SetWindowConstraints(1, {true, 1.0, 2.0, 1.0, 2.0}); },
         [&] { facade.ActivateWindow(1); },
         [&] { facade.FlutterViewSetApplicationLocale("en-US"); },
         [&] { facade.FlutterViewOnTouchEvent(nullptr, 0); },

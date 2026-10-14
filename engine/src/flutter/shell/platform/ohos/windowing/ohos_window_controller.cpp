@@ -156,71 +156,115 @@ WindowHostKind OHOSWindowController::ResolveHostKind(WindowType type,
   }
 }
 
-int64_t OHOSWindowController::CreateWindow(
-    const FlutterWindowCreationRequest& request,
-    WindowType type) {
-  const WindowHostKind kind =
-      ResolveHostKind(type, request.has_parent, request.parent_view_id);
+// Allocates a fresh non-implicit view id and registers it with the engine.
+int64_t OHOSWindowController::AllocateAndAddView() {
+  const int64_t view_id = AllocateViewId();
+  if (!AddViewSync(view_id)) {
+    return kCreateWindowFailedViewId;
+  }
+  return view_id;
+}
 
-  // The FIRST Regular UIAbility window ADOPTS implicit view 0 — the
-  // EntryAbility's pre-created window, already added at engine startup, so it
-  // must NOT be re-AddView'd (AddView DCHECKs view_id != implicit). All other
-  // windows (including a dialog created first) allocate a fresh id: only a
-  // Regular window may adopt view 0.
-  const bool is_first_ui_ability =
-      (type == WindowType::kRegular && kind == WindowHostKind::kUiAbility &&
-       !entry_ability_bound_);
+int64_t OHOSWindowController::CreateRegularWindow(const RegularWindowCreationRequest* request) {
+  // The FIRST Regular window ADOPTS implicit view 0 — the EntryAbility's
+  // pre-created window, already added at engine startup, so it must NOT be
+  // re-AddView'd (AddView DCHECKs view_id != implicit). Only a Regular
+  // window may adopt view 0; every later one spawns its own UIAbility.
   int64_t view_id;
-  if (is_first_ui_ability) {
+  if (!entry_ability_bound_) {
     view_id = static_cast<int64_t>(kFlutterImplicitViewId);  // 0
     entry_ability_bound_ = true;
   } else {
-    view_id = AllocateViewId();
-    if (!AddViewSync(view_id)) {
-      return kCreateWindowFailedViewId;
+    view_id = AllocateAndAddView();
+    if (view_id == kCreateWindowFailedViewId) {
+      return view_id;
     }
   }
 
   void* const handle = HandleForViewId(view_id);
-
-  OHOSWindow::InitParams params;
-  params.type = type;
-  params.host_kind = kind;
-  params.view_id = view_id;
-  params.parent_view_id = request.parent_view_id;
-  // Host behavior is data-driven (host_kind dispatch in
-  // OHOSWindow::RequestWindowHost), so a single concrete class serves every
-  // archetype — the ETS host distinguishes types by the forwarded archetype.
-  auto window = std::make_unique<OHOSWindow>(this, params, request);
-  OHOSWindow* const window_ptr = window.get();
   {
     std::lock_guard<std::mutex> lock(windows_mutex_);
-    windows_[handle] = std::move(window);
+    windows_[handle] = std::make_unique<OHOSWindow>(view_id, *request);
   }
 
-  window_ptr->RequestWindowHost();
-
+  auto facade = GetNapiFacade();
+  if (!facade) {
+    FML_LOG(ERROR) << "CreateRegularWindow: no napi facade for view "
+                   << view_id;
+    return view_id;
+  }
+  if (view_id == static_cast<int64_t>(kFlutterImplicitViewId)) {
+    facade->BindEntryAbilityToView(view_id, *request);
+  } else {
+    facade->CreateRegularWindow(view_id, *request);
+  }
   return view_id;
 }
 
-int64_t OHOSWindowController::CreateRegularWindow(
-    const FlutterWindowCreationRequest& request) {
-  return CreateWindow(request, WindowType::kRegular);
+int64_t OHOSWindowController::CreateDialogWindow(const DialogWindowCreationRequest* request) {
+  const int64_t view_id = AllocateAndAddView();
+  if (view_id == kCreateWindowFailedViewId) {
+    return view_id;
+  }
+
+  void* const handle = HandleForViewId(view_id);
+  {
+    std::lock_guard<std::mutex> lock(windows_mutex_);
+    windows_[handle] = std::make_unique<OHOSWindow>(view_id, *request);
+  }
+
+  auto facade = GetNapiFacade();
+  if (!facade) {
+    FML_LOG(ERROR) << "CreateDialogWindow: no napi facade for view "
+                   << view_id;
+    return view_id;
+  }
+  facade->CreateDialogWindow(view_id, *request);
+  return view_id;
 }
 
-int64_t OHOSWindowController::CreateDialogWindow(
-    const FlutterWindowCreationRequest& request) {
-  return CreateWindow(request, WindowType::kDialog);
+int64_t OHOSWindowController::CreateTooltipWindow(const TooltipWindowCreationRequest* request) {
+  const int64_t view_id = AllocateAndAddView();
+  if (view_id == kCreateWindowFailedViewId) {
+    return view_id;
+  }
+
+  void* const handle = HandleForViewId(view_id);
+  {
+    std::lock_guard<std::mutex> lock(windows_mutex_);
+    windows_[handle] = std::make_unique<OHOSWindow>(view_id, *request);
+  }
+
+  auto facade = GetNapiFacade();
+  if (!facade) {
+    FML_LOG(ERROR) << "CreateTooltipWindow: no napi facade for view "
+                   << view_id;
+    return view_id;
+  }
+  facade->CreateTooltipWindow(view_id, *request);
+  return view_id;
 }
 
-int64_t OHOSWindowController::CreateTooltipWindow(
-    const FlutterWindowCreationRequest& request) {
-  return CreateWindow(request, WindowType::kTooltip);
-}
+int64_t OHOSWindowController::CreatePopupWindow(const PopupWindowCreationRequest* request) {
+  const int64_t view_id = AllocateAndAddView();
+  if (view_id == kCreateWindowFailedViewId) {
+    return view_id;
+  }
 
-int64_t OHOSWindowController::CreatePopupWindow(
-    const FlutterWindowCreationRequest& request) {
-  return CreateWindow(request, WindowType::kPopup);
+  void* const handle = HandleForViewId(view_id);
+  {
+    std::lock_guard<std::mutex> lock(windows_mutex_);
+    windows_[handle] = std::make_unique<OHOSWindow>(view_id, *request);
+  }
+
+  auto facade = GetNapiFacade();
+  if (!facade) {
+    FML_LOG(ERROR) << "CreatePopupWindow: no napi facade for view "
+                   << view_id;
+    return view_id;
+  }
+  facade->CreatePopupWindow(view_id, *request);
+  return view_id;
 }
 
 void OHOSWindowController::DestroyWindow(void* window) {
@@ -284,7 +328,7 @@ void OHOSWindowController::RemoveViewOnPlatformThread(int64_t view_id) {
   platform_view->RemoveViewForWindow(view_id);
 }
 
-FlutterWindowSize OHOSWindowController::GetContentSize(void* window) const {
+WindowSize OHOSWindowController::GetContentSize(void* window) const {
   const int64_t view_id = ViewIdForHandle(window);
   {
     std::lock_guard<std::mutex> lock(actual_sizes_mutex_);
@@ -294,8 +338,8 @@ FlutterWindowSize OHOSWindowController::GetContentSize(void* window) const {
     }
   }
   const OHOSWindow* const win = LookupWindow(window);
-  if (win != nullptr && win->request().has_size) {
-    return {win->request().size.width, win->request().size.height};
+  if (win != nullptr && win->HasPreferredSize()) {
+    return win->PreferredSize();
   }
   return {0.0, 0.0};
 }
@@ -316,7 +360,7 @@ void OHOSWindowController::SetViewActualSize(int64_t view_id,
 }
 
 void OHOSWindowController::SetContentSize(void* window,
-                                          const FlutterWindowSize& size) {
+                                          const WindowSize& size) {
   const int64_t view_id = ViewIdForHandle(window);
   if (auto facade = holder_->GetNapiFacade()) {
     facade->SetWindowSize(view_id, size.width, size.height);
@@ -324,14 +368,10 @@ void OHOSWindowController::SetContentSize(void* window,
 }
 void OHOSWindowController::SetConstraints(
     void* window,
-    const FlutterWindowConstraints& constraints) {
-  // Pass-through: the ETS host owns the live constraints (it clamps window
-  // sizes against them); nothing in C++ reads them back.
+    const WindowConstraints& constraints) {
   const int64_t view_id = ViewIdForHandle(window);
   if (auto facade = holder_->GetNapiFacade()) {
-    facade->SetWindowConstraints(view_id, constraints.min_width,
-                                 constraints.max_width, constraints.min_height,
-                                 constraints.max_height);
+    facade->SetWindowConstraints(view_id, constraints);
   }
 }
 void OHOSWindowController::SetTitle(void* window, const char* title) {
@@ -385,6 +425,13 @@ void OHOSWindowController::Activate(void* window) {
   }
 }
 
+void OHOSWindowController::UpdateTooltipPosition(void* window) {
+  const int64_t view_id = ViewIdForHandle(window);
+  if (auto facade = holder_->GetNapiFacade()) {
+    facade->UpdateTooltipPosition(view_id);
+  }
+}
+
 void OHOSWindowController::SetMaximized(void* window, bool maximized) {
   const int64_t view_id = ViewIdForHandle(window);
   if (auto facade = holder_->GetNapiFacade()) {
@@ -408,10 +455,10 @@ void OHOSWindowController::SetFullscreen(void* window, bool fullscreen) {
 
 bool OHOSWindowController::ComputeWindowPosition(
     int64_t view_id,
-    const FlutterWindowSize& child_size,
-    const FlutterWindowRect& parent_rect,
-    const FlutterWindowRect& work_area,
-    FlutterWindowRect* out) {
+    const WindowSize& child_size,
+    const WindowRect& parent_rect,
+    const WindowRect& work_area,
+    WindowRect* out) {
   if (out == nullptr) {
     return false;
   }
@@ -430,11 +477,6 @@ bool OHOSWindowController::ComputeWindowPosition(
 
 void OHOSWindowController::HandleOsWindowClosed(int64_t view_id) {
   void* const window = HandleForViewId(view_id);
-  // Take SOLE ownership under the lock (same crash-safety contract as
-  // DestroyWindow): the ArkTS thread must never dereference an object a
-  // concurrent Dart-side DestroyWindow could already have erased+freed, and
-  // a Dart destroy re-entering during FireShouldClose simply finds the map
-  // empty and no-ops.
   std::unique_ptr<OHOSWindow> window_ptr;
   {
     std::lock_guard<std::mutex> lock(windows_mutex_);
@@ -519,6 +561,17 @@ bool OHOSWindowController::GetViewActivated(int64_t view_id) const {
 
 }  // namespace flutter
 
+// Validates the FFI-visible request pointer: the symbols carry default
+// visibility, so an external (non-Dart) caller may pass null.
+static bool ValidRequest(const void* request) {
+  if (request == nullptr) {
+    FML_LOG(WARNING)
+        << "Windowing FFI: null creation request; the operation is rejected.";
+    return false;
+  }
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Dart FFI entry points (`engine_id` unused: single-engine, multi-view).
 // ---------------------------------------------------------------------------
@@ -562,50 +615,39 @@ static flutter::OHOSWindowController* ControllerForWindow(void* window) {
   return flutter::OHOSWindowController::ActiveInstance();
 }
 
-// Validates the FFI-visible request pointer: the symbols carry default
-// visibility, so an external (non-Dart) caller may pass null.
-static bool ValidRequest(const flutter::FlutterWindowCreationRequest* request) {
-  if (request == nullptr) {
-    FML_LOG(WARNING)
-        << "Windowing FFI: null creation request; the operation is rejected.";
-    return false;
-  }
-  return true;
-}
-
 int64_t InternalFlutter_WindowController_CreateRegularWindow(
     int64_t engine_id,
-    const flutter::FlutterWindowCreationRequest* request) {
+    const flutter::RegularWindowCreationRequest* request) {
   auto* c = Controller(engine_id);
   return c && ValidRequest(request)
-             ? c->CreateRegularWindow(*request)
+             ? c->CreateRegularWindow(request)
              : flutter::OHOSWindowController::kCreateWindowFailedViewId;
 }
 
 int64_t InternalFlutter_WindowController_CreateDialogWindow(
     int64_t engine_id,
-    const flutter::FlutterWindowCreationRequest* request) {
+    const flutter::DialogWindowCreationRequest* request) {
   auto* c = Controller(engine_id);
   return c && ValidRequest(request)
-             ? c->CreateDialogWindow(*request)
+             ? c->CreateDialogWindow(request)
              : flutter::OHOSWindowController::kCreateWindowFailedViewId;
 }
 
 int64_t InternalFlutter_WindowController_CreateTooltipWindow(
     int64_t engine_id,
-    const flutter::FlutterWindowCreationRequest* request) {
+    const flutter::TooltipWindowCreationRequest* request) {
   auto* c = Controller(engine_id);
   return c && ValidRequest(request)
-             ? c->CreateTooltipWindow(*request)
+             ? c->CreateTooltipWindow(request)
              : flutter::OHOSWindowController::kCreateWindowFailedViewId;
 }
 
 int64_t InternalFlutter_WindowController_CreatePopupWindow(
     int64_t engine_id,
-    const flutter::FlutterWindowCreationRequest* request) {
+    const flutter::PopupWindowCreationRequest* request) {
   auto* c = Controller(engine_id);
   return c && ValidRequest(request)
-             ? c->CreatePopupWindow(*request)
+             ? c->CreatePopupWindow(request)
              : flutter::OHOSWindowController::kCreateWindowFailedViewId;
 }
 
@@ -624,16 +666,16 @@ void* InternalFlutter_Window_GetHandle(int64_t engine_id, int64_t view_id) {
   return nullptr;
 }
 
-flutter::FlutterWindowSize InternalFlutter_Window_GetContentSize(void* window) {
+flutter::WindowSize InternalFlutter_Window_GetContentSize(void* window) {
   if (auto* c = ControllerForWindow(window)) {
     return c->GetContentSize(window);
   }
-  return flutter::FlutterWindowSize{0, 0};
+  return flutter::WindowSize{0, 0};
 }
 
 void InternalFlutter_Window_SetContentSize(
     void* window,
-    const flutter::FlutterWindowSize* size) {
+    const flutter::WindowSize* size) {
   if (auto* c = ControllerForWindow(window); c && size != nullptr) {
     c->SetContentSize(window, *size);
   }
@@ -641,7 +683,7 @@ void InternalFlutter_Window_SetContentSize(
 
 void InternalFlutter_Window_SetConstraints(
     void* window,
-    const flutter::FlutterWindowConstraints* constraints) {
+    const flutter::WindowConstraints* constraints) {
   if (auto* c = ControllerForWindow(window); c && constraints != nullptr) {
     c->SetConstraints(window, *constraints);
   }
@@ -656,6 +698,12 @@ void InternalFlutter_Window_SetTitle(void* window, const char* title) {
 void InternalFlutter_Window_Activate(void* window) {
   if (auto* c = ControllerForWindow(window)) {
     c->Activate(window);
+  }
+}
+
+void InternalFlutter_Window_UpdateTooltipPosition(void* window) {
+  if (auto* c = ControllerForWindow(window)) {
+    c->UpdateTooltipPosition(window);
   }
 }
 
@@ -687,7 +735,7 @@ bool InternalFlutter_Window_GetActivated(int64_t engine_id, int64_t view_id) {
 
 void InternalFlutter_Window_GetOffsetFromParent(
     void* window,
-    flutter::FlutterWindowSize* out_offset_physical) {
+    flutter::WindowSize* out_offset_physical) {
   // Framework `Window.offsetFromParent` API surface kept for parity; without
   // sized-to-content parking the content always sits at the window origin.
   if (out_offset_physical == nullptr) {

@@ -715,6 +715,18 @@ extern "C" napi_status napi_close_handle_scope(napi_env env,
   return napi_ok;
 }
 
+extern "C" napi_status napi_create_object(napi_env env, napi_value* result)
+{
+  if (env == nullptr) {
+    return napi_invalid_arg;
+  }
+  if (result == nullptr) {
+    return napi_invalid_arg;
+  }
+  *result = reinterpret_cast<napi_value>(0x6);
+  return napi_ok;
+}
+
 extern "C" napi_status napi_create_array(napi_env env, napi_value* result) {
   if (result) {
     *result = reinterpret_cast<napi_value>(0x2);
@@ -751,6 +763,17 @@ extern "C" napi_status napi_set_element(napi_env env,
                                         napi_value object,
                                         uint32_t index,
                                         napi_value value) {
+  return napi_ok;
+}
+
+extern "C" napi_status napi_set_named_property(napi_env env,
+                                               napi_value object,
+                                               const char* name,
+                                               napi_value value)
+{
+  if (env == nullptr) {
+    return napi_invalid_arg;
+  }
   return napi_ok;
 }
 

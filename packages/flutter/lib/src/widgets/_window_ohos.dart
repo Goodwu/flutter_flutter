@@ -8,6 +8,7 @@
 import 'dart:convert' show utf8;
 import 'dart:ffi' hide Size;
 import 'dart:io';
+import 'dart:math' as math show max, min;
 import 'dart:typed_data';
 import 'dart:ui' show Display, FlutterView;
 
@@ -41,6 +42,8 @@ To try experimental windowing APIs:
 
 See: https://github.com/flutter/flutter/issues/30701.
 ''';
+
+const int _kNoParentViewId = -1;
 
 /// Resolves the [FlutterView] for a freshly created window's view id.
 ///
@@ -585,6 +588,34 @@ class DialogWindowControllerOHOS extends DialogWindowController with _WindowCont
   final DialogWindowControllerDelegate _delegate;
 }
 
+Rect _flushConstraintAdjustments(
+  Rect rect,
+  Rect displayRect,
+  WindowPositionerConstraintAdjustment adjustment,
+) {
+  double left = rect.left;
+  double top = rect.top;
+  double right = rect.right;
+  double bottom = rect.bottom;
+  if (adjustment.slideX && rect.width < displayRect.width) {
+    left = math.max(math.min(rect.left, displayRect.right - rect.width), displayRect.left);
+    right = left + rect.width;
+  }
+  if (adjustment.slideY && rect.height < displayRect.height) {
+    top = math.max(math.min(rect.top, displayRect.bottom - rect.height), displayRect.top);
+    bottom = top + rect.height;
+  }
+  if (adjustment.resizeX) {
+    left = math.max(left, displayRect.left);
+    right = math.min(right, displayRect.right);
+  }
+  if (adjustment.resizeY) {
+    top = math.max(top, displayRect.top);
+    bottom = math.min(bottom, displayRect.bottom);
+  }
+  return Rect.fromLTRB(left, top, right, bottom);
+}
+
 /// OHOS specific implementation of [TooltipWindowController].
 ///
 /// {@macro flutter.widgets.windowing.experimental}
@@ -648,6 +679,9 @@ class TooltipWindowControllerOHOS extends TooltipWindowController with _WindowCo
     if (positioner != null) {
       _positioner = positioner;
     }
+    // Store first, push after (win32 parity): the ETS side re-runs the
+    // positioner, whose callback reads the values stored above.
+    _OHOSPlatformInterface.updateTooltipWindowPosition(getWindowHandle());
   }
 
   @override
@@ -660,21 +694,26 @@ class TooltipWindowControllerOHOS extends TooltipWindowController with _WindowCo
     final Pointer<_Rect> result = _allocator.allocate<_Rect>(sizeOf<_Rect>());
     final Rect targetRect;
     try {
-      targetRect = _positioner.placeWindow(
-        childSize: Size(childSize.ref.width, childSize.ref.height),
-        anchorRect: _anchorRect.translate(parentRect.ref.left, parentRect.ref.top),
-        parentRect: Rect.fromLTWH(
-          parentRect.ref.left,
-          parentRect.ref.top,
-          parentRect.ref.width,
-          parentRect.ref.height,
+      final displayRect = Rect.fromLTWH(
+        outputRect.ref.left,
+        outputRect.ref.top,
+        outputRect.ref.width,
+        outputRect.ref.height,
+      );
+      targetRect = _flushConstraintAdjustments(
+        _positioner.placeWindow(
+          childSize: Size(childSize.ref.width, childSize.ref.height),
+          anchorRect: _anchorRect.translate(parentRect.ref.left, parentRect.ref.top),
+          parentRect: Rect.fromLTWH(
+            parentRect.ref.left,
+            parentRect.ref.top,
+            parentRect.ref.width,
+            parentRect.ref.height,
+          ),
+          displayRect: displayRect,
         ),
-        displayRect: Rect.fromLTWH(
-          outputRect.ref.left,
-          outputRect.ref.top,
-          outputRect.ref.width,
-          outputRect.ref.height,
-        ),
+        displayRect,
+        _positioner.constraintAdjustment,
       );
     } catch (error, stackTrace) {
       _allocator.free(result);
@@ -822,21 +861,26 @@ class PopupWindowControllerOHOS extends PopupWindowController with _WindowContro
     final Pointer<_Rect> result = _allocator.allocate<_Rect>(sizeOf<_Rect>());
     final Rect targetRect;
     try {
-      targetRect = _positioner.placeWindow(
-        childSize: Size(childSize.ref.width, childSize.ref.height),
-        anchorRect: _anchorRect.translate(parentRect.ref.left, parentRect.ref.top),
-        parentRect: Rect.fromLTWH(
-          parentRect.ref.left,
-          parentRect.ref.top,
-          parentRect.ref.width,
-          parentRect.ref.height,
+      final displayRect = Rect.fromLTWH(
+        outputRect.ref.left,
+        outputRect.ref.top,
+        outputRect.ref.width,
+        outputRect.ref.height,
+      );
+      targetRect = _flushConstraintAdjustments(
+        _positioner.placeWindow(
+          childSize: Size(childSize.ref.width, childSize.ref.height),
+          anchorRect: _anchorRect.translate(parentRect.ref.left, parentRect.ref.top),
+          parentRect: Rect.fromLTWH(
+            parentRect.ref.left,
+            parentRect.ref.top,
+            parentRect.ref.width,
+            parentRect.ref.height,
+          ),
+          displayRect: displayRect,
         ),
-        displayRect: Rect.fromLTWH(
-          outputRect.ref.left,
-          outputRect.ref.top,
-          outputRect.ref.width,
-          outputRect.ref.height,
-        ),
+        displayRect,
+        _positioner.constraintAdjustment,
       );
     } catch (error, stackTrace) {
       _allocator.free(result);
@@ -895,13 +939,13 @@ class PopupWindowControllerOHOS extends PopupWindowController with _WindowContro
 // Native (C) signatures for the windowing entry points; Dart requires
 // top-level typedefs.
 typedef _GetWindowHandleNative = Pointer<Void> Function(Int64, Int64);
-typedef _CreateWindowNative = Int64 Function(Int64, Pointer<_WindowCreationRequest>);
 typedef _DestroyWindowNative = Void Function(Int64, Pointer<Void>);
 typedef _GetContentSizeNative = _Size Function(Pointer<Void>);
 typedef _SetContentSizeNative = Void Function(Pointer<Void>, Pointer<_Size>);
 typedef _SetConstraintsNative = Void Function(Pointer<Void>, Pointer<_Constraints>);
 typedef _SetTitleNative = Void Function(Pointer<Void>, Pointer<_Utf8>);
 typedef _ActivateNative = Void Function(Pointer<Void>);
+typedef _UpdateTooltipPositionNative = Void Function(Pointer<Void>);
 typedef _SetMaximizedNative = Void Function(Pointer<Void>, Bool);
 typedef _SetMinimizedNative = Void Function(Pointer<Void>, Bool);
 typedef _SetFullscreenNative = Void Function(Pointer<Void>, Bool);
@@ -909,6 +953,11 @@ typedef _GetActivatedNative = Bool Function(Int64, Int64);
 typedef _GetOffsetFromParentNative = Void Function(Pointer<Void>, Pointer<_Size>);
 typedef _GetTitleNative = Void Function(Pointer<Void>, Pointer<_Utf8>, Int64);
 typedef _WindowingSupportedNative = Bool Function();
+
+typedef _CreateRegularWindowNative = Int64 Function(Int64, Pointer<_RegularWindowCreationRequest>);
+typedef _CreateDialogWindowNative = Int64 Function(Int64, Pointer<_DialogWindowCreationRequest>);
+typedef _CreateTooltipWindowNative = Int64 Function(Int64, Pointer<_TooltipWindowCreationRequest>);
+typedef _CreatePopupWindowNative = Int64 Function(Int64, Pointer<_PopupWindowCreationRequest>);
 
 /// Whether the OHOS multi-window owner can be created on this device: true
 /// only on HarmonyOS PC (`2in1`); elsewhere the factories throw like any
@@ -937,11 +986,11 @@ class _OHOSPlatformInterface {
   static Pointer<Void> getWindowHandle(int engineId, int viewId) =>
       _getWindowHandlePtr(engineId, viewId);
 
-  static final int Function(int, Pointer<_WindowCreationRequest>) _createRegularWindowPtr =
-      _flutterLib
-          .lookupFunction<_CreateWindowNative, int Function(int, Pointer<_WindowCreationRequest>)>(
-            'InternalFlutter_WindowController_CreateRegularWindow',
-          );
+  static final int Function(int, Pointer<_RegularWindowCreationRequest>) _createRegularWindowPtr =
+      _flutterLib.lookupFunction<
+        _CreateRegularWindowNative,
+        int Function(int, Pointer<_RegularWindowCreationRequest>)
+      >('InternalFlutter_WindowController_CreateRegularWindow');
 
   static int createRegularWindow({
     required Size? preferredSize,
@@ -952,15 +1001,15 @@ class _OHOSPlatformInterface {
     required Pointer<NativeFunction<Void Function()>> onNotifyListeners,
   }) {
     final Pointer<_Utf8> titlePointer = title?.toNativeUtf8() ?? nullptr;
-    final Pointer<_WindowCreationRequest> request = _allocator<_WindowCreationRequest>()
-      ..ref.parentViewId = 0
-      ..ref.title = titlePointer
-      ..ref.onShouldClose = onShouldClose
-      ..ref.onWillClose = onWillClose
-      ..ref.onNotifyListeners = onNotifyListeners;
-
-    _populateSize(request, preferredSize);
-    _populateConstraints(request, preferredConstraints);
+    final Pointer<_RegularWindowCreationRequest> request =
+        _allocator<_RegularWindowCreationRequest>();
+    request.ref
+      ..preferredSize.from(preferredSize)
+      ..preferredConstraints.from(preferredConstraints)
+      ..title = titlePointer
+      ..callbacks.onShouldClose = onShouldClose
+      ..callbacks.onWillClose = onWillClose
+      ..callbacks.onNotifyListeners = onNotifyListeners;
 
     try {
       final int viewId = _createRegularWindowPtr(
@@ -976,11 +1025,11 @@ class _OHOSPlatformInterface {
     }
   }
 
-  static final int Function(int, Pointer<_WindowCreationRequest>) _createDialogWindowPtr =
-      _flutterLib
-          .lookupFunction<_CreateWindowNative, int Function(int, Pointer<_WindowCreationRequest>)>(
-            'InternalFlutter_WindowController_CreateDialogWindow',
-          );
+  static final int Function(int, Pointer<_DialogWindowCreationRequest>) _createDialogWindowPtr =
+      _flutterLib.lookupFunction<
+        _CreateDialogWindowNative,
+        int Function(int, Pointer<_DialogWindowCreationRequest>)
+      >('InternalFlutter_WindowController_CreateDialogWindow');
 
   static int createDialogWindow({
     required Size? preferredSize,
@@ -992,16 +1041,16 @@ class _OHOSPlatformInterface {
     required Pointer<NativeFunction<Void Function()>> onNotifyListeners,
   }) {
     final Pointer<_Utf8> titlePointer = title?.toNativeUtf8() ?? nullptr;
-    final Pointer<_WindowCreationRequest> request = _allocator<_WindowCreationRequest>()
-      ..ref.hasParent = parentViewId != null
-      ..ref.parentViewId = parentViewId ?? 0
-      ..ref.title = titlePointer
-      ..ref.onShouldClose = onShouldClose
-      ..ref.onWillClose = onWillClose
-      ..ref.onNotifyListeners = onNotifyListeners;
-
-    _populateSize(request, preferredSize);
-    _populateConstraints(request, preferredConstraints);
+    final Pointer<_DialogWindowCreationRequest> request =
+        _allocator<_DialogWindowCreationRequest>();
+    request.ref
+      ..preferredSize.from(preferredSize)
+      ..preferredConstraints.from(preferredConstraints)
+      ..parentViewId = parentViewId ?? _kNoParentViewId
+      ..title = titlePointer
+      ..callbacks.onShouldClose = onShouldClose
+      ..callbacks.onWillClose = onWillClose
+      ..callbacks.onNotifyListeners = onNotifyListeners;
 
     try {
       final int viewId = _createDialogWindowPtr(
@@ -1017,18 +1066,16 @@ class _OHOSPlatformInterface {
     }
   }
 
-  // All `Create*Window` entry points share the `_CreateWindowNative` signature,
-  // differing only by symbol name.
-  static final int Function(int, Pointer<_WindowCreationRequest>) _createTooltipWindowPtr =
-      _flutterLib
-          .lookupFunction<_CreateWindowNative, int Function(int, Pointer<_WindowCreationRequest>)>(
-            'InternalFlutter_WindowController_CreateTooltipWindow',
-          );
-  static final int Function(int, Pointer<_WindowCreationRequest>) _createPopupWindowPtr =
-      _flutterLib
-          .lookupFunction<_CreateWindowNative, int Function(int, Pointer<_WindowCreationRequest>)>(
-            'InternalFlutter_WindowController_CreatePopupWindow',
-          );
+  static final int Function(int, Pointer<_TooltipWindowCreationRequest>) _createTooltipWindowPtr =
+      _flutterLib.lookupFunction<
+        _CreateTooltipWindowNative,
+        int Function(int, Pointer<_TooltipWindowCreationRequest>)
+      >('InternalFlutter_WindowController_CreateTooltipWindow');
+  static final int Function(int, Pointer<_PopupWindowCreationRequest>) _createPopupWindowPtr =
+      _flutterLib.lookupFunction<
+        _CreatePopupWindowNative,
+        int Function(int, Pointer<_PopupWindowCreationRequest>)
+      >('InternalFlutter_WindowController_CreatePopupWindow');
 
   static int createTooltipWindow({
     BoxConstraints? preferredConstraints,
@@ -1041,14 +1088,15 @@ class _OHOSPlatformInterface {
     onGetWindowPosition,
     required int parentViewId,
   }) {
-    final Pointer<_WindowCreationRequest> request = _allocator<_WindowCreationRequest>()
-      ..ref.parentViewId = parentViewId
-      ..ref.onShouldClose = onShouldClose
-      ..ref.onWillClose = onWillClose
-      ..ref.onNotifyListeners = onNotifyListeners
-      ..ref.onGetWindowPosition = onGetWindowPosition;
-
-    _populateConstraints(request, preferredConstraints);
+    final Pointer<_TooltipWindowCreationRequest> request =
+        _allocator<_TooltipWindowCreationRequest>();
+    request.ref
+      ..preferredConstraints.from(preferredConstraints)
+      ..parentViewId = parentViewId
+      ..onGetWindowPosition = onGetWindowPosition
+      ..callbacks.onShouldClose = onShouldClose
+      ..callbacks.onWillClose = onWillClose
+      ..callbacks.onNotifyListeners = onNotifyListeners;
 
     try {
       final int viewId = _createTooltipWindowPtr(
@@ -1072,14 +1120,14 @@ class _OHOSPlatformInterface {
     onGetWindowPosition,
     required int parentViewId,
   }) {
-    final Pointer<_WindowCreationRequest> request = _allocator<_WindowCreationRequest>()
-      ..ref.parentViewId = parentViewId
-      ..ref.onShouldClose = onShouldClose
-      ..ref.onWillClose = onWillClose
-      ..ref.onNotifyListeners = onNotifyListeners
-      ..ref.onGetWindowPosition = onGetWindowPosition;
-
-    _populateConstraints(request, preferredConstraints);
+    final Pointer<_PopupWindowCreationRequest> request = _allocator<_PopupWindowCreationRequest>();
+    request.ref
+      ..preferredConstraints.from(preferredConstraints)
+      ..parentViewId = parentViewId
+      ..onGetWindowPosition = onGetWindowPosition
+      ..callbacks.onShouldClose = onShouldClose
+      ..callbacks.onWillClose = onWillClose
+      ..callbacks.onNotifyListeners = onNotifyListeners;
 
     try {
       final int viewId = _createPopupWindowPtr(
@@ -1132,6 +1180,7 @@ class _OHOSPlatformInterface {
 
   static void setWindowConstraints(Pointer<Void> windowHandle, BoxConstraints constraints) {
     final Pointer<_Constraints> ffiConstraints = _allocator<_Constraints>()
+      ..ref.hasViewConstraints = true
       ..ref.minWidth = constraints.minWidth
       ..ref.minHeight = constraints.minHeight
       ..ref.maxWidth = constraints.maxWidth
@@ -1157,6 +1206,18 @@ class _OHOSPlatformInterface {
       );
 
   static void activate(Pointer<Void> windowHandle) => _activatePtr(windowHandle);
+
+  // Dart updatePosition push (win32 parity symbol
+  // InternalFlutterWindows_WindowManager_UpdateTooltipPosition): native
+  // re-runs the Dart positioner (which reads the anchorRect/positioner
+  // stored just before) and repositions the ArkTS sub-window.
+  static final void Function(Pointer<Void>) _updateTooltipPositionPtr = _flutterLib
+      .lookupFunction<_UpdateTooltipPositionNative, void Function(Pointer<Void>)>(
+        'InternalFlutter_Window_UpdateTooltipPosition',
+      );
+
+  static void updateTooltipWindowPosition(Pointer<Void> windowHandle) =>
+      _updateTooltipPositionPtr(windowHandle);
 
   // Route to the InternalFlutter_Window_Set{Maximized,Minimized,Fullscreen}
   // FFI symbols, which dispatch to the ETS host window APIs.
@@ -1227,33 +1288,10 @@ class _OHOSPlatformInterface {
       _free(buffer);
     }
   }
-
-  static void _populateSize(Pointer<_WindowCreationRequest> request, Size? preferredSize) {
-    if (preferredSize != null) {
-      request.ref
-        ..hasSize = true
-        ..contentSize.width = preferredSize.width
-        ..contentSize.height = preferredSize.height;
-    }
-  }
-
-  static void _populateConstraints(
-    Pointer<_WindowCreationRequest> request,
-    BoxConstraints? preferredConstraints,
-  ) {
-    if (preferredConstraints != null) {
-      request.ref
-        ..hasConstraints = true
-        ..constraints.minWidth = preferredConstraints.minWidth
-        ..constraints.minHeight = preferredConstraints.minHeight
-        ..constraints.maxWidth = preferredConstraints.maxWidth
-        ..constraints.maxHeight = preferredConstraints.maxHeight;
-    }
-  }
 }
 
 // FFI structs: field order and types must match the C structs in
-// `windowing/ohos_window_controller.h` byte-for-byte.
+// `windowing/ohos_window_types.h` byte-for-byte.
 
 final class _Size extends Struct {
   @Double()
@@ -1278,6 +1316,12 @@ final class _Rect extends Struct {
 }
 
 final class _Constraints extends Struct {
+  // Mirrors C++ `WindowConstraints::has_view_constraints` (leading bool +
+  // 7 bytes padding); the runtime SetConstraints path always applies
+  // constraints, so the flag is written as true.
+  @Bool()
+  external bool hasViewConstraints;
+
   @Double()
   external double minWidth;
 
@@ -1291,24 +1335,43 @@ final class _Constraints extends Struct {
   external double maxHeight;
 }
 
-final class _WindowCreationRequest extends Struct {
-  @Bool()
-  external bool hasSize;
-  external _Size contentSize;
+// FFI request structs: field order and types must match the C structs in
+// `windowing/ohos_window_types.h` byte-for-byte. The data fields mirror
+// win32's layouts; `callbacks` trails them as the OHOS-specific addition
+// (no per-window OS message pump here), keeping the create entry points'
+// signatures identical to win32's `(engineId, request)`.
 
-  @Bool()
-  external bool hasConstraints;
-  external _Constraints constraints;
+// Payload for the creation method used by
+// [_OHOSPlatformInterface.createRegularWindow].
+final class _RegularWindowCreationRequest extends Struct {
+  external _WindowSizeRequest preferredSize;
+  external _WindowConstraintsRequest preferredConstraints;
+  external Pointer<_Utf8> title;
+  external _WindowLifecycleCallbacks callbacks;
+}
 
-  @Bool()
-  external bool hasParent;
+// Payload for the creation method used by
+// [_OHOSPlatformInterface.createDialogWindow].
+final class _DialogWindowCreationRequest extends Struct {
+  external _WindowSizeRequest preferredSize;
+  external _WindowConstraintsRequest preferredConstraints;
+  external Pointer<_Utf8> title;
 
   @Int64()
   external int parentViewId;
 
-  external Pointer<NativeFunction<Void Function()>> onShouldClose;
-  external Pointer<NativeFunction<Void Function()>> onWillClose;
-  external Pointer<NativeFunction<Void Function()>> onNotifyListeners;
+  external _WindowLifecycleCallbacks callbacks;
+}
+
+// Payload for the creation method used by
+// [_OHOSPlatformInterface.createTooltipWindow]. No preferred size (win32
+// parity): tooltips are sized to their content constraints.
+final class _TooltipWindowCreationRequest extends Struct {
+  external _WindowConstraintsRequest preferredConstraints;
+
+  @Int64()
+  external int parentViewId;
+
   external Pointer<
     NativeFunction<
       Pointer<_Rect> Function(
@@ -1320,7 +1383,78 @@ final class _WindowCreationRequest extends Struct {
   >
   onGetWindowPosition;
 
-  external Pointer<_Utf8> title;
+  external _WindowLifecycleCallbacks callbacks;
+}
+
+// Payload for the creation method used by
+// [_OHOSPlatformInterface.createPopupWindow]. No preferred size (mirrors the
+// tooltip layout; win32 has no popup counterpart).
+final class _PopupWindowCreationRequest extends Struct {
+  external _WindowConstraintsRequest preferredConstraints;
+
+  @Int64()
+  external int parentViewId;
+
+  external Pointer<
+    NativeFunction<
+      Pointer<_Rect> Function(
+        Pointer<_Size> childSize,
+        Pointer<_Rect> parentRect,
+        Pointer<_Rect> outputRect,
+      )
+    >
+  >
+  onGetWindowPosition;
+
+  external _WindowLifecycleCallbacks callbacks;
+}
+
+final class _WindowSizeRequest extends Struct {
+  @Bool()
+  external bool hasSize;
+
+  @Double()
+  external double width;
+
+  @Double()
+  external double height;
+
+  void from(Size? size) {
+    hasSize = size != null;
+    width = size?.width ?? 0;
+    height = size?.height ?? 0;
+  }
+}
+
+final class _WindowConstraintsRequest extends Struct {
+  @Bool()
+  external bool hasConstraints;
+
+  @Double()
+  external double minWidth;
+
+  @Double()
+  external double minHeight;
+
+  @Double()
+  external double maxWidth;
+
+  @Double()
+  external double maxHeight;
+
+  void from(BoxConstraints? constraints) {
+    hasConstraints = constraints != null;
+    minWidth = constraints?.minWidth ?? 0;
+    minHeight = constraints?.minHeight ?? 0;
+    maxWidth = constraints?.maxWidth ?? double.maxFinite;
+    maxHeight = constraints?.maxHeight ?? double.maxFinite;
+  }
+}
+
+final class _WindowLifecycleCallbacks extends Struct {
+  external Pointer<NativeFunction<Void Function()>> onShouldClose;
+  external Pointer<NativeFunction<Void Function()>> onWillClose;
+  external Pointer<NativeFunction<Void Function()>> onNotifyListeners;
 }
 
 // FFI utilities: libc calloc/free allocator and `_Utf8` string conversion.

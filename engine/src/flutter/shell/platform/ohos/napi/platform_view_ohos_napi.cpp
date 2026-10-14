@@ -411,153 +411,347 @@ void PlatformViewOHOSNapi::FlutterViewOnFirstFrame(bool is_preload) {
   napi_close_handle_scope(env_, scope);
 }
 
-void PlatformViewOHOSNapi::RequestWindowHost(int64_t view_id,
-                                             int64_t parent_view_id,
-                                             double width,
-                                             double height,
-                                             const std::string& title,
-                                             int32_t archetype) {
-  napi_handle_scope scope;
-  napi_open_handle_scope(env_, &scope);
-  napi_value args[6];
-  napi_status status;
-  status = napi_create_int64(env_, view_id, &args[0]);
+namespace {
+
+bool MarshalWindowSizeRequest(napi_env env,
+                              const WindowSizeRequest& request,
+                              napi_value* out) {
+  napi_status status = napi_create_object(env, out);
   if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
+    FML_DLOG(ERROR) << "napi_create_object size fail ";
+    return false;
   }
-  status = napi_create_int64(env_, parent_view_id, &args[1]);
+  napi_value value;
+  status = napi_get_boolean(env, request.has_preferred_view_size, &value);
   if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_int64 parent_view_id fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
+    FML_DLOG(ERROR) << "napi_get_boolean hasPreferredViewSize fail ";
+    return false;
   }
-  status = napi_create_double(env_, width, &args[2]);
+  status = napi_set_named_property(env, *out, "hasPreferredViewSize", value);
   if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_double width fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
+    FML_DLOG(ERROR) << "napi_set_named_property hasPreferredViewSize fail ";
+    return false;
   }
-  status = napi_create_double(env_, height, &args[3]);
+  status = napi_create_double(env, request.preferred_view_width, &value);
   if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_double height fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
+    FML_DLOG(ERROR) << "napi_create_double preferredViewWidth fail ";
+    return false;
   }
-  status =
-      napi_create_string_utf8(env_, title.c_str(), title.length(), &args[4]);
+  status = napi_set_named_property(env, *out, "preferredViewWidth", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property preferredViewWidth fail ";
+    return false;
+  }
+  status = napi_create_double(env, request.preferred_view_height, &value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_double preferredViewHeight fail ";
+    return false;
+  }
+  status = napi_set_named_property(env, *out, "preferredViewHeight", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property preferredViewHeight fail ";
+    return false;
+  }
+  return true;
+}
+
+bool MarshalWindowConstraints(napi_env env,
+                              const WindowConstraints& request,
+                              napi_value* out) {
+  napi_status status = napi_create_object(env, out);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_object constraints fail ";
+    return false;
+  }
+  napi_value value;
+  status = napi_get_boolean(env, request.has_view_constraints, &value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_get_boolean hasViewConstraints fail ";
+    return false;
+  }
+  status = napi_set_named_property(env, *out, "hasViewConstraints", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property hasViewConstraints fail ";
+    return false;
+  }
+  status = napi_create_double(env, request.view_min_width, &value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_double viewMinWidth fail ";
+    return false;
+  }
+  status = napi_set_named_property(env, *out, "viewMinWidth", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property viewMinWidth fail ";
+    return false;
+  }
+  status = napi_create_double(env, request.view_min_height, &value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_double viewMinHeight fail ";
+    return false;
+  }
+  status = napi_set_named_property(env, *out, "viewMinHeight", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property viewMinHeight fail ";
+    return false;
+  }
+  status = napi_create_double(env, request.view_max_width, &value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_double viewMaxWidth fail ";
+    return false;
+  }
+  status = napi_set_named_property(env, *out, "viewMaxWidth", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property viewMaxWidth fail ";
+    return false;
+  }
+  status = napi_create_double(env, request.view_max_height, &value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_double viewMaxHeight fail ";
+    return false;
+  }
+  status = napi_set_named_property(env, *out, "viewMaxHeight", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property viewMaxHeight fail ";
+    return false;
+  }
+  return true;
+}
+
+bool MarshalRegularWindowRequest(
+    napi_env env,
+    const RegularWindowCreationRequest& request,
+    napi_value* out) {
+  napi_status status = napi_create_object(env, out);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_object regular request fail ";
+    return false;
+  }
+  napi_value value;
+  if (!MarshalWindowSizeRequest(env, request.preferred_size, &value)) {
+    return false;
+  }
+  status = napi_set_named_property(env, *out, "preferredSize", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property preferredSize fail ";
+    return false;
+  }
+  if (!MarshalWindowConstraints(env, request.preferred_constraints, &value)) {
+    return false;
+  }
+  status = napi_set_named_property(env, *out, "preferredConstraints", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property preferredConstraints fail ";
+    return false;
+  }
+  status = napi_create_string_utf8(
+      env, request.title != nullptr ? request.title : "", NAPI_AUTO_LENGTH,
+      &value);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_string_utf8 title fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
+    return false;
   }
-  status = napi_create_int32(env_, archetype, &args[5]);
+  status = napi_set_named_property(env, *out, "title", value);
   if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_int32 archetype fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
+    FML_DLOG(ERROR) << "napi_set_named_property title fail ";
+    return false;
   }
-  status = fml::napi::InvokeJsMethod(env_, ref_napi_obj_, "requestWindowHost",
-                                     6, args);
+  return true;
+}
+
+bool MarshalDialogWindowRequest(
+    napi_env env,
+    const DialogWindowCreationRequest& request,
+    napi_value* out) {
+  napi_status status = napi_create_object(env, out);
   if (status != napi_ok) {
-    FML_LOG(ERROR) << "InvokeJsMethod requestWindowHost fail ";
+    FML_DLOG(ERROR) << "napi_create_object dialog request fail ";
+    return false;
+  }
+  napi_value value;
+  if (!MarshalWindowSizeRequest(env, request.preferred_size, &value)) {
+    return false;
+  }
+  status = napi_set_named_property(env, *out, "preferredSize", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property preferredSize fail ";
+    return false;
+  }
+  if (!MarshalWindowConstraints(env, request.preferred_constraints, &value)) {
+    return false;
+  }
+  status = napi_set_named_property(env, *out, "preferredConstraints", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property preferredConstraints fail ";
+    return false;
+  }
+  status = napi_create_string_utf8(
+      env, request.title != nullptr ? request.title : "", NAPI_AUTO_LENGTH,
+      &value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_string_utf8 title fail ";
+    return false;
+  }
+  status = napi_set_named_property(env, *out, "title", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property title fail ";
+    return false;
+  }
+  status = napi_create_int64(env, request.parent_view_id, &value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_int64 parentViewId fail ";
+    return false;
+  }
+  status = napi_set_named_property(env, *out, "parentViewId", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property parentViewId fail ";
+    return false;
+  }
+  return true;
+}
+
+bool MarshalTooltipWindowRequest(
+    napi_env env,
+    const TooltipWindowCreationRequest& request,
+    napi_value* out) {
+  napi_status status = napi_create_object(env, out);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_object tooltip request fail ";
+    return false;
+  }
+  napi_value value;
+  if (!MarshalWindowConstraints(env, request.preferred_constraints, &value)) {
+    return false;
+  }
+  status = napi_set_named_property(env, *out, "preferredConstraints", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property preferredConstraints fail ";
+    return false;
+  }
+  status = napi_create_int64(env, request.parent_view_id, &value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_int64 parentViewId fail ";
+    return false;
+  }
+  status = napi_set_named_property(env, *out, "parentViewId", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property parentViewId fail ";
+    return false;
+  }
+  return true;
+}
+
+bool MarshalPopupWindowRequest(
+    napi_env env,
+    const PopupWindowCreationRequest& request,
+    napi_value* out) {
+  napi_status status = napi_create_object(env, out);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_object popup request fail ";
+    return false;
+  }
+  napi_value value;
+  if (!MarshalWindowConstraints(env, request.preferred_constraints, &value)) {
+    return false;
+  }
+  status = napi_set_named_property(env, *out, "preferredConstraints", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property preferredConstraints fail ";
+    return false;
+  }
+  status = napi_create_int64(env, request.parent_view_id, &value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_int64 parentViewId fail ";
+    return false;
+  }
+  status = napi_set_named_property(env, *out, "parentViewId", value);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_set_named_property parentViewId fail ";
+    return false;
+  }
+  return true;
+}
+
+bool InvokeCreateWindow(const char* js_method,
+                        napi_env env,
+                        napi_ref ref,
+                        int64_t view_id,
+                        napi_value request_object) {
+  napi_value args[2];
+  if (napi_create_int64(env, view_id, &args[0]) != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
+    return false;
+  }
+  args[1] = request_object;
+  if (fml::napi::InvokeJsMethod(env, ref, js_method, 2, args) != napi_ok) {
+    FML_LOG(ERROR) << "InvokeJsMethod " << js_method << " fail ";
+    return false;
+  }
+  return true;
+}
+
+}  // namespace
+
+void PlatformViewOHOSNapi::CreateRegularWindow(
+    int64_t view_id,
+    const RegularWindowCreationRequest& request) {
+  napi_handle_scope scope;
+  napi_open_handle_scope(env_, &scope);
+  napi_value request_object;
+  if (MarshalRegularWindowRequest(env_, request, &request_object)) {
+    InvokeCreateWindow("createRegularWindow", env_, ref_napi_obj_, view_id,
+                       request_object);
   }
   napi_close_handle_scope(env_, scope);
 }
 
-void PlatformViewOHOSNapi::CreateRegularAbility(int64_t view_id,
-                                                int64_t request_id,
-                                                double width,
-                                                double height,
-                                                const std::string& title,
-                                                int32_t archetype) {
+void PlatformViewOHOSNapi::CreateDialogWindow(
+    int64_t view_id,
+    const DialogWindowCreationRequest& request) {
   napi_handle_scope scope;
   napi_open_handle_scope(env_, &scope);
-  napi_value args[6];
-  napi_status status;
-  status = napi_create_int64(env_, view_id, &args[0]);
-  if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
-  }
-  status = napi_create_int64(env_, request_id, &args[1]);
-  if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_int64 request_id fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
-  }
-  status = napi_create_double(env_, width, &args[2]);
-  if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_double width fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
-  }
-  status = napi_create_double(env_, height, &args[3]);
-  if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_double height fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
-  }
-  status =
-      napi_create_string_utf8(env_, title.c_str(), title.length(), &args[4]);
-  if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_string_utf8 title fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
-  }
-  status = napi_create_int32(env_, archetype, &args[5]);
-  if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_int32 archetype fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
-  }
-  status = fml::napi::InvokeJsMethod(env_, ref_napi_obj_,
-                                     "createRegularAbility", 6, args);
-  if (status != napi_ok) {
-    FML_LOG(ERROR) << "InvokeJsMethod createRegularAbility fail ";
+  napi_value request_object;
+  if (MarshalDialogWindowRequest(env_, request, &request_object)) {
+    InvokeCreateWindow("createDialogWindow", env_, ref_napi_obj_, view_id,
+                       request_object);
   }
   napi_close_handle_scope(env_, scope);
 }
 
-void PlatformViewOHOSNapi::BindEntryAbilityToView(int64_t view_id,
-                                                  double width,
-                                                  double height,
-                                                  const std::string& title) {
+void PlatformViewOHOSNapi::CreateTooltipWindow(
+    int64_t view_id,
+    const TooltipWindowCreationRequest& request) {
   napi_handle_scope scope;
   napi_open_handle_scope(env_, &scope);
-  napi_value args[4];
-  napi_status status;
-  status = napi_create_int64(env_, view_id, &args[0]);
-  if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
+  napi_value request_object;
+  if (MarshalTooltipWindowRequest(env_, request, &request_object)) {
+    InvokeCreateWindow("createTooltipWindow", env_, ref_napi_obj_, view_id,
+                       request_object);
   }
-  status = napi_create_double(env_, width, &args[1]);
-  if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_double width fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
+  napi_close_handle_scope(env_, scope);
+}
+
+void PlatformViewOHOSNapi::CreatePopupWindow(
+    int64_t view_id,
+    const PopupWindowCreationRequest& request) {
+  napi_handle_scope scope;
+  napi_open_handle_scope(env_, &scope);
+  napi_value request_object;
+  if (MarshalPopupWindowRequest(env_, request, &request_object)) {
+    InvokeCreateWindow("createPopupWindow", env_, ref_napi_obj_, view_id,
+                       request_object);
   }
-  status = napi_create_double(env_, height, &args[2]);
-  if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_double height fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
-  }
-  status =
-      napi_create_string_utf8(env_, title.c_str(), title.length(), &args[3]);
-  if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_string_utf8 title fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
-  }
-  status = fml::napi::InvokeJsMethod(env_, ref_napi_obj_,
-                                     "bindEntryAbilityToView", 4, args);
-  if (status != napi_ok) {
-    FML_LOG(ERROR) << "InvokeJsMethod bindEntryAbilityToView fail ";
+  napi_close_handle_scope(env_, scope);
+}
+
+void PlatformViewOHOSNapi::BindEntryAbilityToView(
+    int64_t view_id,
+    const RegularWindowCreationRequest& request) {
+  napi_handle_scope scope;
+  napi_open_handle_scope(env_, &scope);
+  napi_value request_object;
+  if (MarshalRegularWindowRequest(env_, request, &request_object)) {
+    InvokeCreateWindow("bindEntryAbilityToView", env_, ref_napi_obj_, view_id,
+                       request_object);
   }
   napi_close_handle_scope(env_, scope);
 }
@@ -728,14 +922,12 @@ void PlatformViewOHOSNapi::SetWindowFullscreen(int64_t view_id,
   napi_close_handle_scope(env_, scope);
 }
 
-void PlatformViewOHOSNapi::SetWindowConstraints(int64_t view_id,
-                                                double min_width,
-                                                double max_width,
-                                                double min_height,
-                                                double max_height) {
+void PlatformViewOHOSNapi::SetWindowConstraints(
+    int64_t view_id,
+    const WindowConstraints& constraints) {
   napi_handle_scope scope;
   napi_open_handle_scope(env_, &scope);
-  napi_value args[5];
+  napi_value args[2];
   napi_status status;
   status = napi_create_int64(env_, view_id, &args[0]);
   if (status != napi_ok) {
@@ -743,32 +935,12 @@ void PlatformViewOHOSNapi::SetWindowConstraints(int64_t view_id,
     napi_close_handle_scope(env_, scope);
     return;
   }
-  status = napi_create_double(env_, min_width, &args[1]);
-  if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_double min_width fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
-  }
-  status = napi_create_double(env_, max_width, &args[2]);
-  if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_double max_width fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
-  }
-  status = napi_create_double(env_, min_height, &args[3]);
-  if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_double min_height fail ";
-    napi_close_handle_scope(env_, scope);
-    return;
-  }
-  status = napi_create_double(env_, max_height, &args[4]);
-  if (status != napi_ok) {
-    FML_DLOG(ERROR) << "napi_create_double max_height fail ";
+  if (!MarshalWindowConstraints(env_, constraints, &args[1])) {
     napi_close_handle_scope(env_, scope);
     return;
   }
   status = fml::napi::InvokeJsMethod(env_, ref_napi_obj_,
-                                     "setWindowConstraints", 5, args);
+                                     "setWindowConstraints", 2, args);
   if (status != napi_ok) {
     FML_LOG(ERROR) << "InvokeJsMethod setWindowConstraints fail ";
   }
@@ -790,6 +962,25 @@ void PlatformViewOHOSNapi::ActivateWindow(int64_t view_id) {
       fml::napi::InvokeJsMethod(env_, ref_napi_obj_, "activateWindow", 1, args);
   if (status != napi_ok) {
     FML_LOG(ERROR) << "InvokeJsMethod activateWindow fail ";
+  }
+  napi_close_handle_scope(env_, scope);
+}
+
+void PlatformViewOHOSNapi::UpdateTooltipPosition(int64_t view_id) {
+  napi_handle_scope scope;
+  napi_open_handle_scope(env_, &scope);
+  napi_value args[1];
+  napi_status status;
+  status = napi_create_int64(env_, view_id, &args[0]);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
+  }
+  status = fml::napi::InvokeJsMethod(env_, ref_napi_obj_,
+                                     "updateTooltipPosition", 1, args);
+  if (status != napi_ok) {
+    FML_LOG(ERROR) << "InvokeJsMethod updateTooltipPosition fail ";
   }
   napi_close_handle_scope(env_, scope);
 }
@@ -3394,10 +3585,10 @@ napi_value PlatformViewOHOSNapi::nativeComputeWindowPosition(
     return result;
   }
 
-  flutter::FlutterWindowSize child_size{cw, ch};
-  flutter::FlutterWindowRect parent_rect{pl, pt, pw, ph};
-  flutter::FlutterWindowRect work_area{wl, wt, ww, wh};
-  flutter::FlutterWindowRect out{};
+  flutter::WindowSize child_size{cw, ch};
+  flutter::WindowRect parent_rect{pl, pt, pw, ph};
+  flutter::WindowRect work_area{wl, wt, ww, wh};
+  flutter::WindowRect out{};
 
   auto* controller = flutter::OHOSWindowController::ForView(view_id);
   if (!controller || !controller->ComputeWindowPosition(
@@ -3469,7 +3660,6 @@ napi_value PlatformViewOHOSNapi::nativeNotifyWindowActivated(
     napi_close_handle_scope(env, scope);
     return nullptr;
   }
-
   int64_t view_id = 0;
   bool activated = false;
   if (napi_get_value_int64(env, args[0], &view_id) != napi_ok) {

@@ -13,6 +13,9 @@
  * limitations under the License.
  */
 import FlutterNapi from '../../../../../main/ets/embedding/engine/FlutterNapi';
+import window from '@ohos.window';
+import { regularRequest, dialogRequest, tooltipRequest, popupRequest } from '../ohos/windowing/Fakes';
+import { WindowConstraints } from '../../../../../main/ets/embedding/ohos/windowing/WindowingUtils';
 import { WindowPositionResult } from '../../../../../main/ets/embedding/engine/FlutterNapi';
 import FlutterEngine from '../../../../../main/ets/embedding/engine/FlutterEngine';
 import PlatformViewsController from '../../../../../main/ets/plugin/platform/PlatformViewsController';
@@ -180,7 +183,10 @@ export default function FlutterNapiTest() {
     it('nativeComputeWindowPositionUntrackedViewKeepsDefaults', 0, async (done: Function) => {
       const out = new WindowPositionResult();
       try {
-        const ret = FlutterNapi.nativeComputeWindowPosition(out, 9102, 100, 80, 0, 0, 800, 600, 0, 0, 1000, 800);
+        const ret = FlutterNapi.nativeComputeWindowPosition(out, 9102,
+          { width: 100, height: 80 } as window.Size,
+          { left: 0, top: 0, width: 800, height: 600 } as window.Rect,
+          { left: 0, top: 0, width: 1000, height: 800 } as window.Rect);
         expect(typeof ret).assertEqual('number');
       } catch (e) {
       }
@@ -199,23 +205,24 @@ export default function FlutterNapiTest() {
       done();
     })
 
-    it('requestWindowHostDelegatesToManagerForEachArchetype', 0, async (done: Function) => {
+    it('createWindowDelegatesToManagerForEachArchetype', 0, async (done: Function) => {
       try {
-        // Archetypes 0..3 + unknown fall through the createSubWindow switch.
-        flutterNapi.requestWindowHost(9110, 999, 200, 150, 'host', 0);
-        flutterNapi.requestWindowHost(9111, 999, 200, 150, 'dialog', 1);
-        flutterNapi.requestWindowHost(9112, 999, 200, 150, '', 2);
-        flutterNapi.requestWindowHost(9113, 999, 200, 150, '', 3);
-        flutterNapi.requestWindowHost(9114, 999, 200, 150, '', 99);
+        // One delegate per archetype (dialog: modal parent + modeless
+        // sentinel both covered).
+        flutterNapi.createRegularWindow(9110, regularRequest(200, 150, 'host'));
+        flutterNapi.createDialogWindow(9111, dialogRequest(999, 200, 150, 'dialog'));
+        flutterNapi.createDialogWindow(9112, dialogRequest(-1, 200, 150, 'modeless'));
+        flutterNapi.createTooltipWindow(9113, tooltipRequest(999));
+        flutterNapi.createPopupWindow(9114, popupRequest(999));
       } catch (e) {
       }
       done();
     })
 
-    it('createRegularAbilityAndBindEntryAbilityDelegateToManager', 0, async (done: Function) => {
+    it('createRegularWindowAndBindEntryAbilityDelegateToManager', 0, async (done: Function) => {
       try {
-        flutterNapi.createRegularAbility(9120, 42, 300, 200, 'win', 1);
-        flutterNapi.bindEntryAbilityToView(9121, 300, 200, 'adopted');
+        flutterNapi.createRegularWindow(9120, regularRequest(300, 200, 'win'));
+        flutterNapi.bindEntryAbilityToView(9121, regularRequest(300, 200, 'adopted'));
       } catch (e) {
       }
       done();
@@ -245,7 +252,13 @@ export default function FlutterNapiTest() {
         flutterNapi.setWindowMaximized(9140, true);
         flutterNapi.setWindowMinimized(9140, true);
         flutterNapi.setWindowFullscreen(9140, true);
-        flutterNapi.setWindowConstraints(9140, 50, 500, 50, 500);
+        const constraints = new WindowConstraints();
+        constraints.hasViewConstraints = true;
+        constraints.viewMinWidth = 50;
+        constraints.viewMinHeight = 50;
+        constraints.viewMaxWidth = 500;
+        constraints.viewMaxHeight = 500;
+        flutterNapi.setWindowConstraints(9140, constraints);
         flutterNapi.activateWindow(9140);
       } catch (e) {
       }
@@ -435,8 +448,8 @@ export default function FlutterNapiTest() {
 
     it('createRegularAbilityAndBindEntryAbilityDelegateToManager', 0, async (done: Function) => {
       try {
-        flutterNapi.createRegularAbility(9120, 42, 300, 200, 'win', 1);
-        flutterNapi.bindEntryAbilityToView(9121, 300, 200, 'adopted');
+        flutterNapi.createRegularWindow(9120, regularRequest(300, 200, 'win'));
+        flutterNapi.bindEntryAbilityToView(9121, regularRequest(300, 200, 'adopted'));
       } catch (e) {
       }
       done();
@@ -694,7 +707,13 @@ it('setExternalNativeImagePtr does not throw when detached', 0, () => {
         flutterNapi.setWindowMaximized(9140, true);
         flutterNapi.setWindowMinimized(9140, true);
         flutterNapi.setWindowFullscreen(9140, true);
-        flutterNapi.setWindowConstraints(9140, 50, 500, 50, 500);
+        const constraints = new WindowConstraints();
+        constraints.hasViewConstraints = true;
+        constraints.viewMinWidth = 50;
+        constraints.viewMinHeight = 50;
+        constraints.viewMaxWidth = 500;
+        constraints.viewMaxHeight = 500;
+        flutterNapi.setWindowConstraints(9140, constraints);
         flutterNapi.activateWindow(9140);
       } catch (e) {
       }

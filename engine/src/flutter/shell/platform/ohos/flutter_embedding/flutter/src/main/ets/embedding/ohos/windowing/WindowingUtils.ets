@@ -14,47 +14,139 @@ const TAG = 'WindowingUtils';
  * cross-host utilities: add future helpers here instead of new files.
  */
 
-/**
- * Resizes |win| so its CONTENT area becomes |physW| × |physH| (physical px).
- *
- * OHOS Window.resize() sizes the OUTER frame, but the embedding contract is
- * content size (the win32 GetWindowSizeForClientSize analogue), so the frame
- * decoration (windowRect − drawableRect, e.g. the 2in1 title bar) is measured
- * once and added on top. When the outer frame is already at the target the
- * resize is skipped; a failed properties read degrades to a plain resize.
- */
-export function resizeWindowToContent(win: window.Window,
-                                      physW: number,
-                                      physH: number,
-                                      where: string,
-                                      propagateFailure: boolean = false): Promise<void> {
-  let decorW = 0;
-  let decorH = 0;
-  let outerW = -1;
-  let outerH = -1;
-  try {
-    const props = win.getWindowProperties();
-    const outer = props.windowRect;
-    const drawable = props.drawableRect;
-    if (drawable.width > 0 && drawable.height > 0) {
-      decorW = Math.max(0, Math.round(outer.width - drawable.width));
-      decorH = Math.max(0, Math.round(outer.height - drawable.height));
-      outerW = Math.round(outer.width);
-      outerH = Math.round(outer.height);
-    }
-  } catch (e) {
-    Log.w(TAG, `${where}: getWindowProperties failed: ${JSON.stringify(e)}`);
+/** LOGICAL-px rect a window is born with — the ETS counterpart of win32's
+ * HostWindow::GetInitialRect result (host_window_regular.cc /
+ * host_window_dialog.cc). Origin 0,0 == "system decides" (win32
+ * CW_USEDEFAULT); width/height 0 == "no size preference" (system default
+ * size). */
+export class InitialWindowRect {
+  left: number = 0;
+  top: number = 0;
+  width: number = 0;
+  height: number = 0;
+
+  constructor(left: number, top: number, width: number, height: number) {
+    this.left = left;
+    this.top = top;
+    this.width = width;
+    this.height = height;
   }
-  const targetW = physW + decorW;
-  const targetH = physH + decorH;
-  if (outerW === targetW && outerH === targetH) {
-    return Promise.resolve();
+}
+
+/** C++ kNoParentViewId (ohos_window_types.h) — -1 can never be a real view
+ * id (ids are the implicit 0 or allocated from 1 up), so it means "no
+ * parent"; 0 IS a legitimate parent (the adopted main window). */
+export const NO_PARENT_VIEW_ID: number = -1;
+
+export const IMPLICIT_VIEW_ID: number = 0;
+
+/** C++ WindowSizeRequest. */
+export class WindowSizeRequest {
+  hasPreferredViewSize: boolean = false;
+  preferredViewWidth: number = 0;
+  preferredViewHeight: number = 0;
+
+  constructor(raw?: WindowSizeRequest) {
+    this.hasPreferredViewSize = raw?.hasPreferredViewSize ?? false;
+    this.preferredViewWidth = raw?.preferredViewWidth ?? 0;
+    this.preferredViewHeight = raw?.preferredViewHeight ?? 0;
   }
-  return win.resize(targetW, targetH).catch((e: Object): Promise<void> => {
-    Log.e(TAG, `${where} failed: ${JSON.stringify(e)}`);
-    if (propagateFailure) {
-      return Promise.reject(e);
-    }
-    return Promise.resolve();
-  });
+
+  toString(): string {
+    return this.hasPreferredViewSize
+      ? `set(${this.preferredViewWidth}x${this.preferredViewHeight})`
+      : 'none';
+  }
+}
+
+/** C++ WindowConstraints. */
+export class WindowConstraints {
+  hasViewConstraints: boolean = false;
+  viewMinWidth: number = 0;
+  viewMinHeight: number = 0;
+  viewMaxWidth: number = 0;
+  viewMaxHeight: number = 0;
+
+  constructor(raw?: WindowConstraints) {
+    this.hasViewConstraints = raw?.hasViewConstraints ?? false;
+    this.viewMinWidth = raw?.viewMinWidth ?? 0;
+    this.viewMinHeight = raw?.viewMinHeight ?? 0;
+    this.viewMaxWidth = raw?.viewMaxWidth ?? 0;
+    this.viewMaxHeight = raw?.viewMaxHeight ?? 0;
+  }
+
+  toString(): string {
+    return this.hasViewConstraints
+      ? `set[${this.viewMinWidth},${this.viewMinHeight}..${this.viewMaxWidth},${this.viewMaxHeight}]`
+      : 'none';
+  }
+}
+
+/** C++ RegularWindowCreationRequest. */
+export class RegularWindowCreationRequest {
+  readonly preferredSize: WindowSizeRequest;
+  readonly preferredConstraints: WindowConstraints;
+  readonly title: string;
+
+  constructor(raw?: RegularWindowCreationRequest) {
+    this.preferredSize = new WindowSizeRequest(raw?.preferredSize);
+    this.preferredConstraints = new WindowConstraints(raw?.preferredConstraints);
+    this.title = raw?.title ?? '';
+  }
+}
+
+/** C++ DialogWindowCreationRequest: parentViewId != NO_PARENT_VIEW_ID =
+ * modal; sentinel = modeless (UIAbility spawn path). */
+export class DialogWindowCreationRequest {
+  readonly preferredSize: WindowSizeRequest;
+  readonly preferredConstraints: WindowConstraints;
+  readonly title: string;
+  readonly parentViewId: number;
+
+  constructor(raw?: DialogWindowCreationRequest) {
+    this.preferredSize = new WindowSizeRequest(raw?.preferredSize);
+    this.preferredConstraints = new WindowConstraints(raw?.preferredConstraints);
+    this.title = raw?.title ?? '';
+    this.parentViewId = raw?.parentViewId ?? NO_PARENT_VIEW_ID;
+  }
+}
+
+/** C++ TooltipWindowCreationRequest (no preferred size — sized to the
+ * content constraints; no title). */
+export class TooltipWindowCreationRequest {
+  readonly preferredConstraints: WindowConstraints;
+  readonly parentViewId: number;
+
+  constructor(raw?: TooltipWindowCreationRequest) {
+    this.preferredConstraints = new WindowConstraints(raw?.preferredConstraints);
+    this.parentViewId = raw?.parentViewId ?? NO_PARENT_VIEW_ID;
+  }
+}
+
+/** C++ PopupWindowCreationRequest (mirrors the tooltip shape; win32 has no
+ * popup counterpart). */
+export class PopupWindowCreationRequest {
+  readonly preferredConstraints: WindowConstraints;
+  readonly parentViewId: number;
+
+  constructor(raw?: PopupWindowCreationRequest) {
+    this.preferredConstraints = new WindowConstraints(raw?.preferredConstraints);
+    this.parentViewId = raw?.parentViewId ?? NO_PARENT_VIEW_ID;
+  }
+}
+
+export enum WindowArchetype {
+  /** Top-level window with its own task-center card (UIAbility host). */
+  REGULAR = 0,
+  /** Dialog: modal (has parent) = SubWindow host; modeless = UIAbility host. */
+  DIALOG = 1,
+  /** Positioner-anchored, non-focusable SubWindow. */
+  TOOLTIP = 2,
+  POPUP = 3,
+}
+/** View-id string → numeric registry key. 'oh_flutter_<n>' ids are the
+ * EntryAbility's implicit main view (0); anything else parses as a number
+ * (unknown ids yield NaN, which simply never hits the registry). */
+export function numericViewId(id: string): number {
+  return id.startsWith('oh_flutter_') ? 0 : Number(id);
 }
