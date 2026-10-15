@@ -4,7 +4,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE_HW file.
 
-"""
+r"""
 Runs the OHOS engine unit-tests in the unittestApp on a connected device and
 generates an HTML coverage report (on by default; --no-coverage skips it).
 
@@ -77,6 +77,7 @@ def run_cmd(cmd, cwd=None, check=True):
       # Native test binaries may emit non-UTF-8 bytes; strict decoding raises
       # UnicodeDecodeError mid-stream and kills the whole run.
       errors='replace',
+      check=False,
   )
   if check and result.returncode != 0:
     _logger.error('Command failed (exit %d): %s', result.returncode, ' '.join(cmd))
@@ -141,6 +142,7 @@ def run_tests_on_device(hdc, timeout_seconds):
         text=True,
         errors='replace',
         timeout=timeout_seconds,
+        check=False,
     )
   except subprocess.TimeoutExpired:
     raise RuntimeError(
@@ -164,6 +166,7 @@ def run_tests_on_device(hdc, timeout_seconds):
         text=True,
         errors='replace',
         timeout=30,
+        check=False,
     ).stdout or ''
   except subprocess.TimeoutExpired:
     summary_out = ''
@@ -204,8 +207,8 @@ def get_llvm_bin_dir(build_dir):
   if not os.path.exists(args_gn_path):
     _logger.warning('args.gn not found at %s', args_gn_path)
     return None
-  with open(args_gn_path, 'r') as f:
-    content = f.read()
+  with open(args_gn_path, 'r') as args_file:
+    content = args_file.read()
   match = re.search(r'custom_toolchain\s*=\s*"([^"]+)"', content)
   if match:
     llvm_bin = os.path.join(match.group(1), 'bin')
@@ -228,7 +231,8 @@ def get_llvm_bin_dir(build_dir):
 
 
 def filter_source_files(cov_binary, unstripped_so, merged_profile, source_regex):
-  """Returns source files matching source_regex, excluding third_party/unittest/fixture/test_stubs."""
+  """Returns source files matching source_regex, excluding
+  third_party/unittest/fixture/test_stubs."""
   report_output = subprocess.check_output(
       [cov_binary, 'report', '-object', unstripped_so,
        '-instr-profile=%s' % merged_profile],
@@ -357,7 +361,7 @@ def main():
   )
   parser.add_argument(
       '--coverage',
-      action=argparse.BooleanOptionalAction,
+      action=argparse.BooleanOptionalAction,  # pylint: disable=no-member
       default=True,
       help='Pull the profraw and generate an HTML coverage report '
       '(default: on; --no-coverage runs the tests only).'
