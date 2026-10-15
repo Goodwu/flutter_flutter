@@ -753,14 +753,9 @@ TEST_F(XComponentAdapterTest, ResolveSubViewRoutingWithLiveControllerRoutes) {
 
   // Register view 5 directly (CreateWindow's non-first path needs a live
   // engine's AddViewSync, which is out of UT reach).
-  OHOSWindow::InitParams params;
-  params.type = WindowType::kDialog;
-  params.host_kind = WindowHostKind::kSubWindow;
-  params.view_id = 5;
-  params.parent_view_id = 0;
   void* const host_handle = OHOSWindowController::HandleForViewId(5);
-  controller->windows_[host_handle] = std::make_unique<OHOSWindow>(
-      controller, params, FlutterWindowCreationRequest{});
+  controller->windows_[host_handle] =
+      std::make_unique<OHOSWindow>(5, RegularWindowCreationRequest{});
 
   xc.ResolveSubViewRouting();
   EXPECT_TRUE(xc.is_sub_view_);

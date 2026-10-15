@@ -6,161 +6,197 @@
 
 import { describe, expect, it, Level } from '@ohos/hypium';
 import window from '@ohos.window';
-import UIAbility from '@ohos.app.ability.UIAbility';
-import { TooltipWindowHost } from
+import { TooltipWindowHost, BirthPlacement } from
   '../../../../../../main/ets/embedding/ohos/windowing/TooltipWindowHost';
+import { WindowPositionResult } from
+  '../../../../../../main/ets/embedding/engine/FlutterNapi';
 import { WindowArchetype } from
-  '../../../../../../main/ets/embedding/ohos/windowing/WindowArchetype';
+  '../../../../../../main/ets/embedding/ohos/windowing/WindowingUtils';
 import { WindowHostContext } from
   '../../../../../../main/ets/embedding/ohos/windowing/WindowHostContext';
-import { FlutterView } from '../../../../../../main/ets/view/FlutterView';
-import { FakeWindow, FakeWindowStage, FakeAbility, FakeFlutterView, FakeHostContext, sleep } from './Fakes';
+import { FakeWindow, FakeHostContext, FakeRect, tooltipRequest } from './Fakes';
 
-/** Concrete subclass exposing TooltipWindowHost's protected hooks. */
+/** Concrete subclass exposing the protected hooks. */
 class TestTooltipHost extends TooltipWindowHost {
-  constructor(ctx: WindowHostContext, viewId: number, parentViewId: number, w: number, h: number) {
-    super(ctx, viewId, parentViewId, w, h);
+  constructor(ctx: WindowHostContext, viewId: number, parentViewId: number) {
+    super(ctx, viewId, tooltipRequest(parentViewId));
   }
 
-  defaultLogicalSizeForTest(): number[] {
-    return this.defaultLogicalSize();
+  // ---- computePlacementRect seams ----
+
+  /** Fixed density for the positioner math AND the base size funnel
+   * (densityPixels now lives on FlutterWindowHost, so the override feeds
+   * both — deterministic regardless of the test device). */
+  testDpr: number = 2.0;
+
+  /** Fake positioner outcome: 0 → returns placeLogical, else "no
+   * positioner" (the native rc !== 0 default-placement branch). */
+  placementRc: number = 1;
+  placeLogical: window.Rect = { left: 160, top: 240, width: 250, height: 100 };
+
+  /** Positioner invocation args in call order (child W/H, parent L/T/W/H,
+   * work L/T/W/H — all LOGICAL). */
+  placementArgs: Array<number> = new Array<number>();
+
+  /** Positioner invocation count (dedup/coalescing probes). */
+  placementCalls: number = 0;
+
+  /** Work area handed to the positioner (PHYSICAL; default = full
+   * 1000x800 display like the phone fallback). */
+  workAreaPhysicalRect: window.Rect = { left: 0, top: 0, width: 1000, height: 800 };
+
+  protected computePlacement(pos: WindowPositionResult,
+                             childSize: window.Size,
+                             parentRect: window.Rect,
+                             workArea: window.Rect): boolean {
+    this.placementArgs = [childSize.width, childSize.height,
+      parentRect.left, parentRect.top, parentRect.width, parentRect.height,
+      workArea.left, workArea.top, workArea.width, workArea.height];
+    this.placementCalls += 1;
+    if (this.placementRc === 0) {
+      pos.set(this.placeLogical.left, this.placeLogical.top,
+        this.placeLogical.width, this.placeLogical.height);
+      return true;
+    }
+    return false;
   }
 
-  async prepareShowForTest(subWindow: window.Window): Promise<void> {
-    await this.prepareShow(subWindow);
+  protected async workAreaPhysical(): Promise<window.Rect> {
+    return this.workAreaPhysicalRect;
   }
 
-  startParentTrackingForTest(): void {
-    this.startParentTracking();
+  protected densityPixels(_parentWnd: window.Window | undefined): number {
+    return this.testDpr;
   }
 
-  setParentForTest(ability: UIAbility | undefined): void {
-    this.parentAbility = ability;
+  async placementRectForTest(parentWnd: window.Window,
+                             logical: window.Size): Promise<BirthPlacement> {
+    return this.computePlacementRect(parentWnd, logical);
   }
 }
 
-/** Tooltip + resolved parent (ability main) window + own sub-window bundle
- * with parent tracking already started. */
-class TooltipWithParent {
-  ctx: FakeHostContext;
-  parentWin: FakeWindow;
-  sub: FakeWindow;
-  host: TestTooltipHost;
+// Parent-move tracking / policy close is deliberately NOT host-side (the
+// old attempts were compensation artifacts); the window's lifetime policy
+// belongs to the framework, not to this host.
 
-  constructor(viewId: number) {
-    const stage = new FakeWindowStage();
-    const parentWin = new FakeWindow();
-    stage.mainWindow = parentWin as ESObject as window.Window;
-    const ctx = new FakeHostContext();
-    ctx.stage = stage as ESObject as window.WindowStage;
-    const ability: UIAbility = new FakeAbility() as ESObject as UIAbility;
-    ctx.parentAbilityFor = ability;
-    ctx.flutterViews.set(String(viewId), new FakeFlutterView() as ESObject as FlutterView);
-    const host = new TestTooltipHost(ctx, viewId, 9, 100, 80);
-    host.subWindow = new FakeWindow() as ESObject as window.Window;
-    host.setParentForTest(ability);
-    host.startParentTrackingForTest();
-    this.ctx = ctx;
-    this.parentWin = parentWin;
-    this.sub = host.subWindow as ESObject as FakeWindow;
-    this.host = host;
-  }
+/** Parent with a decorated frame: outer (100,200 1000x800), the (10,20)
+ * decoration inset — drawableRect is FRAME-LOCAL physical px (device-
+ * verified), so the content rect sits at screen (110,220 980x760) after
+ * the ClientToScreen translate by the frame origin. */
+function decoratedParent(): FakeWindow {
+  const fake = new FakeWindow();
+  fake.props.windowRect = new FakeRect(100, 200, 1000, 800) as ESObject as window.Rect;
+  fake.props.drawableRect = new FakeRect(10, 20, 980, 760) as ESObject as window.Rect;
+  return fake;
 }
 
 export default function tooltipWindowHostTest() {
   describe('TooltipWindowHost.constructor', () => {
     it('passes the TOOLTIP archetype', Level.LEVEL0, () => {
       const ctx = new FakeHostContext();
-      const host: TestTooltipHost = new TestTooltipHost(ctx, 1, 0, 100, 80);
+      const host: TestTooltipHost = new TestTooltipHost(ctx, 1, 0);
       expect(host.archetype).assertEqual(WindowArchetype.TOOLTIP);
     });
   });
 
-  describe('TooltipWindowHost.defaultLogicalSize', () => {
-    it('defaults to 400x200', Level.LEVEL0, () => {
-      const ctx = new FakeHostContext();
-      const host: TestTooltipHost = new TestTooltipHost(ctx, 2, 0, 100, 80);
-      const def = host.defaultLogicalSizeForTest();
-      expect(def.length).assertEqual(2);
-      expect(def[0]).assertEqual(400);
-      expect(def[1]).assertEqual(200);
-    });
-  });
+  // prepareShow is gone from the host (never-focusable is now birth-only:
+  // showWindow({ focusOnShow: false }) inside attach) — no unit seam remains.
 
-  describe('TooltipWindowHost.prepareShow', () => {
-    it('disables focusability', Level.LEVEL0, async (done: Function) => {
-      const ctx = new FakeHostContext();
-      const fake = new FakeWindow();
-      const host: TestTooltipHost = new TestTooltipHost(ctx, 3, 0, 100, 80);
-      await host.prepareShowForTest(fake as ESObject as window.Window);
-      expect(fake.focusable).assertFalse();
-      done();
-    });
-
-    it('logs a rejected focusable set', Level.LEVEL0, async (done: Function) => {
-      const ctx = new FakeHostContext();
-      const fake = new FakeWindow();
-      fake.rejectFocusable = true;
-      const host: TestTooltipHost = new TestTooltipHost(ctx, 4, 0, 100, 80);
-      await host.prepareShowForTest(fake as ESObject as window.Window);
-      expect(fake.focusable).assertTrue();
-      done();
-    });
-  });
-
-  describe('TooltipWindowHost.onParentWindowEvent', () => {
-    it('destroys IMMEDIATELY on parent WINDOW_INACTIVE (win32 WA_INACTIVE)',
+  describe('TooltipWindowHost.computePlacementRect', () => {
+    it('anchors at the positioner result, logical→physical ×dpr',
       Level.LEVEL0, async (done: Function) => {
-        const p = new TooltipWithParent(10);
-        expect(p.parentWin.windowEventCb).not().assertUndefined();
-        p.parentWin.windowEventCb?.(window.WindowEventType.WINDOW_INACTIVE);
-        // Synchronous, zero grace — win32 tooltip destroys unconditionally
-        // on the parent's WA_INACTIVE; the tooltip is non-focusable, so
-        // that INACTIVE can never be self-caused.
-        expect(p.sub.destroyCount).assertEqual(1); // OS sub-window removed
-        expect(p.ctx.removedHosts.includes('10')).assertTrue(); // host dropped
-        // Teardown never re-shows the parent (win32 DestroyWindow parity):
-        // a stray showWindow would steal focus from its new holder.
-        expect(p.ctx.restoredForegrounds.includes('10')).assertFalse();
-        // Teardown released BOTH parent listeners (rect + lifecycle).
-        expect(p.parentWin.windowEventCb).assertUndefined();
-        expect(p.parentWin.rectChangeCb).assertUndefined();
-        expect(p.host.anchored).assertFalse();
+        const ctx = new FakeHostContext();
+        const parent = decoratedParent();
+        const host = new TestTooltipHost(ctx, 5, 0);
+        host.placementRc = 0; // positioner present → (160,240 250x100) logical
+        const birth = await host.placementRectForTest(
+          parent as ESObject as window.Window, { width: 400, height: 200 });
+        expect(birth.placed).assertTrue();
+        expect(birth.rect.left).assertEqual(320);  // 160 × 2.0
+        expect(birth.rect.top).assertEqual(480);   // 240 × 2.0
+        expect(birth.rect.width).assertEqual(500); // 250 × 2.0
+        expect(birth.rect.height).assertEqual(200);// 100 × 2.0
         done();
       });
 
-    it('parent WINDOW_ACTIVE destroys nothing', Level.LEVEL0,
-      async (done: Function) => {
-        const p = new TooltipWithParent(11);
-        p.parentWin.windowEventCb?.(window.WindowEventType.WINDOW_ACTIVE);
-        await sleep(80); // prove no deferred close either
-        expect(p.sub.destroyCount).assertEqual(0);
-        expect(p.host.anchored).assertTrue();
+    it('feeds the positioner preferred-logical size + parent content rect + work area, all logical',
+      Level.LEVEL0, async (done: Function) => {
+        const ctx = new FakeHostContext();
+        const parent = decoratedParent();
+        const host = new TestTooltipHost(ctx, 6, 0);
+        host.placementRc = 0;
+        await host.placementRectForTest(
+          parent as ESObject as window.Window, { width: 400, height: 200 });
+        const a = host.placementArgs;
+        expect(a.length).assertEqual(10);
+        // Child = preferred LOGICAL size (win32 passes width_/height_).
+        expect(a[0]).assertEqual(400);
+        expect(a[1]).assertEqual(200);
+        // Parent content origin = drawableRect (screen px) / dpr.
+        expect(a[2]).assertEqual(55);   // 110 / 2
+        expect(a[3]).assertEqual(110);  // 220 / 2
+        expect(a[4]).assertEqual(490);  // 980 / 2
+        expect(a[5]).assertEqual(380);  // 760 / 2
+        // Work area physical 1000x800 → logical.
+        expect(a[6]).assertEqual(0);
+        expect(a[7]).assertEqual(0);
+        expect(a[8]).assertEqual(500);
+        expect(a[9]).assertEqual(400);
         done();
       });
 
-    it('ignores other parent lifecycle events', Level.LEVEL0, async (done: Function) => {
-      const p = new TooltipWithParent(12);
-      p.parentWin.windowEventCb?.(window.WindowEventType.WINDOW_SHOWN);
-      expect(p.sub.destroyCount).assertEqual(0);
-      await sleep(80); // prove no deferred close either
-      expect(p.sub.destroyCount).assertEqual(0);
-      expect(p.host.anchored).assertTrue();
-      done();
-    });
+    it('keeps default system placement when there is no positioner (rc !== 0)',
+      Level.LEVEL0, async (done: Function) => {
+        const ctx = new FakeHostContext();
+        const parent = decoratedParent();
+        const host = new TestTooltipHost(ctx, 7, 0);
+        host.placementRc = 1;
+        const birth = await host.placementRectForTest(
+          parent as ESObject as window.Window, { width: 400, height: 200 });
+        expect(birth.placed).assertFalse();
+        // {0,0} sentinel + funnel size (logical 400x200 × override dpr 2.0).
+        expect(birth.rect.left).assertEqual(0);
+        expect(birth.rect.top).assertEqual(0);
+        expect(birth.rect.width).assertEqual(800);
+        expect(birth.rect.height).assertEqual(400);
+        // The positioner was still consulted with the preferred size.
+        expect(host.placementArgs[0]).assertEqual(400);
+        expect(host.placementArgs[1]).assertEqual(200);
+        done();
+      });
 
-    it('destroys on parent WINDOW_DESTROYED (orphan guard)', Level.LEVEL0,
-      async (done: Function) => {
-        const p = new TooltipWithParent(13);
-        // The destroy event is the parent's LAST — without this branch a
-        // destroyed parent (never INACTIVE, no further rect events) leaves
-        // the non-focusable tooltip orphaned on screen forever.
-        p.parentWin.windowEventCb?.(window.WindowEventType.WINDOW_DESTROYED);
-        expect(p.sub.destroyCount).assertEqual(1); // OS sub-window removed
-        expect(p.ctx.removedHosts.includes('13')).assertTrue(); // host dropped
-        expect(p.parentWin.windowEventCb).assertUndefined(); // listeners off'd
-        expect(p.parentWin.rectChangeCb).assertUndefined();
-        expect(p.host.anchored).assertFalse();
+    it('applies a positioner shrink to the birth size (win32 rect verbatim)',
+      Level.LEVEL0, async (done: Function) => {
+        const ctx = new FakeHostContext();
+        const parent = decoratedParent();
+        const host = new TestTooltipHost(ctx, 8, 0);
+        host.placementRc = 0;
+        host.placeLogical = { left: 160, top: 240, width: 120, height: 80 };
+        const birth = await host.placementRectForTest(
+          parent as ESObject as window.Window, { width: 400, height: 200 });
+        expect(birth.placed).assertTrue();
+        expect(birth.rect.width).assertEqual(240);  // 120 × 2.0
+        expect(birth.rect.height).assertEqual(160); // 80 × 2.0
+        done();
+      });
+
+    it('keeps the funnel size when the positioner returns degenerate dims',
+      Level.LEVEL0, async (done: Function) => {
+        const ctx = new FakeHostContext();
+        const parent = decoratedParent();
+        const host = new TestTooltipHost(ctx, 9, 0);
+        host.placementRc = 0;
+        host.placeLogical = { left: 160, top: 240, width: 0, height: 0 };
+        const birth = await host.placementRectForTest(
+          parent as ESObject as window.Window, { width: 400, height: 200 });
+        expect(birth.placed).assertTrue();
+        expect(birth.rect.left).assertEqual(320);
+        expect(birth.rect.top).assertEqual(480);
+        // Funnel fallback (× dpr) applied verbatim — no host-side work-area
+        // clamp (win32 parity; only the positioner's resize adjustments
+        // may shrink the rect).
+        expect(birth.rect.width).assertEqual(800);
+        expect(birth.rect.height).assertEqual(400);
         done();
       });
   });

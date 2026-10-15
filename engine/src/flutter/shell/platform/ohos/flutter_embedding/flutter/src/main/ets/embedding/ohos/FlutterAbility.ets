@@ -134,13 +134,13 @@ export class FlutterAbility extends UIAbility implements Host {
       } catch (e) {
         Log.w(TAG, `nativeHandleOsWindowClosed failed for view ${this.hostedViewId}: ${JSON.stringify(e)}`);
       }
-      const host = FlutterManager.getInstance().getWindowHostOf(String(this.hostedViewId));
+      const host = FlutterManager.getInstance().getHostWindowByView(this.hostedViewId);
       if (host) {
         host.handleOsClosed();
       } else {
-        // No host: still drop the per-view maps so nothing dangles.
-        FlutterManager.getInstance().removeHost(String(this.hostedViewId));
-        FlutterManager.getInstance().deleteViewAbility(String(this.hostedViewId));
+        // No host: still drop the registry entries so nothing dangles.
+        FlutterManager.getInstance().removeHost(this.hostedViewId);
+        FlutterManager.getInstance().deleteViewAbility(this.hostedViewId);
       }
     }
 
@@ -204,20 +204,14 @@ export class FlutterAbility extends UIAbility implements Host {
    */
   onWindowStageCreate(windowStage: window.WindowStage) {
     FlutterManager.getInstance().pushWindowStage(this, windowStage);
+    const rawViewId = this.launchWant.parameters?.[FlutterAbilityLaunchConfigs.EXTRA_FLUTTER_VIEW_ID];
+    FlutterManager.getInstance().registerViewAbility(rawViewId != null ? Number(rawViewId) : 0, this);
     this.delegate?.initWindow();
     this.mainWindow = windowStage.getMainWindowSync();
     try {
       windowStage.on('windowStageEvent', this.windowStageEventCallback);
       this.flutterView = this.delegate!!.createView(this.context)
       Log.i(TAG, 'onWindowStageCreate:' + this.flutterView!!.getId());
-      // Record this UIAbility as the host of the main (implicit) view.
-      FlutterManager.getInstance().registerViewAbility(this.flutterView!!.getId(), this);
-      // Stamp own numeric view id for OS-close notification (onDestroy);
-      // non-numeric main id skipped (its close = app exit).
-      const numericViewId = Number(this.flutterView!!.getId());
-      if (!Number.isNaN(numericViewId) && numericViewId > 0) {
-        this.hostedViewId = numericViewId;
-      }
       let storage: LocalStorage = new LocalStorage();
       storage.setOrCreate("viewId", this.flutterView!!.getId())
       windowStage.loadContent(this.pagePath(), storage, (err, data) => {
@@ -447,7 +441,7 @@ export class FlutterAbility extends UIAbility implements Host {
   }
 
   // Window title from the launch want (SPAWNED Regular windows: put there by
-  // AbilityWindowHost.attachSpawned). The EntryAbility main window's title is
+  // RegularWindowHost.attachSpawned). The EntryAbility main window's title is
   // NOT set for now — setWindowTitle on it never took effect on device.
   protected applyWindowTitle(win?: window.Window): void {
     const title =

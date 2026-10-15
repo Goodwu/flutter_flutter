@@ -9,12 +9,67 @@ import UIAbility from '@ohos.app.ability.UIAbility';
 import { common, Want } from '@kit.AbilityKit';
 import { BusinessError } from '@ohos.base';
 import { WindowHostContext } from '../../../../../../main/ets/embedding/ohos/windowing/WindowHostContext';
+import { FlutterWindowHost } from '../../../../../../main/ets/embedding/ohos/windowing/FlutterWindowHost';
+import { DialogWindowCreationRequest, PopupWindowCreationRequest,
+  RegularWindowCreationRequest, TooltipWindowCreationRequest,
+  WindowConstraints, WindowSizeRequest } from '../../../../../../main/ets/embedding/ohos/windowing/WindowingUtils';
+import { NO_PARENT_VIEW_ID } from '../../../../../../main/ets/embedding/ohos/windowing/WindowingUtils';
 import { FlutterView } from '../../../../../../main/ets/view/FlutterView';
 import FlutterEngine from '../../../../../../main/ets/embedding/engine/FlutterEngine';
 
 /** Waits for pending microtasks/promises (attach chains are async). */
 export function sleep(time: number): Promise<void> {
   return new Promise<void>((resolve: Function) => setTimeout(resolve, time));
+}
+
+/** Typed request makers, one per archetype (w/h > 0 means a preferred
+ * size). */
+/** Preferred-size inner object (its fields are mutable; the wrapper's are
+ * readonly, so titled/parented requests are built via the copy ctor). */
+function preferredSizeOf(width: number, height: number): WindowSizeRequest {
+  const preferred = new WindowSizeRequest();
+  preferred.hasPreferredViewSize = width > 0 && height > 0;
+  preferred.preferredViewWidth = width;
+  preferred.preferredViewHeight = height;
+  return preferred;
+}
+
+/** Mutable init shape for the (readonly) request wrappers — the copy ctors
+ * read these field names (ArkTS: no object literals). */
+class WindowRequestInit {
+  preferredSize: WindowSizeRequest = new WindowSizeRequest();
+  preferredConstraints: WindowConstraints = new WindowConstraints();
+  title: string = '';
+  parentViewId: number = NO_PARENT_VIEW_ID;
+}
+
+export function regularRequest(width: number, height: number,
+  title: string): RegularWindowCreationRequest {
+  const raw = new WindowRequestInit();
+  raw.preferredSize = preferredSizeOf(width, height);
+  raw.title = title;
+  return new RegularWindowCreationRequest(raw as ESObject as RegularWindowCreationRequest);
+}
+
+export function dialogRequest(parentViewId: number, width: number, height: number,
+  title: string): DialogWindowCreationRequest {
+  const raw = new WindowRequestInit();
+  raw.preferredSize = preferredSizeOf(width, height);
+  raw.title = title;
+  raw.parentViewId = parentViewId;
+  return new DialogWindowCreationRequest(raw as ESObject as DialogWindowCreationRequest);
+}
+
+export function tooltipRequest(parentViewId: number): TooltipWindowCreationRequest {
+  const raw = new WindowRequestInit();
+  raw.parentViewId = parentViewId;
+  return new TooltipWindowCreationRequest(raw as ESObject as TooltipWindowCreationRequest);
+}
+
+export function popupRequest(parentViewId: number): PopupWindowCreationRequest {
+  const raw = new WindowRequestInit();
+  raw.parentViewId = parentViewId;
+  return new PopupWindowCreationRequest(raw as ESObject as PopupWindowCreationRequest);
 }
 
 /** Simple rect with the fields windowRect/drawableRect consumers read. */
@@ -34,6 +89,9 @@ export class FakeRect {
 
 /** window.WindowProperties fake carrying just windowRect + drawableRect. */
 export class FakeWindowProperties {
+  /** Invalid display id: the size funnel's display lookup throws on it and
+   * falls back to scale 1.0 — deterministic in UT regardless of device. */
+  displayId: number = -1;
   windowRect: window.Rect = new FakeRect(0, 0, 1000, 800) as ESObject as window.Rect;
   drawableRect: window.Rect = new FakeRect(0, 0, 1000, 800) as ESObject as window.Rect;
 
@@ -84,6 +142,8 @@ export class FakeWindow {
   shadowRadius: number = -1;
   focusable: boolean = true;
   titleMoveEnabled: boolean = false;
+  /** getWindowDecorHeight() source in vp (getDecorHeightPx multiplies by dpr). */
+  decorHeightVp: number = 0;
   /** setWindowTitleButtonVisible(isMax, isMin, isClose) args, 1/0-coded. */
   titleButtonCalls: Array<Array<number>> = new Array<Array<number>>();
   titleButtonThrows: boolean = false;
@@ -91,6 +151,8 @@ export class FakeWindow {
   dragEnabled: boolean = false;
   windowEventCb: ((event: window.WindowEventType) => void) | undefined = undefined;
   rectChangeCb: ((options: window.RectChangeOptions) => void) | undefined = undefined;
+  /** windowSizeChange on() callback (state-driven surface size bridge). */
+  sizeChangeCb: ((size: window.Size) => void) | undefined = undefined;
   destroyCount: number = 0;
   loadContentCount: number = 0;
   loadContentPage: string = '';
@@ -131,6 +193,12 @@ export class FakeWindow {
     }
     this.reflectOuterSize(w, h);
     return Promise.resolve();
+  }
+
+  /** Official WMS-applied variant (TooltipWindowHost uses this one); same
+   * recording bucket as resize. */
+  resizeAsync(w: number, h: number): Promise<void> {
+    return this.resize(w, h);
   }
 
   /** WMS applying a resize: the OUTER frame takes the new size while the
@@ -223,13 +291,19 @@ export class FakeWindow {
     return Promise.resolve();
   }
 
-  setWindowConstraints(minWidth: number, maxWidth: number, minHeight: number,
-    maxHeight: number): Promise<void> {
-    this.constraintCalls.push([minWidth, maxWidth, minHeight, maxHeight]);
+  setWindowLimits(limits: window.WindowLimits): Promise<window.WindowLimits> {
+    // Recorded as [minWidth, maxWidth, minHeight, maxHeight] scalars.
+    this.constraintCalls.push([
+      limits.minWidth ?? -1,
+      limits.maxWidth ?? -1,
+      limits.minHeight ?? -1,
+      limits.maxHeight ?? -1,
+    ]);
     if (this.rejectConstraints) {
       return Promise.reject(new Error('constraints-rejected'));
     }
-    return Promise.resolve();
+    // Real API resolves with the EFFECTIVE limits; echo the input.
+    return Promise.resolve(limits);
   }
 
   setWindowBackgroundColor(color: string): void {
@@ -260,6 +334,10 @@ export class FakeWindow {
     }
     this.focusable = focusable;
     return Promise.resolve();
+  }
+
+  getWindowDecorHeight(): number {
+    return this.decorHeightVp;
   }
 
   setWindowTitleMoveEnabled(enabled: boolean): void {
@@ -328,6 +406,8 @@ export class FakeWindow {
     if (event === 'windowRectChange') {
       this.rectOnCount += 1;
       this.rectChangeCb = callback as (options: window.RectChangeOptions) => void;
+    } else if (event === 'windowSizeChange') {
+      this.sizeChangeCb = callback as (size: window.Size) => void;
     } else {
       this.windowEventCb = callback as (event: window.WindowEventType) => void;
     }
@@ -339,6 +419,8 @@ export class FakeWindow {
     }
     if (event === 'windowRectChange') {
       this.rectChangeCb = undefined;
+    } else if (event === 'windowSizeChange') {
+      this.sizeChangeCb = undefined;
     } else {
       this.windowEventCb = undefined;
     }
@@ -351,21 +433,6 @@ export class FakeWindow {
     }
     const err = this.destroyErr;
     callback(err);
-  }
-}
-
-/** styleAfterResize probe-missing variant: no setWindowShadowRadius. */
-export class FakeWindowNoShadow {
-  background: string = '';
-  cornerRadius: number = -1;
-
-  setWindowBackgroundColor(color: string): void {
-    this.background = color;
-  }
-
-  setWindowCornerRadius(cornerRadius: number): Promise<void> {
-    this.cornerRadius = cornerRadius;
-    return Promise.resolve();
   }
 }
 
@@ -412,7 +479,7 @@ export class FakeWindowStage {
   createSubWindow(name: string, callback: Function): void {
     this.createSubWindowCount += 1;
     this.createSubWindowName = name;
-    // SubWindowHost.ets:59 reads err.code unguarded, so the success arm must still
+    // The sub-window hosts read err.code unguarded, so the success arm must still
     // hand back a code-bearing object (the real API never passes undefined here).
     const err = this.subWindowErr ?? { code: 0 } as ESObject as BusinessError;
     callback(err, this.subWindow);
@@ -517,38 +584,28 @@ export class FakeFlutterView {
 
 /** Fake WindowHostContext backed by public, per-test-configurable fields. */
 export class FakeHostContext implements WindowHostContext {
-  parentAbilityFor: UIAbility | undefined = undefined;
   stage: window.WindowStage | undefined = undefined;
-  mainViewId: string | undefined = undefined;
-  engine: FlutterEngine | null = null;
-  dpr: number = 2.0;
-  regularAbilityName: string = 'RegularWindowAbility';
   subWindowPageName: string = 'pages/FlutterWindowPage';
+  /** WindowHostContext.spawnedAbilityName() source (per-test configurable). */
+  spawnedAbilityNameValue: string = 'RegularWindowAbility';
   restoredForegrounds: Array<string> = new Array<string>();
   activated: Array<Array<number>> = new Array<Array<number>>();
-  removedHosts: Array<string> = new Array<string>();
+  removedHosts: Array<number> = new Array<number>();
+  deletedAbilities: Array<number> = new Array<number>();
   deletedViews: Array<string> = new Array<string>();
-  deletedAbilities: Array<string> = new Array<string>();
   flutterViews: Map<string, FlutterView> = new Map<string, FlutterView>();
-  viewAbilities: Map<string, UIAbility> = new Map<string, UIAbility>();
-  subWindows: Map<string, window.Window> = new Map<string, window.Window>();
-  /** subWindowOfView() throws while set (resolveParentWindow catch probe). */
-  subWindowOfViewThrows: boolean = false;
+  /** getHostWindowByView() source: view-id string → host (each host carries
+   * its own OS-window handle, so tests seed hosts, not bare windows). */
+  hosts: Map<string, FlutterWindowHost> = new Map<string, FlutterWindowHost>();
+  /** getAbilityByView() source: view-id string → backing UIAbility. */
+  abilities: Map<string, UIAbility> = new Map<string, UIAbility>();
 
-  resolveParentAbility(parentViewId: number): UIAbility | undefined {
-    return this.parentAbilityFor;
-  }
-
-  windowStageOf(ability: UIAbility): window.WindowStage | undefined {
+  getWindowStage(ability: UIAbility): window.WindowStage | undefined {
     return this.stage;
   }
 
-  mainFlutterViewId(): string | undefined {
-    return this.mainViewId;
-  }
-
-  sharedEngine(): FlutterEngine | null {
-    return this.engine;
+  getAbilityByView(viewId: number): UIAbility | undefined {
+    return this.abilities.get(String(viewId));
   }
 
   getFlutterView(viewId: string): FlutterView | null {
@@ -565,47 +622,27 @@ export class FakeHostContext implements WindowHostContext {
     this.flutterViews.delete(viewId);
   }
 
-  setViewAbility(viewId: string, ability: UIAbility): void {
-    this.viewAbilities.set(viewId, ability);
-  }
-
-  getViewAbility(viewId: string): UIAbility | undefined {
-    return this.viewAbilities.get(viewId);
-  }
-
-  deleteViewAbility(viewId: string): void {
-    this.deletedAbilities.push(viewId);
-    this.viewAbilities.delete(viewId);
-  }
-
-  subWindowOfView(viewId: string): window.Window | undefined {
-    if (this.subWindowOfViewThrows) {
-      throw new Error('subWindowOfView-throws');
-    }
-    return this.subWindows.get(viewId);
-  }
-
-  densityPixels(): number {
-    return this.dpr;
-  }
-
-  restoreParentForeground(ability: UIAbility | undefined, closedViewId: string): void {
-    this.restoredForegrounds.push(closedViewId);
+  getHostWindowByView(viewId: number): FlutterWindowHost | undefined {
+    return this.hosts.get(String(viewId));
   }
 
   notifyWindowActivated(viewId: number, activated: boolean): void {
     this.activated.push([viewId, activated ? 1 : 0]);
   }
 
-  removeHost(viewIdStr: string): void {
-    this.removedHosts.push(viewIdStr);
+  removeHost(viewId: number): void {
+    this.removedHosts.push(viewId);
   }
 
-  regularWindowAbilityName(): string {
-    return this.regularAbilityName;
+  deleteViewAbility(viewId: number): void {
+    this.deletedAbilities.push(viewId);
   }
 
   subWindowPage(): string {
     return this.subWindowPageName;
+  }
+
+  spawnedAbilityName(): string {
+    return this.spawnedAbilityNameValue;
   }
 }

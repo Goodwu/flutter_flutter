@@ -95,10 +95,10 @@ class OHOSWindowController {
   // kCreateWindowFailedViewId if refused — no FlutterView would exist), then
   // asks the ArkTS side to create the OS window; its surface attaches
   // asynchronously via NotifyCreateForView.
-  int64_t CreateRegularWindow(const FlutterWindowCreationRequest& request);
-  int64_t CreateDialogWindow(const FlutterWindowCreationRequest& request);
-  int64_t CreateTooltipWindow(const FlutterWindowCreationRequest& request);
-  int64_t CreatePopupWindow(const FlutterWindowCreationRequest& request);
+  int64_t CreateRegularWindow(const RegularWindowCreationRequest* request);
+  int64_t CreateDialogWindow(const DialogWindowCreationRequest* request);
+  int64_t CreateTooltipWindow(const TooltipWindowCreationRequest* request);
+  int64_t CreatePopupWindow(const PopupWindowCreationRequest* request);
 
   // Tears down engine bookkeeping (`RemoveView`) for the view backing `window`
   // and asks the embedding to destroy the OS window.
@@ -107,16 +107,21 @@ class OHOSWindowController {
   void* GetHandleForView(int64_t view_id);
 
   // ---- Host-side (ArkTS) accessors --------------------------------------
-  FlutterWindowSize GetContentSize(void* window) const;
-  void SetContentSize(void* window, const FlutterWindowSize& size);
+  WindowSize GetContentSize(void* window) const;
+  void SetContentSize(void* window, const WindowSize& size);
   void SetConstraints(void* window,
-                      const FlutterWindowConstraints& constraints);
+                      const WindowConstraints& constraints);
   void SetTitle(void* window, const char* title);
   // Copies the cached title (see OHOSWindow::SetTitleCache) into `out`,
   // truncating to `capacity - 1` bytes; always NUL-terminates. The window's
   // only title writer is SetTitle, so the cache IS the platform truth here.
   void GetTitle(void* window, char* out, int64_t capacity) const;
   void Activate(void* window);
+  // Dart updatePosition push (win32's UpdateTooltipPosition parity):
+  // re-run the positioner on the ETS side against the freshly stored
+  // anchorRect/positioner. Pure router — the archetype check and the
+  // positioner math both live in ArkTS.
+  void UpdateTooltipPosition(void* window);
   // Window-state mutations, dispatched to the ETS host via the napi facade
   // (`window` is reinterpret_cast<void*>(view_id)).
   void SetMaximized(void* window, bool maximized);
@@ -167,21 +172,19 @@ class OHOSWindowController {
   // createSubWindow resolves the parent geometry; all units are LOGICAL px.
   // False = keep default placement (unknown view / no positioner callback).
   bool ComputeWindowPosition(int64_t view_id,
-                             const FlutterWindowSize& child_size,
-                             const FlutterWindowRect& parent_rect,
-                             const FlutterWindowRect& work_area,
-                             FlutterWindowRect* out);
-
-  // ---- Accessors used by the OHOSWindow hierarchy -------------------------
+                             const WindowSize& child_size,
+                             const WindowRect& parent_rect,
+                             const WindowRect& work_area,
+                             WindowRect* out);
 
   // The napi facade of the owning shell holder (null during teardown).
   std::shared_ptr<PlatformViewOHOSNapi> GetNapiFacade();
 
  private:
-  // Shared body of the Create* variants: resolve the host kind, allocate and
-  // register a view, request the host.
-  int64_t CreateWindow(const FlutterWindowCreationRequest& request,
-                       WindowType type);
+  // Allocates a fresh non-implicit view id and registers it with the engine
+  // (kCreateWindowFailedViewId when the engine refuses — no FlutterView would
+  // exist). Shared tail of the Create* variants that never adopt view 0.
+  int64_t AllocateAndAddView();
 
   // Allocates the next non-implicit view id (never collides with implicit 0).
   int64_t AllocateViewId();
@@ -233,7 +236,7 @@ class OHOSWindowController {
   // (platform thread), read cross-thread; mutex-guarded. NEVER erased (view
   // ids are never reused).
   mutable std::mutex actual_sizes_mutex_;
-  std::unordered_map<int64_t, FlutterWindowSize> actual_sizes_;
+  std::unordered_map<int64_t, WindowSize> actual_sizes_;
 
   // Latest ArkTS-pushed focus flag per view (SetViewActivated); absent =
   // never pushed → GetViewActivated answers true (historical contract).
@@ -268,22 +271,22 @@ bool OHOS_WindowingSupported();
 FLUTTER_OHOS_WINDOWING_API
 int64_t InternalFlutter_WindowController_CreateRegularWindow(
     int64_t engine_id,
-    const flutter::FlutterWindowCreationRequest* request);
+    const flutter::RegularWindowCreationRequest* request);
 
 FLUTTER_OHOS_WINDOWING_API
 int64_t InternalFlutter_WindowController_CreateDialogWindow(
     int64_t engine_id,
-    const flutter::FlutterWindowCreationRequest* request);
+    const flutter::DialogWindowCreationRequest* request);
 
 FLUTTER_OHOS_WINDOWING_API
 int64_t InternalFlutter_WindowController_CreateTooltipWindow(
     int64_t engine_id,
-    const flutter::FlutterWindowCreationRequest* request);
+    const flutter::TooltipWindowCreationRequest* request);
 
 FLUTTER_OHOS_WINDOWING_API
 int64_t InternalFlutter_WindowController_CreatePopupWindow(
     int64_t engine_id,
-    const flutter::FlutterWindowCreationRequest* request);
+    const flutter::PopupWindowCreationRequest* request);
 
 FLUTTER_OHOS_WINDOWING_API
 void InternalFlutter_Window_Destroy(int64_t engine_id, void* window);
@@ -292,23 +295,29 @@ FLUTTER_OHOS_WINDOWING_API
 void* InternalFlutter_Window_GetHandle(int64_t engine_id, int64_t view_id);
 
 FLUTTER_OHOS_WINDOWING_API
-flutter::FlutterWindowSize InternalFlutter_Window_GetContentSize(void* window);
+flutter::WindowSize InternalFlutter_Window_GetContentSize(void* window);
 
 FLUTTER_OHOS_WINDOWING_API
 void InternalFlutter_Window_SetContentSize(
     void* window,
-    const flutter::FlutterWindowSize* size);
+    const flutter::WindowSize* size);
 
 FLUTTER_OHOS_WINDOWING_API
 void InternalFlutter_Window_SetConstraints(
     void* window,
-    const flutter::FlutterWindowConstraints* constraints);
+    const flutter::WindowConstraints* constraints);
 
 FLUTTER_OHOS_WINDOWING_API
 void InternalFlutter_Window_SetTitle(void* window, const char* title);
 
 FLUTTER_OHOS_WINDOWING_API
 void InternalFlutter_Window_Activate(void* window);
+
+// Dart-side anchor/positioner update push for a TOOLTIP window: re-runs
+// the Dart positioner (with the values updatePosition stored just before)
+// and repositions the ArkTS sub-window.
+FLUTTER_OHOS_WINDOWING_API
+void InternalFlutter_Window_UpdateTooltipPosition(void* window);
 
 FLUTTER_OHOS_WINDOWING_API
 void InternalFlutter_Window_SetMaximized(void* window, bool maximized);
@@ -328,7 +337,7 @@ bool InternalFlutter_Window_GetActivated(int64_t engine_id, int64_t view_id);
 FLUTTER_OHOS_WINDOWING_API
 void InternalFlutter_Window_GetOffsetFromParent(
     void* window,
-    flutter::FlutterWindowSize* out_offset_physical);
+    flutter::WindowSize* out_offset_physical);
 
 // Cached window title (the SetTitle echo; see OHOSWindow::SetTitleCache).
 // Writes at most `capacity - 1` bytes + NUL into `out`; empty string when
