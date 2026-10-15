@@ -1465,6 +1465,7 @@ void PlatformViewOHOS::OnSurfaceCreated() {
 void PlatformViewOHOS::OnSurfaceDestroyed() {
   FML_LOG(WARNING) << "GpuReclaim: SurfaceDestroyed, lifecycle="
                    << LifecycleStateToString(lifecycle_state_);
+  ++reclaim_generation_;
   current_reclaim_level_ = GpuReclaimLevel::kAggressive;
   // Don't trigger aggressive cleanup here - NotifyDestroyed will handle proper
   // teardown. Just update the state for future reclaim level evaluation.
