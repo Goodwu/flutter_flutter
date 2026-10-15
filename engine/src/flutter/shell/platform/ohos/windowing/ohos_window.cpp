@@ -38,13 +38,18 @@ OHOSWindow::OHOSWindow(int64_t view_id,
   title_cache_ = request.title != nullptr ? request.title : "";
 }
 
-// Tooltip/popup: positioner + callbacks; no preferred size, no title. The
-// birth size comes from the request's min constraints (ETS initialWindowRect).
+// Tooltip: positioner + callbacks; no preferred size, no title. The only
+// sized-to-content archetype (win32 HostWindowTooltip parity): the view's
+// content lays out within the request's constraint RANGE and the host
+// window follows the per-frame content size.
 OHOSWindow::OHOSWindow(int64_t view_id,
                        const TooltipWindowCreationRequest& request)
     : OHOSWindow(view_id) {
   callbacks_ = request.callbacks;
   on_get_window_position_ = request.get_position_callback;
+  sized_to_content_ = true;
+  has_constraints_ = request.preferred_constraints.has_view_constraints;
+  constraints_ = request.preferred_constraints;
 }
 
 OHOSWindow::OHOSWindow(int64_t view_id,
@@ -52,6 +57,9 @@ OHOSWindow::OHOSWindow(int64_t view_id,
     : OHOSWindow(view_id) {
   callbacks_ = request.callbacks;
   on_get_window_position_ = request.get_position_callback;
+  sized_to_content_ = true;
+  has_constraints_ = request.preferred_constraints.has_view_constraints;
+  constraints_ = request.preferred_constraints;
 }
 
 OHOSWindow::~OHOSWindow() = default;
@@ -72,6 +80,14 @@ void OHOSWindow::FireNotifyListeners() {
   if (callbacks_.notify_listeners) {
     callbacks_.notify_listeners();
   }
+}
+
+bool OHOSWindow::GetConstraints(WindowConstraints* out) const {
+  if (!sized_to_content_ || !has_constraints_ || out == nullptr) {
+    return false;
+  }
+  *out = constraints_;
+  return true;
 }
 
 bool OHOSWindow::ComputeWindowPosition(const WindowSize& child_size,

@@ -38,9 +38,22 @@ class OHOSWindow {
 
   // Preferred content size from the creation request (LOGICAL px) — the
   // GetContentSize fallback before any actual size has been pushed.
-  // Tooltip/popup carry none (their birth size comes from the min constraints).
+  // Tooltip/popup carry none (they size to their content constraints).
   bool HasPreferredSize() const { return has_preferred_size_; }
   WindowSize PreferredSize() const { return preferred_size_; }
+
+  // Tooltip AND popup are sized to content (win32 has no popup host to
+  // mirror; the OHOS popup follows its content). True => the raster thread
+  // reports the view's per-frame content size (see
+  // OHOSWindowingViewEmbedder) and the view's metrics carry a constraint
+  // RANGE instead of a pinned size.
+  bool IsSizedToContent() const { return sized_to_content_; }
+
+  // The creation request's min/max content constraints, LOGICAL px (max 0 =
+  // unbounded). win32 FlutterWindowsView::GetConstraints parity — only
+  // meaningful for sized-to-content windows; false = the caller should pin
+  // metrics min=max=size (win32's non-sized-to-content branch).
+  bool GetConstraints(WindowConstraints* out) const;
 
   // Current-title cache (see the controller's SetTitle/GetTitle): C++ cannot
   // query the OS window title synchronously across napi, so the last pushed
@@ -57,6 +70,12 @@ class OHOSWindow {
   bool has_preferred_size_ = false;
   WindowSize preferred_size_ = {};
   std::string title_cache_;
+  // See IsSizedToContent/GetConstraints. Constraints are seeded from
+  // the request by the tooltip/popup ctors (both carry the field); only the
+  // tooltip sets sized_to_content_ (win32 parity).
+  bool sized_to_content_ = false;
+  bool has_constraints_ = false;
+  WindowConstraints constraints_ = {};
 };
 
 }  // namespace flutter

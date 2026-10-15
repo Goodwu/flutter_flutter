@@ -129,6 +129,13 @@ class PlatformViewOHOSNapi {
   // ETS side.
   void UpdateTooltipPosition(int64_t view_id);
 
+  // Content-size report for a sized-to-content view, win32
+  // FlutterWindowsViewSizingDelegate::DidUpdateViewSize parity, fired by the
+  // windowing embedder on frame size changes; callers must be on the
+  // platform/napi thread (post first, as OHOSExternalViewEmbedder does).
+  // width/height are PHYSICAL px.
+  void DidUpdateViewSize(int64_t view_id, double width, double height);
+
   flutter::locale resolveNativeLocale(
       std::vector<flutter::locale> supportedLocales);
   std::unique_ptr<std::vector<std::string>>

@@ -207,5 +207,60 @@ TEST(OHOSWindowTest, TitleCacheRoundTrips) {
   EXPECT_EQ(window.GetTitle(), "replaced");
 }
 
+// ---------------------------------------------------------------------------
+// Sized-to-content (win32 is_sized_to_content parity: tooltip only)
+// ---------------------------------------------------------------------------
+
+TEST(OHOSWindowTest, TooltipIsSizedToContentAndKeepsConstraints) {
+  TooltipWindowCreationRequest request = {};
+  request.preferred_constraints.has_view_constraints = true;
+  request.preferred_constraints.view_min_width = 20.0;
+  request.preferred_constraints.view_min_height = 10.0;
+  request.preferred_constraints.view_max_width = 400.0;
+  request.preferred_constraints.view_max_height = 300.0;
+  request.parent_view_id = 0;
+  request.get_position_callback = OnGetWindowPosition;
+
+  OHOSWindow window(7, request);
+
+  EXPECT_TRUE(window.IsSizedToContent());
+  WindowConstraints constraints = {};
+  ASSERT_TRUE(window.GetConstraints(&constraints));
+  EXPECT_EQ(constraints.view_min_width, 20.0);
+  EXPECT_EQ(constraints.view_min_height, 10.0);
+  EXPECT_EQ(constraints.view_max_width, 400.0);
+  EXPECT_EQ(constraints.view_max_height, 300.0);
+}
+
+TEST(OHOSWindowTest, TooltipWithoutConstraintsHasNoMetricsRange) {
+  TooltipWindowCreationRequest request = {};
+  OHOSWindow window(7, request);
+  EXPECT_TRUE(window.IsSizedToContent());
+  WindowConstraints constraints = {};
+  EXPECT_FALSE(window.GetConstraints(&constraints));
+}
+
+TEST(OHOSWindowTest, PopupIsSizedToContentRegularAndDialogAreNot) {
+  PopupWindowCreationRequest popup_request = {};
+  popup_request.preferred_constraints.has_view_constraints = true;
+  popup_request.preferred_constraints.view_min_width = 5.0;
+  popup_request.get_position_callback = OnGetWindowPosition;
+  OHOSWindow popup(8, popup_request);
+  // Sized to content like the tooltip (OHOS divergence: win32 has no popup
+  // host to mirror; the OHOS popup follows its content).
+  EXPECT_TRUE(popup.IsSizedToContent());
+  WindowConstraints constraints = {};
+  EXPECT_TRUE(popup.GetConstraints(&constraints));
+  EXPECT_EQ(constraints.view_min_width, 5.0);
+
+  OHOSWindow regular(9, RegularWindowCreationRequest{});
+  EXPECT_FALSE(regular.IsSizedToContent());
+  EXPECT_FALSE(regular.GetConstraints(&constraints));
+
+  OHOSWindow dialog(10, DialogWindowCreationRequest{});
+  EXPECT_FALSE(dialog.IsSizedToContent());
+  EXPECT_FALSE(dialog.GetConstraints(&constraints));
+}
+
 }  // namespace testing
 }  // namespace flutter

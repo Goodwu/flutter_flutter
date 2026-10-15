@@ -23,10 +23,13 @@ const kPlacementTolerancePx: number = 2;
 
 const kBirthOffscreenPx: number = -10000;
 
-/** A parent-bound, decoration-free, never-focusable SubWindow anchored once
- * by the positioner (not sized to content). */
+/** A parent-bound, decoration-free, never-focusable SubWindow anchored by
+ * the positioner and sized to its content (tooltip parity). */
 export class PopupWindowHost extends FlutterWindowHost {
   protected readonly request: PopupWindowCreationRequest;
+
+  private contentWidthPx: number = 0;
+  private contentHeightPx: number = 0;
 
   private positionInFlight: boolean = false;
   private positionPending: boolean = false;
@@ -82,8 +85,6 @@ export class PopupWindowHost extends FlutterWindowHost {
 
     const storage = new LocalStorage();
     storage.setOrCreate('viewId', String(this.viewId));
-    storage.setOrCreate('surfaceWidth', rect.width > 0 ? rect.width : 0);
-    storage.setOrCreate('surfaceHeight', rect.height > 0 ? rect.height : 0);
     this.surfaceStorage = storage;
     try {
       await subWindow.loadContent(this.ctx.subWindowPage(), storage);
@@ -97,8 +98,8 @@ export class PopupWindowHost extends FlutterWindowHost {
       await subWindow.showWindow(showOptions);
       subWindow.on('windowSizeChange', (size: window.Size) => {
         Log.d(TAG, `windowSizeChange viewId=${String(this.viewId)} ${size.width}x${size.height}px`);
-        storage.setOrCreate('surfaceWidth', size.width);
-        storage.setOrCreate('surfaceHeight', size.height);
+        storage.setOrCreate('windowWidth', size.width);
+        storage.setOrCreate('windowHeight', size.height);
       });
       subWindow.on('windowEvent', (event: window.WindowEventType) => {
         if (event === window.WindowEventType.WINDOW_DESTROYED) {
@@ -106,7 +107,6 @@ export class PopupWindowHost extends FlutterWindowHost {
         }
       });
       this.registerParentWndEvent(parentWnd);
-      this.scheduleUpdatePosition();
     } catch (e) {
       const err = e as BusinessError;
       Log.e(TAG, `loadContent/showWindow failed for ${String(this.viewId)}: ${JSON.stringify(err)}`);
@@ -214,6 +214,31 @@ export class PopupWindowHost extends FlutterWindowHost {
       pos, this.viewId, childSize, parentRect, workArea) === 0;
   }
 
+  didUpdateViewSize(widthPx: number, heightPx: number): void {
+    if (Math.abs(widthPx - this.contentWidthPx) <= kPlacementTolerancePx &&
+        Math.abs(heightPx - this.contentHeightPx) <= kPlacementTolerancePx) {
+      return;
+    }
+    this.contentWidthPx = widthPx;
+    this.contentHeightPx = heightPx;
+    Log.d(TAG, `didUpdateViewSize viewId=${String(this.viewId)} content=${widthPx}x${heightPx}px`);
+    // The render surface follows the content size (tooltip parity).
+    this.surfaceStorage?.setOrCreate('surfaceWidth', widthPx);
+    this.surfaceStorage?.setOrCreate('surfaceHeight', heightPx);
+    this.scheduleUpdatePosition();
+  }
+
+  private childLogicalSize(parentWnd: window.Window): window.Size {
+    if (this.contentWidthPx > 0 && this.contentHeightPx > 0) {
+      const dpr = this.densityPixels(parentWnd);
+      return {
+        width: this.contentWidthPx / dpr,
+        height: this.contentHeightPx / dpr,
+      };
+    }
+    return this.initialWindowRect();
+  }
+
   private scheduleUpdatePosition(): void {
     if (this.positionInFlight) {
       this.positionPending = true;
@@ -239,7 +264,7 @@ export class PopupWindowHost extends FlutterWindowHost {
     }
     try {
       const placement =
-        await this.computePlacementRect(parentWnd, this.initialWindowRect());
+        await this.computePlacementRect(parentWnd, this.childLogicalSize(parentWnd));
       if (!placement.placed) {
         return;
       }

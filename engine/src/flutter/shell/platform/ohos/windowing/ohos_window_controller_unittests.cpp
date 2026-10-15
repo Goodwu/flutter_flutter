@@ -380,6 +380,33 @@ TEST_F(OHOSWindowControllerTest, SetViewActualSizeClampsAndReadsBack) {
 }
 
 // ---------------------------------------------------------------------------
+// Sized-to-content queries (win32 is_sized_to_content parity)
+// ---------------------------------------------------------------------------
+
+TEST_F(OHOSWindowControllerTest, SizedToContentQueriesByArchetype) {
+  auto tooltip_request = MakeTooltipRequest();
+  tooltip_request.preferred_constraints.has_view_constraints = true;
+  tooltip_request.preferred_constraints.view_min_width = 20.0;
+  tooltip_request.preferred_constraints.view_min_height = 10.0;
+  tooltip_request.preferred_constraints.view_max_width = 400.0;
+  tooltip_request.preferred_constraints.view_max_height = 300.0;
+  InsertWindow(controller_, 7, tooltip_request);
+
+  EXPECT_TRUE(controller_->IsViewSizedToContent(7));
+  WindowConstraints constraints = {};
+  ASSERT_TRUE(controller_->GetViewConstraints(7, &constraints));
+  EXPECT_EQ(constraints.view_min_width, 20.0);
+  EXPECT_EQ(constraints.view_max_height, 300.0);
+
+  // Regular and unknown views: not sized-to-content, no constraints.
+  InsertWindow(controller_, 8);
+  EXPECT_FALSE(controller_->IsViewSizedToContent(8));
+  EXPECT_FALSE(controller_->GetViewConstraints(8, &constraints));
+  EXPECT_FALSE(controller_->IsViewSizedToContent(999));
+  EXPECT_FALSE(controller_->GetViewConstraints(999, &constraints));
+}
+
+// ---------------------------------------------------------------------------
 // Title
 // ---------------------------------------------------------------------------
 

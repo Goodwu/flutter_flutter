@@ -740,6 +740,13 @@ export default class FlutterNapi {
     FlutterManager.getInstance().updateTooltipPosition(viewId);
   }
 
+  /** Native entry (InvokeJsMethod "didUpdateViewSize"): the raster thread
+   * reported a sized-to-content view's new content size (PHYSICAL px;
+   * win32 HostWindowTooltip::DidUpdateViewSize parity). */
+  didUpdateViewSize(viewId: number, width: number, height: number): void {
+    FlutterManager.getInstance().didUpdateViewSize(viewId, width, height);
+  }
+
   /** Native entry (InvokeJsMethod "destroyWindowHost"): tear down the OS
    * window host when Dart closes it (controller.destroy()). */
   destroyWindowHost(viewId: number): void {

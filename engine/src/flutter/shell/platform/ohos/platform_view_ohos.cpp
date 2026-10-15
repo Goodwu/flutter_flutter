@@ -8,6 +8,7 @@
 #include <GLES2/gl2ext.h>
 #include <arkui/native_interface_accessibility.h>
 #include <native_image/native_image.h>
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -239,7 +240,13 @@ bool PlatformViewOHOS::NotifyCreateForView(
     int64_t view_id,
     fml::RefPtr<OHOSNativeWindow> native_window,
     double width,
-    double height) {
+    double height,
+    bool sized_to_content,
+    bool has_constraints,
+    double min_width_constraint,
+    double max_width_constraint,
+    double min_height_constraint,
+    double max_height_constraint) {
   FML_DCHECK(view_id != kFlutterImplicitViewId);
 
   if (!surface_factory_ || !ohos_context_ || !ohos_context_->IsValid()) {
@@ -278,7 +285,12 @@ bool PlatformViewOHOS::NotifyCreateForView(
       task_runners_.GetRasterTaskRunner(),
       [surface = surface_shared.get(), context, view_id,
        embedder = external_view_embedder_, &surface_registered,
-       native_window = std::move(native_window), width, height, &latch]() {
+       native_window = std::move(native_window), width, height,
+       sized_to_content, &latch]() {
+        // Before RegisterViewSurface so the first frame's size is reported.
+        if (embedder) {
+          embedder->SetViewSizedToContent(view_id, sized_to_content);
+        }
         if (native_window && width > 0 && height > 0) {
           native_window->SetSize(static_cast<int>(width),
                                  static_cast<int>(height));
@@ -314,8 +326,14 @@ bool PlatformViewOHOS::NotifyCreateForView(
   // Use the base setter: the OHOS override rewrites physical size from the
   // *main* window's display size and would mis-size a sub-window.
   if (width > 0 && height > 0) {
+    ViewConstraintsPhysical constraints;
+    constraints.has_constraints = has_constraints;
+    constraints.min_width = min_width_constraint;
+    constraints.max_width = max_width_constraint;
+    constraints.min_height = min_height_constraint;
+    constraints.max_height = max_height_constraint;
     ViewportMetrics view_metrics =
-        BuildViewMetricsForView(view_id, width, height);
+        BuildViewMetricsForView(view_id, width, height, constraints);
     PlatformView::SetViewportMetrics(view_id, view_metrics);
   } else {
     FML_LOG(WARNING) << "NotifyCreateForView: zero-size surface for view "
@@ -446,7 +464,12 @@ void PlatformViewOHOS::NotifySurfaceChangedForView(
     int64_t view_id,
     fml::RefPtr<OHOSNativeWindow> native_window,
     double width,
-    double height) {
+    double height,
+    bool has_constraints,
+    double min_width_constraint,
+    double max_width_constraint,
+    double min_height_constraint,
+    double max_height_constraint) {
   auto it = secondary_surfaces_.find(view_id);
   if (it == secondary_surfaces_.end()) {
     FML_LOG(WARNING) << "NotifySurfaceChangedForView: no secondary surface "
@@ -471,8 +494,17 @@ void PlatformViewOHOS::NotifySurfaceChangedForView(
   }
 
   if (width > 0 && height > 0) {
+    // A sized-to-content view keeps its constraint RANGE across resizes
+    // (win32 re-sends CreateWindowMetricsEvent with the original box
+    // constraints, only the bounds change).
+    ViewConstraintsPhysical constraints;
+    constraints.has_constraints = has_constraints;
+    constraints.min_width = min_width_constraint;
+    constraints.max_width = max_width_constraint;
+    constraints.min_height = min_height_constraint;
+    constraints.max_height = max_height_constraint;
     ViewportMetrics view_metrics =
-        BuildViewMetricsForView(view_id, width, height);
+        BuildViewMetricsForView(view_id, width, height, constraints);
     PlatformView::SetViewportMetrics(view_id, view_metrics);
   }
 }
@@ -480,14 +512,35 @@ void PlatformViewOHOS::NotifySurfaceChangedForView(
 ViewportMetrics PlatformViewOHOS::BuildViewMetricsForView(
     int64_t view_id,
     double physical_width,
-    double physical_height) {
+    double physical_height,
+    const ViewConstraintsPhysical& constraints) {
   ViewportMetrics view_metrics = viewport_metrics_;
   view_metrics.physical_width = physical_width;
   view_metrics.physical_height = physical_height;
-  view_metrics.physical_min_width_constraint = physical_width;
-  view_metrics.physical_max_width_constraint = physical_width;
-  view_metrics.physical_min_height_constraint = physical_height;
-  view_metrics.physical_max_height_constraint = physical_height;
+  if (constraints.has_constraints) {
+    // Sized-to-content (win32 GetConstraints parity): the content lays out
+    // within [smallest, min(biggest, display)]. v1 clamps biggest by the
+    // FULL display size — the work area (dock-excluded) isn't known on this
+    // side; the ETS positioner still constrains placement against the true
+    // work area, so only oversized-content layout differs slightly.
+    double max_w = constraints.max_width > 0
+                       ? constraints.max_width
+                       : viewport_metrics_.physical_width;
+    double max_h = constraints.max_height > 0
+                       ? constraints.max_height
+                       : viewport_metrics_.physical_height;
+    view_metrics.physical_min_width_constraint = constraints.min_width;
+    view_metrics.physical_max_width_constraint =
+        std::min(max_w, viewport_metrics_.physical_width);
+    view_metrics.physical_min_height_constraint = constraints.min_height;
+    view_metrics.physical_max_height_constraint =
+        std::min(max_h, viewport_metrics_.physical_height);
+  } else {
+    view_metrics.physical_min_width_constraint = physical_width;
+    view_metrics.physical_max_width_constraint = physical_width;
+    view_metrics.physical_min_height_constraint = physical_height;
+    view_metrics.physical_max_height_constraint = physical_height;
+  }
   return view_metrics;
 }
 
@@ -802,7 +855,21 @@ PlatformViewOHOS::CreateExternalViewEmbedder() {
     return nullptr;
   }
   FML_DLOG(INFO) << "CreateExternalViewEmbedder";
-  external_view_embedder_ = std::make_shared<OHOSWindowingViewEmbedder>();
+  external_view_embedder_ = std::make_shared<OHOSWindowingViewEmbedder>(
+      // Sized-to-content content-size report (win32 sizing_delegate parity):
+      // raster thread -> platform (napi) thread -> ETS host
+      // TooltipWindowHost.didUpdateViewSize. Same post-then-invoke pattern
+      // as OHOSExternalViewEmbedder's facade calls.
+      [task_runners = task_runners_,
+       napi_facade = napi_facade_](int64_t view_id, double width,
+                                   double height) {
+        task_runners.GetPlatformTaskRunner()->PostTask(
+            [napi_facade, view_id, width, height]() {
+              if (napi_facade) {
+                napi_facade->DidUpdateViewSize(view_id, width, height);
+              }
+            });
+      });
   return external_view_embedder_;
 }
 

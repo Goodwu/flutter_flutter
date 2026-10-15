@@ -985,6 +985,39 @@ void PlatformViewOHOSNapi::UpdateTooltipPosition(int64_t view_id) {
   napi_close_handle_scope(env_, scope);
 }
 
+void PlatformViewOHOSNapi::DidUpdateViewSize(int64_t view_id,
+                                             double width,
+                                             double height) {
+  napi_handle_scope scope;
+  napi_open_handle_scope(env_, &scope);
+  napi_value args[3];
+  napi_status status;
+  status = napi_create_int64(env_, view_id, &args[0]);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
+  }
+  status = napi_create_double(env_, width, &args[1]);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_double width fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
+  }
+  status = napi_create_double(env_, height, &args[2]);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_double height fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
+  }
+  status = fml::napi::InvokeJsMethod(env_, ref_napi_obj_, "didUpdateViewSize",
+                                     3, args);
+  if (status != napi_ok) {
+    FML_LOG(ERROR) << "InvokeJsMethod didUpdateViewSize fail ";
+  }
+  napi_close_handle_scope(env_, scope);
+}
+
 void PlatformViewOHOSNapi::FlutterViewOnPreEngineRestart() {
   FML_DLOG(INFO) << "FlutterViewOnPreEngineRestart";
   napi_handle_scope scope;
@@ -2903,10 +2936,24 @@ void PlatformViewOHOSNapi::NotifyCreateForView(int64_t shell_holder,
   FML_DCHECK(view_id != kFlutterImplicitViewId);
   auto native_window = fml::MakeRefCounted<OHOSNativeWindow>(
       static_cast<OHNativeWindow*>(window));
+  // win32 is_sized_to_content parity: a sized-to-content view
+  // (tooltip/popup) reports per-frame content sizes AND its metrics carry
+  // the request's constraint RANGE instead of a pinned size.
+  const bool sized_to_content =
+      OHOS_SHELL_HOLDER->GetWindowController()->IsViewSizedToContent(view_id);
+  WindowConstraints logical_constraints = {};
+  const bool has_constraints =
+      OHOS_SHELL_HOLDER->GetWindowController()->GetViewConstraints(
+          view_id, &logical_constraints);
+  const double dpr = display_density_pixels;
   const bool created =
       OHOS_SHELL_HOLDER->GetPlatformView()->NotifyCreateForView(
           view_id, std::move(native_window), static_cast<double>(width),
-          static_cast<double>(height));
+          static_cast<double>(height), sized_to_content, has_constraints,
+          logical_constraints.view_min_width * dpr,
+          logical_constraints.view_max_width * dpr,
+          logical_constraints.view_min_height * dpr,
+          logical_constraints.view_max_height * dpr);
   if (!created) {
     // Registered but no surface (can never render) — tear down via the
     // OS-close path so Dart learns the window is gone, AND destroy the ETS
@@ -2933,9 +2980,20 @@ void PlatformViewOHOSNapi::NotifySurfaceChangedForView(int64_t shell_holder,
   FML_DCHECK(view_id != kFlutterImplicitViewId);
   auto native_window = fml::MakeRefCounted<OHOSNativeWindow>(
       static_cast<OHNativeWindow*>(window));
+  // Keep the sized-to-content view's constraint RANGE across resizes (win32
+  // re-sends CreateWindowMetricsEvent with the original box constraints).
+  WindowConstraints logical_constraints = {};
+  const bool has_constraints =
+      OHOS_SHELL_HOLDER->GetWindowController()->GetViewConstraints(
+          view_id, &logical_constraints);
+  const double dpr = display_density_pixels;
   OHOS_SHELL_HOLDER->GetPlatformView()->NotifySurfaceChangedForView(
       view_id, std::move(native_window), static_cast<double>(width),
-      static_cast<double>(height));
+      static_cast<double>(height), has_constraints,
+      logical_constraints.view_min_width * dpr,
+      logical_constraints.view_max_width * dpr,
+      logical_constraints.view_min_height * dpr,
+      logical_constraints.view_max_height * dpr);
   OHOS_SHELL_HOLDER->GetWindowController()->SetViewActualSize(
       view_id, static_cast<double>(width), static_cast<double>(height),
       display_density_pixels);

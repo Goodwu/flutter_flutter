@@ -14,7 +14,7 @@ import { WindowArchetype } from
   '../../../../../../main/ets/embedding/ohos/windowing/WindowingUtils';
 import { WindowHostContext } from
   '../../../../../../main/ets/embedding/ohos/windowing/WindowHostContext';
-import { FakeWindow, FakeHostContext, FakeRect, tooltipRequest } from './Fakes';
+import { FakeWindow, FakeHostContext, FakeRect, sleep, tooltipRequest } from './Fakes';
 
 /** Concrete subclass exposing the protected hooks. */
 class TestTooltipHost extends TooltipWindowHost {
@@ -88,6 +88,18 @@ function decoratedParent(): FakeWindow {
   fake.props.windowRect = new FakeRect(100, 200, 1000, 800) as ESObject as window.Rect;
   fake.props.drawableRect = new FakeRect(10, 20, 980, 760) as ESObject as window.Rect;
   return fake;
+}
+
+/** A tooltip host with `own` mounted as its OS window and a view-0
+ * parent host holding `parent` (both registered in the context). */
+function mountedHost(ctx: FakeHostContext, own: FakeWindow,
+                     parent: FakeWindow, viewId: number): TestTooltipHost {
+  const parentHost = new TestTooltipHost(ctx, 0, 0);
+  parentHost.setWindow(parent as ESObject as window.Window);
+  ctx.hosts.set('0', parentHost);
+  const host = new TestTooltipHost(ctx, viewId, 0);
+  host.setWindow(own as ESObject as window.Window);
+  return host;
 }
 
 export default function tooltipWindowHostTest() {
@@ -197,6 +209,90 @@ export default function tooltipWindowHostTest() {
         // may shrink the rect).
         expect(birth.rect.width).assertEqual(800);
         expect(birth.rect.height).assertEqual(400);
+        done();
+      });
+  });
+
+  describe('TooltipWindowHost.didUpdateViewSize', () => {
+    it('feeds the stored content size (physical→logical ÷dpr) to the positioner, not the birth size',
+      Level.LEVEL0, async (done: Function) => {
+        const ctx = new FakeHostContext();
+        const own = new FakeWindow();
+        const parent = new FakeWindow();
+        const host = mountedHost(ctx, own, parent, 11);
+        host.placementRc = 0;
+
+        // Before any frame: updatePosition sees the BIRTH size (default
+        // 400x200 — the request carries no constraints).
+        await host.updatePosition();
+        expect(host.placementCalls).assertEqual(1);
+        expect(host.placementArgs[0]).assertEqual(400);
+        expect(host.placementArgs[1]).assertEqual(200);
+
+        // Content size arrives (PHYSICAL px); dpr = 2 → logical 300x150.
+        host.didUpdateViewSize(600, 300);
+        await sleep(0);
+        expect(host.placementCalls).assertEqual(2);
+        expect(host.placementArgs[0]).assertEqual(300);
+        expect(host.placementArgs[1]).assertEqual(150);
+        done();
+      });
+
+    it('dedups unchanged content sizes (win32 DidUpdateViewSize early-out)',
+      Level.LEVEL0, async (done: Function) => {
+        const ctx = new FakeHostContext();
+        const own = new FakeWindow();
+        const parent = new FakeWindow();
+        const host = mountedHost(ctx, own, parent, 12);
+        host.placementRc = 0;
+
+        host.didUpdateViewSize(600, 300);
+        host.didUpdateViewSize(600, 300);  // unchanged → no re-placement
+        await sleep(0);
+        expect(host.placementCalls).assertEqual(1);
+        done();
+      });
+
+    it('coalesces reports arriving while a placement is in flight (latest wins)',
+      Level.LEVEL0, async (done: Function) => {
+        const ctx = new FakeHostContext();
+        const own = new FakeWindow();
+        const parent = new FakeWindow();
+        const host = mountedHost(ctx, own, parent, 13);
+        host.placementRc = 0;
+
+        // Three reports back-to-back while the first placement is still
+        // awaiting its microtasks: exactly two runs (first + one pending
+        // re-run), the re-run seeing the LATEST content size (400x200).
+        host.didUpdateViewSize(600, 300);
+        host.didUpdateViewSize(700, 350);
+        host.didUpdateViewSize(800, 400);
+        await sleep(0);
+        await sleep(0);
+        expect(host.placementCalls).assertEqual(2);
+        expect(host.placementArgs[0]).assertEqual(400);
+        expect(host.placementArgs[1]).assertEqual(200);
+        done();
+      });
+
+    it('moves and resizes the sub-window to the positioner rect (physical)',
+      Level.LEVEL0, async (done: Function) => {
+        const ctx = new FakeHostContext();
+        const own = new FakeWindow();
+        const parent = new FakeWindow();
+        const host = mountedHost(ctx, own, parent, 14);
+        host.placementRc = 0;
+        // Logical (160,240 250x100) × dpr 2 → physical (320,480 500x200).
+        host.didUpdateViewSize(600, 300);
+        await sleep(0);
+        await sleep(0);
+        expect(own.moveCalls.length).assertEqual(1);
+        expect(own.moveCalls[0][0]).assertEqual(320);
+        expect(own.moveCalls[0][1]).assertEqual(480);
+        // FakeWindow starts at 1000x800 → the 500x200 rect is applied.
+        expect(own.resizeCalls.length).assertEqual(1);
+        expect(own.resizeCalls[0][0]).assertEqual(500);
+        expect(own.resizeCalls[0][1]).assertEqual(200);
         done();
       });
   });
