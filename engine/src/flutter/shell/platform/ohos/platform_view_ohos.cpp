@@ -747,9 +747,12 @@ std::unique_ptr<Surface> PlatformViewOHOS::CreateRenderingSurface() {
     return nullptr;
   }
   if (!external_view_embedder_) {
-    FML_LOG(ERROR)
-        << "CreateRenderingSurface Failed. windowing embedder is null ";
-    return nullptr;
+    // GL Skia baseline (pre-windowing behavior): no embedder — render
+    // directly into the main-window GPU surface. GrDirectContext stays
+    // reachable from the rasterizer root, which the GL external-texture
+    // (TLHC) path requires.
+    return ohos_surface_->CreateGPUSurface(
+        ohos_context_->GetMainSkiaContext().get());
   }
   auto main_surface = ohos_surface_->CreateGPUSurface(
       ohos_context_->GetMainSkiaContext().get());
@@ -778,13 +781,26 @@ PlatformViewOHOS::CreateExternalViewEmbedder() {
         fml::RefPtr<OHOSNativeWindow> native_window =
             fml::MakeRefCounted<OHOSNativeWindow>(
                 static_cast<OHNativeWindow*>(pending_overlay_window_), false);
-        ohos_external_view_embedder_->SetOverlayWindow(std::move(native_window));
+        ohos_external_view_embedder_->SetOverlayWindow(
+            std::move(native_window));
         pending_overlay_window_ = nullptr;
       }
     }
     return ohos_external_view_embedder_;
   }
   // Multi-window: per-view windowing embedder (see OHOSWindowingViewEmbedder).
+  // Non-Vulkan backends (GL Skia and software) keep the pre-windowing
+  // baseline: the token root (OhosEmbedderRootSurface) is Impeller-only —
+  // GetContext() is hardcoded nullptr and its frames never MakeCurrent the
+  // GL context, so TLHC external textures (OHOSExternalTextureGL) fail to
+  // bind and the RS texture-export chain breaks (AcquireNativeWindowBuffer
+  // 40601000 loop; WebView renders blank). Return no embedder here;
+  // CreateRenderingSurface then hands the rasterizer the real main-window
+  // GPU surface, matching 3.41 behavior.
+  if (!ohos_context_ ||
+      ohos_context_->RenderingApi() != OHOSRenderingAPI::kImpellerVulkan) {
+    return nullptr;
+  }
   FML_DLOG(INFO) << "CreateExternalViewEmbedder";
   external_view_embedder_ = std::make_shared<OHOSWindowingViewEmbedder>();
   return external_view_embedder_;
