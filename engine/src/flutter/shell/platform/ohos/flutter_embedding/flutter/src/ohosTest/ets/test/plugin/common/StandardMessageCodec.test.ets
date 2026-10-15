@@ -44,6 +44,13 @@ export default function standardMessageCodecTest() {
       expect(decoded).assertEqual(number);
     });
 
+    it('round-trips negative bigint outside int64 range', Level.LEVEL1, () => {
+      const number = BigInt('-295147905179352825856'); // -2^68
+      const encoded = codec.encodeMessage(number);
+      const decoded: Any = codec.decodeMessage(encoded);
+      expect(decoded).assertEqual(number);
+    });
+
     it('round-trips float64', Level.LEVEL1, () => {
       const number = 3.14159;
       const encoded = codec.encodeMessage(number);
