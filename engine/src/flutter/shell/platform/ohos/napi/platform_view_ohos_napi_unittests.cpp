@@ -2396,7 +2396,9 @@ TEST_F(PlatformViewOHOSNapiTest, SurfaceCreatedCachesNativeWindow) {
   auto platform_view = holder->GetPlatformView().get();
   ASSERT_NE(platform_view->cached_native_window_.get(), nullptr);
   EXPECT_EQ(platform_view->cached_native_window_->handle(), window);
-  EXPECT_TRUE(platform_view->onscreen_context_valid_.load());
+  platform_view->RunOnRasterAndWait([&] {
+    EXPECT_TRUE(platform_view->ohos_surface_->HasValidOnscreenContext());
+  });
   g_graphic_stub.engaged = 0;
   EXPECT_TRUE(holder->IsValid());
 }

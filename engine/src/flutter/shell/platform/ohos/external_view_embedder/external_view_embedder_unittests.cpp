@@ -645,6 +645,7 @@ class FakeOHOSSurface : public OHOSSurface {
         knobs_(std::move(knobs)) {}
 
   bool IsValid() const override { return true; }
+  bool HasValidOnscreenContext() const override { return true; }
   void TeardownOnScreenContext() override {}
   bool OnScreenSurfaceResize(const DlISize& size) override { return true; }
   bool ResourceContextMakeCurrent() override { return true; }

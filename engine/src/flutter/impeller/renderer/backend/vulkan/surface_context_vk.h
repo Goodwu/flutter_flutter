@@ -85,6 +85,9 @@ class SurfaceContextVK : public Context,
 
   void ClearSwapchain();
 
+  // Must be called on the same thread as swapchain creation and teardown.
+  bool HasValidSwapchain() const;
+
   [[nodiscard]] bool SetSwapchain(std::shared_ptr<SwapchainVK> swapchain);
 
   std::unique_ptr<Surface> AcquireNextSurface();

@@ -365,10 +365,6 @@ class PlatformViewOHOS final : public PlatformView {
   /// Current lifecycle state
   AppLifecycleState lifecycle_state_ = AppLifecycleState::kDetached;
 
-  /// Whether onscreen context is valid (set false after
-  /// TeardownOnScreenContext)
-  std::atomic<bool> onscreen_context_valid_{true};
-
   /// Cached native window for rebuilding after aggressive teardown
   fml::RefPtr<OHOSNativeWindow> cached_native_window_;
 
@@ -437,9 +433,10 @@ class PlatformViewOHOS final : public PlatformView {
 
   // ======================== Helper Methods ==================================
 
-  /// @brief  Determines whether the onscreen context needs to be rebuilt.
-  /// @return true if the context should be rebuilt, false if not.
-  bool ShouldRebuildOnscreenContext() const;
+  /// @brief  Checks captured surface/window resources on the raster thread.
+  static bool ShouldRebuildOnscreenContext(
+      const std::shared_ptr<OHOSSurface>& surface,
+      const fml::RefPtr<OHOSNativeWindow>& native_window);
 
   /// @brief  Posts tasks to rebuild the onscreen context and surface.
   void PostRebuildOnscreenContextTasks();

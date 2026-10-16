@@ -43,6 +43,10 @@ bool OHOSSurfaceSoftware::IsValid() const {
   return true;
 }
 
+bool OHOSSurfaceSoftware::HasValidOnscreenContext() const {
+  return native_window_ && native_window_->IsValid();
+}
+
 // |OHOSSurface|
 bool OHOSSurfaceSoftware::ResourceContextMakeCurrent() {
   return false;

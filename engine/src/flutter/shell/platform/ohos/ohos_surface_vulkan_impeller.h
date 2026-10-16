@@ -32,6 +32,8 @@ class OHOSSurfaceVulkanImpeller : public GPUSurfaceVulkanDelegate,
   // |OHOSSurface|
   bool IsValid() const override;
 
+  bool HasValidOnscreenContext() const override;
+
   // |OHOSSurface|
   std::unique_ptr<Surface> CreateGPUSurface(
       GrDirectContext* gr_context) override;

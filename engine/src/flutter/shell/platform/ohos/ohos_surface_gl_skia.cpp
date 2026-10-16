@@ -57,6 +57,10 @@ bool OhosSurfaceGLSkia::IsValid() const {
   return offscreen_surface_ && GLContextPtr()->IsValid();
 }
 
+bool OhosSurfaceGLSkia::HasValidOnscreenContext() const {
+  return onscreen_surface_ && onscreen_surface_->IsValid();
+}
+
 std::unique_ptr<Surface> OhosSurfaceGLSkia::CreateGPUSurface(
     GrDirectContext* gr_context) {
   if (gr_context) {
