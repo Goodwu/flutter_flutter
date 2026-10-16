@@ -6,11 +6,11 @@
 
 #include "ohos_image_generator.h"
 
-#include <native_color_space_manager/native_color_space_manager.h>
 #include <multimedia/image_framework/image/image_common.h>
 #include <multimedia/image_framework/image/image_source_native.h>
 #include <multimedia/image_framework/image/pixelmap_native.h>
 #include <native_buffer/native_buffer.h>
+#include <native_color_space_manager/native_color_space_manager.h>
 #include <native_window/external_window.h>
 #include <algorithm>
 #include <cstdint>
@@ -23,14 +23,14 @@
 #include <utility>
 
 #include <multimedia/image_framework/image_pixel_map_napi.h>
+#include "flutter/fml/platform/ohos/dynamic_library_loader.h"
+#include "flutter/lib/ui/painting/ohos_color_space.h"
 #include "fml/logging.h"
 #include "fml/trace_event.h"
-#include "flutter/lib/ui/painting/ohos_color_space.h"
 #include "include/core/SkAlphaType.h"
 #include "include/core/SkColorType.h"
 #include "include/core/SkImageInfo.h"
 #include "third_party/skia/include/codec/SkCodecAnimation.h"
-#include "flutter/fml/platform/ohos/dynamic_library_loader.h"
 
 #if IMPELLER_SUPPORTS_RENDERING
 #include "flutter/impeller/renderer/backend/vulkan/capabilities_vk.h"
@@ -125,8 +125,7 @@ static constexpr unsigned int kBitsPerByte = 8;
 static uint16_t ReadUint16Le(const uint8_t* bytes) {
   uint16_t value = 0;
   for (size_t i = 0; i < kLeUint16Bytes; ++i) {
-    value = static_cast<uint16_t>(value |
-                                  (bytes[i] << (kBitsPerByte * i)));
+    value = static_cast<uint16_t>(value | (bytes[i] << (kBitsPerByte * i)));
   }
   return value;
 }
@@ -214,7 +213,7 @@ int OHOSImageGenerator::ParseGifLoopCount(const sk_sp<SkData>& data) {
     }
     if (bytes[i + kGifLoopSubBlockOffset] != kGifLoopSubBlockSize ||
         bytes[i + kGifLoopSubBlockOffset + kGifLoopSubBlockIdIndex] !=
-        kGifLoopSubBlockId) {
+            kGifLoopSubBlockId) {
       continue;
     }
     const int loop = ReadUint16Le(bytes + i + kGifLoopCountOffset);
@@ -362,8 +361,7 @@ class OhosExternalTextureSourceImpl final : public ExternalTextureSource {
   std::shared_ptr<impeller::ContextVK> GetContextVK(
       const std::shared_ptr<impeller::Context>& context) const {
     if (!context || !context->IsValid() ||
-        context->GetBackendType() !=
-            impeller::Context::BackendType::kVulkan) {
+        context->GetBackendType() != impeller::Context::BackendType::kVulkan) {
       return nullptr;
     }
     if (!pixelmap_ || !pixelmap_->IsValid() ||
@@ -436,19 +434,24 @@ class OhosExternalTextureSourceImpl final : public ExternalTextureSource {
 #endif  // IMPELLER_SUPPORTS_RENDERING
 
 class OhosImageSourceLoader {
-  using CreateFromDataWithUserBufferFunc = Image_ErrorCode (*)(
-    uint8_t *data, size_t datalength, OH_ImageSourceNative **imageSource);
-  using CreatePixelmapUsingAllocatorFunc = Image_ErrorCode (*)(
-      OH_ImageSourceNative* source,
-      OH_DecodingOptions* opts,
-      IMAGE_ALLOCATOR_TYPE allocator,
-      OH_PixelmapNative** pixelmap);
+  using CreateFromDataWithUserBufferFunc =
+      Image_ErrorCode (*)(uint8_t* data,
+                          size_t datalength,
+                          OH_ImageSourceNative** imageSource);
+  using CreatePixelmapUsingAllocatorFunc =
+      Image_ErrorCode (*)(OH_ImageSourceNative* source,
+                          OH_DecodingOptions* opts,
+                          IMAGE_ALLOCATOR_TYPE allocator,
+                          OH_PixelmapNative** pixelmap);
 
  public:
   OhosImageSourceLoader(void);
   ~OhosImageSourceLoader() = default;
   static std::shared_ptr<OhosImageSourceLoader> GetInstance(void);
-  Image_ErrorCode CreateFromDataWithUserBuffer(uint8_t *data, size_t datalength, OH_ImageSourceNative **imageSource);
+  Image_ErrorCode CreateFromDataWithUserBuffer(
+      uint8_t* data,
+      size_t datalength,
+      OH_ImageSourceNative** imageSource);
 
   bool HasPixelmapAllocator() const {
     return loader_ && loader_->IsLoaded() &&
@@ -460,14 +463,15 @@ class OhosImageSourceLoader {
                                                IMAGE_ALLOCATOR_TYPE allocator,
                                                OH_PixelmapNative** pixelmap);
 
-  private:
-    static constexpr char IMAGE_SOURCE_LIB_NAME[] = "libimage_source.so";
-    std::unique_ptr<flutter::DynamicLibraryLoader> loader_;
-    CreateFromDataWithUserBufferFunc createFromDataWithUserBufferFunc_ = nullptr;
-    CreatePixelmapUsingAllocatorFunc createPixelmapUsingAllocatorFunc_ = nullptr;
+ private:
+  static constexpr char IMAGE_SOURCE_LIB_NAME[] = "libimage_source.so";
+  std::unique_ptr<flutter::DynamicLibraryLoader> loader_;
+  CreateFromDataWithUserBufferFunc createFromDataWithUserBufferFunc_ = nullptr;
+  CreatePixelmapUsingAllocatorFunc createPixelmapUsingAllocatorFunc_ = nullptr;
 };
 
-static std::shared_ptr<OhosImageSourceLoader> OhosImageSourceLoderInstance = nullptr;
+static std::shared_ptr<OhosImageSourceLoader> OhosImageSourceLoderInstance =
+    nullptr;
 static std::once_flag OhosImageSourceLoderInitFlag;
 
 std::shared_ptr<OhosImageSourceLoader> OhosImageSourceLoader::GetInstance() {
@@ -478,8 +482,8 @@ std::shared_ptr<OhosImageSourceLoader> OhosImageSourceLoader::GetInstance() {
 }
 
 OhosImageSourceLoader::OhosImageSourceLoader(void)
-    : loader_(std::make_unique<flutter::DynamicLibraryLoader>(IMAGE_SOURCE_LIB_NAME)) {
-
+    : loader_(std::make_unique<flutter::DynamicLibraryLoader>(
+          IMAGE_SOURCE_LIB_NAME)) {
   std::vector<flutter::SymbolInfo> symbols = {
       {"OH_ImageSourceNative_CreateFromDataWithUserBuffer",
        reinterpret_cast<void**>(&createFromDataWithUserBufferFunc_), 20},
@@ -491,7 +495,9 @@ OhosImageSourceLoader::OhosImageSourceLoader(void)
 }
 
 Image_ErrorCode OhosImageSourceLoader::CreateFromDataWithUserBuffer(
-  uint8_t *data, size_t datalength, OH_ImageSourceNative **imageSource) {
+    uint8_t* data,
+    size_t datalength,
+    OH_ImageSourceNative** imageSource) {
   if (!loader_->IsLoaded() || createFromDataWithUserBufferFunc_ == nullptr) {
     return IMAGE_BAD_PARAMETER;
   }
@@ -585,7 +591,8 @@ OHOSImageGenerator::OHOSImageGenerator(OH_ImageSourceNative* image_source,
   OH_ImageSourceInfo_GetHeight(info, &height);
   OH_ImageSourceInfo_GetDynamicRange(info, &is_hdr_);
   OH_ImageSourceInfo_Release(info);
-  FML_LOG(INFO) << "Image info: width=" << width << ", height=" << height << ", is_hdr=" << is_hdr_;
+  FML_LOG(INFO) << "Image info: width=" << width << ", height=" << height
+                << ", is_hdr=" << is_hdr_;
   if (rotate_degree_ == 90.f || rotate_degree_ == 270.f) {
     origin_image_info_ = SkImageInfo::Make(
         height, width, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
@@ -710,9 +717,8 @@ bool OHOSImageGenerator::GetPixels(const SkImageInfo& info,
   if (image_pixelmap) {
     uint32_t buffer_size =
         image_pixelmap->width_ * image_pixelmap->height_ * RBGA8888_BYTES;
-    std::string read_pixels_trace_str =
-        "size:" + std::to_string(buffer_size) +
-        "-stride:" + std::to_string(row_bytes);
+    std::string read_pixels_trace_str = "size:" + std::to_string(buffer_size) +
+                                        "-stride:" + std::to_string(row_bytes);
     TRACE_EVENT1("flutter", "Image", "ReadPixels",
                  read_pixels_trace_str.c_str());
     if (frame_index == 0) {
@@ -737,7 +743,7 @@ bool OHOSImageGenerator::GetPixels(const SkImageInfo& info,
   }
 }
 
- uint32_t OHOSImageGenerator::GetColorSpace(unsigned int frame_index) {
+uint32_t OHOSImageGenerator::GetColorSpace(unsigned int frame_index) {
   if (cached_colorspaces_.find(frame_index) != cached_colorspaces_.end()) {
     return cached_colorspaces_[frame_index];
   }
@@ -829,11 +835,11 @@ void OHOSImageGenerator::LogAcceptedDmaPixelMap(
                 << " allocator=" << pixelmap->allocator_type_
                 << " color_space=" << pixelmap->color_space_
                 << " texture_color_space="
-                << static_cast<int>(textureColorSpace)
-                << " " << to_string();
+                << static_cast<int>(textureColorSpace) << " " << to_string();
 }
 
-std::unique_ptr<ExternalTextureSource> OHOSImageGenerator::CreateExternalTextureSource(
+std::unique_ptr<ExternalTextureSource>
+OHOSImageGenerator::CreateExternalTextureSource(
     const SkISize& decode_dimensions,
     unsigned int frame_index,
     std::optional<unsigned int> prior_frame) {
@@ -844,10 +850,9 @@ std::unique_ptr<ExternalTextureSource> OHOSImageGenerator::CreateExternalTexture
                to_string().c_str());
 
   constexpr bool kPreferDma = true;
-  auto pixelmap = CreatePixelMap(decode_dimensions.width(),
-                                 decode_dimensions.height(),
-                                 static_cast<int>(frame_index),
-                                 kPreferDma);
+  auto pixelmap =
+      CreatePixelMap(decode_dimensions.width(), decode_dimensions.height(),
+                     static_cast<int>(frame_index), kPreferDma);
   if (!IsValidDmaPixelMap(pixelmap, decode_dimensions)) {
     return nullptr;
   }
@@ -866,8 +871,7 @@ std::shared_ptr<ImageGenerator> OHOSImageGenerator::MakeFromData(
                std::to_string(data->size()).c_str());
 
 #if IMPELLER_SUPPORTS_RENDERING
-  const bool unsupportedDmaEncodedData =
-      IsUnsupportedDmaEncodedData(data);
+  const bool unsupportedDmaEncodedData = IsUnsupportedDmaEncodedData(data);
 #else
   const bool unsupportedDmaEncodedData = false;
 #endif  // IMPELLER_SUPPORTS_RENDERING
@@ -876,17 +880,18 @@ std::shared_ptr<ImageGenerator> OHOSImageGenerator::MakeFromData(
 
   bool isHeldSkData = true;
   Image_ErrorCode err_code = IMAGE_BAD_PARAMETER;
-  std::shared_ptr<OhosImageSourceLoader> ohosImageSourceLoader = OhosImageSourceLoader::GetInstance();
+  std::shared_ptr<OhosImageSourceLoader> ohosImageSourceLoader =
+      OhosImageSourceLoader::GetInstance();
   if (ohosImageSourceLoader != nullptr) {
     err_code = ohosImageSourceLoader->CreateFromDataWithUserBuffer(
-      (uint8_t*)data->bytes(), data->size(), &image_source);
+        (uint8_t*)data->bytes(), data->size(), &image_source);
   }
 
   if (err_code != IMAGE_SUCCESS || image_source == nullptr) {
     // The data will be coyied to ImageSourceNative.
     // No modifications will be made to origin data.
-    err_code = OH_ImageSourceNative_CreateFromData(
-        (uint8_t*)data->bytes(), data->size(), &image_source);
+    err_code = OH_ImageSourceNative_CreateFromData((uint8_t*)data->bytes(),
+                                                   data->size(), &image_source);
     if (err_code != IMAGE_SUCCESS || image_source == nullptr) {
       FML_LOG(ERROR) << "Create ImageSource failed: " << err_code;
       return nullptr;
@@ -917,8 +922,8 @@ OHOSImageGenerator::CreatePixelMap(int width,
                                    int height,
                                    int frame_index,
                                    bool preferDma) {
-  auto opts = CreateOhosDecodingOptions(width, height, frame_index,
-                                        rotate_degree_);
+  auto opts =
+      CreateOhosDecodingOptions(width, height, frame_index, rotate_degree_);
   if (!opts) {
     return nullptr;
   }
@@ -927,8 +932,7 @@ OHOSImageGenerator::CreatePixelMap(int width,
   IMAGE_ALLOCATOR_TYPE actualAllocator = IMAGE_ALLOCATOR_TYPE_AUTO;
   Image_ErrorCode errCode = IMAGE_BAD_PARAMETER;
   if (preferDma) {
-    if (!CreateDmaPixelMap(opts.get(), &pixelmap, &actualAllocator,
-                           &errCode)) {
+    if (!CreateDmaPixelMap(opts.get(), &pixelmap, &actualAllocator, &errCode)) {
       return nullptr;
     }
   }
@@ -966,8 +970,8 @@ bool OHOSImageGenerator::CreateDmaPixelMap(
     *actualAllocator = IMAGE_ALLOCATOR_TYPE_DMA;
     return true;
   }
-  FML_LOG(INFO) << "OHOS DMA: CreatePixelmapUsingAllocator failed ("
-                << *errCode << "), regular path will decode " << to_string();
+  FML_LOG(INFO) << "OHOS DMA: CreatePixelmapUsingAllocator failed (" << *errCode
+                << "), regular path will decode " << to_string();
   if (*pixelmap != nullptr) {
     OH_PixelmapNative_Release(*pixelmap);
     *pixelmap = nullptr;
@@ -976,11 +980,10 @@ bool OHOSImageGenerator::CreateDmaPixelMap(
 }
 
 std::shared_ptr<OHOSImageGenerator::PixelMapOHOS>
-OHOSImageGenerator::AdoptPixelMap(
-    OH_PixelmapNative* pixelmap,
-    IMAGE_ALLOCATOR_TYPE actualAllocator,
-    int frameIndex,
-    bool preferDma) {
+OHOSImageGenerator::AdoptPixelMap(OH_PixelmapNative* pixelmap,
+                                  IMAGE_ALLOCATOR_TYPE actualAllocator,
+                                  int frameIndex,
+                                  bool preferDma) {
   OH_NativeColorSpaceManager* mgr = nullptr;
   auto colorSpaceRes = OH_PixelmapNative_GetColorSpaceNative(pixelmap, &mgr);
   uint32_t colorSpaceName = 0;

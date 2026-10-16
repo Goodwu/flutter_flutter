@@ -112,8 +112,7 @@ std::vector<uint8_t> MakeWebpBytes(uint16_t loop, bool with_anim = true) {
     out.insert(out.end(), tag, tag + 4);
     const uint32_t size = static_cast<uint32_t>(payload.size());
     for (size_t i = 0; i < kLeUint32Bytes; ++i) {
-      out.push_back(
-          static_cast<uint8_t>((size >> (kBitsPerByte * i)) & 0xFF));
+      out.push_back(static_cast<uint8_t>((size >> (kBitsPerByte * i)) & 0xFF));
     }
     out.insert(out.end(), payload.begin(), payload.end());
     if (size & 1) {
@@ -124,20 +123,19 @@ std::vector<uint8_t> MakeWebpBytes(uint16_t loop, bool with_anim = true) {
   std::vector<uint8_t> body = {'W', 'E', 'B', 'P'};
   push_chunk(body, "VP8X", {0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0});
   if (with_anim) {
-    const std::vector<uint8_t> anim = {0,
-                                       0,
-                                       0,
-                                       0,  // background color
-                                       static_cast<uint8_t>(loop & 0xFF),
-                                       static_cast<uint8_t>(loop >>
-                                                            kBitsPerByte)};
+    const std::vector<uint8_t> anim = {
+        0,
+        0,
+        0,
+        0,  // background color
+        static_cast<uint8_t>(loop & 0xFF),
+        static_cast<uint8_t>(loop >> kBitsPerByte)};
     push_chunk(body, "ANIM", anim);
   }
   std::vector<uint8_t> bytes = {'R', 'I', 'F', 'F'};
   const uint32_t size = static_cast<uint32_t>(body.size());
   for (size_t i = 0; i < kLeUint32Bytes; ++i) {
-    bytes.push_back(
-        static_cast<uint8_t>((size >> (kBitsPerByte * i)) & 0xFF));
+    bytes.push_back(static_cast<uint8_t>((size >> (kBitsPerByte * i)) & 0xFF));
   }
   bytes.insert(bytes.end(), body.begin(), body.end());
   return bytes;
@@ -725,16 +723,14 @@ TEST_F(OHOSImageGeneratorTest, ParseEncodedPlayCountWebpScenarios) {
   const auto webp_two_repeats = Bytes(MakeWebpBytes(kTwoRepeatsWireValue));
   EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(webp_two_repeats),
             kTwoRepeatsWireValue);
-  const auto webp_single_repeat =
-      Bytes(MakeWebpBytes(kSingleRepeatWireValue));
+  const auto webp_single_repeat = Bytes(MakeWebpBytes(kSingleRepeatWireValue));
   EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(webp_single_repeat),
             kSingleRepeatWireValue);
   const auto webp_infinite = Bytes(MakeWebpBytes(kInfiniteLoop));
   EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(webp_infinite),
             kInfinitePlays);
   // A static WebP without an ANIM chunk is not animated.
-  const auto static_webp =
-      Bytes(MakeWebpBytes(kTwoRepeatsWireValue, false));
+  const auto static_webp = Bytes(MakeWebpBytes(kTwoRepeatsWireValue, false));
   EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(static_webp),
             kUnknownPlays);
   // A truncated ANIM chunk is treated as unknown.
@@ -744,8 +740,7 @@ TEST_F(OHOSImageGeneratorTest, ParseEncodedPlayCountWebpScenarios) {
             kUnknownPlays);
   // Non-animated format (PNG signature).
   const uint8_t kPng[] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
-  const auto png_bytes =
-      Bytes(std::vector<uint8_t>(kPng, kPng + sizeof(kPng)));
+  const auto png_bytes = Bytes(std::vector<uint8_t>(kPng, kPng + sizeof(kPng)));
   EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(png_bytes),
             kUnknownPlays);
 }

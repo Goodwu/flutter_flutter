@@ -89,7 +89,7 @@ class OHOSImageGenerator : public ImageGenerator {
                  size_t row_bytes,
                  unsigned int frame_index,
                  std::optional<unsigned int> prior_frame) override;
-  
+
   uint32_t GetColorSpace(unsigned int frame_index) override;
 
 #if defined(FML_OS_OHOS) && IMPELLER_SUPPORTS_RENDERING
@@ -135,9 +135,8 @@ class OHOSImageGenerator : public ImageGenerator {
   std::map<uint32_t, uint32_t> cached_colorspaces_;
 
 #if defined(FML_OS_OHOS) && IMPELLER_SUPPORTS_RENDERING
-  bool CanCreateDmaPixelMap(
-      const SkISize& decodeDimensions,
-      std::optional<unsigned int> priorFrame) const;
+  bool CanCreateDmaPixelMap(const SkISize& decodeDimensions,
+                            std::optional<unsigned int> priorFrame) const;
 
   bool IsValidDmaPixelMap(const std::shared_ptr<PixelMapOHOS>& pixelmap,
                           const SkISize& decodeDimensions) const;
