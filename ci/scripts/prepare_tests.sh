@@ -8,24 +8,26 @@
 # Clones the test repository, generates config files, and archives the
 # tests to the output directory.
 # Steps:
-#   1. Determines the target branch based on the test purpose.
-#   2. Clones the test project from the given URL and branch.
-#   3. Creates a resource directory under the tests directory.
-#   4. Writes the given flutter version to flutter.version.
-#   5. If PR_URL is set, extracts the merge request number and writes it to
+#   1. Clones the test project from the given URL and branch.
+#   2. Creates a resource directory under the tests directory.
+#   3. Writes the given flutter version to flutter.version.
+#   4. If PR_URL is set, extracts the merge request number and writes it to
 #      flutter.pr_no.
-#   6. If purpose is "unit", collects:
+#   5. If target_branch is "flutter_UT", collects:
 #        - flutter_ohos_unittests and libflutter.so from the engine build
 #          output into resource/gtest/<ohos_variant>/ and resource/
 #          respectively.
 #        - hello_world flutter_assets into resource/flutter_assets/, and
 #          hello_world native .so files (arm64-v8a) into resource/libs/.
-#   7. Moves the tests directory into Archive/out for packaging.
+#   6. Moves the tests directory into Archive/out for packaging.
 #
-# Usage: prepare_tests.sh <project_url> <purpose> <flutter_version> [engine_dir]
-#   purpose: "unit"        -> branch flutter_UT
-#            "integration" -> branch flutter_gate (if PR_URL is set)
-#                             branch flutter_daily (if PR_URL is not set)
+# Usage: prepare_tests.sh <project_url> <target_branch> <flutter_version> [engine_dir]
+#   target_branch: tests repository branch to clone, e.g. "flutter_UT",
+#                  "flutter_gate", "flutter_daily_integration",
+#                  "flutter_daily_memory", "flutter_daily_perf". Each test
+#                  form runs on its own CI machine and archives to the same
+#                  "tests" directory, so the branch is passed straight
+#                  through instead of being derived from a purpose.
 #   engine_dir: Optional, defaults to "flutter_flutter/engine".
 # Environment:
 #   PR_URL - Optional. Merge request URL to extract the MR number from.
@@ -35,7 +37,7 @@ source "$SCRIPT_DIR/common.sh"
 
 prepare_tests() {
     local project_url="$1"
-    local purpose="$2"
+    local target_branch="$2"
     local flutter_version="$3"
     local engine_dir="${4:-flutter_flutter/engine}"
 
@@ -43,32 +45,14 @@ prepare_tests() {
         log_error "project_url is required"
         exit 1
     fi
-    if [[ -z "$purpose" ]]; then
-        log_error "purpose is required"
+    if [[ -z "$target_branch" ]]; then
+        log_error "target_branch is required"
         exit 1
     fi
     if [[ -z "$flutter_version" ]]; then
         log_error "flutter_version is required"
         exit 1
     fi
-
-    local target_branch=""
-    case "$purpose" in
-        unit)
-            target_branch="flutter_UT"
-            ;;
-        integration)
-            if [[ -n "$PR_URL" ]]; then
-                target_branch="flutter_gate"
-            else
-                target_branch="flutter_daily"
-            fi
-            ;;
-        *)
-            log_error "unknown purpose: $purpose (expected: unit | integration)"
-            exit 1
-            ;;
-    esac
 
     WORK_DIR=$(pwd)
     PROJECT_DIR="$WORK_DIR/third_party"
@@ -107,13 +91,18 @@ prepare_tests() {
         echo "$pr_no" > "$resource_dir/flutter.pr_no"
     fi
 
-    if [[ "$purpose" == "unit" ]]; then
+    # Only the unit-test package (flutter_UT branch) carries engine gtest
+    # binaries and hello_world assets; the other test forms just need the
+    # cloned testcases plus the generated config.
+    if [[ "$target_branch" == "flutter_UT" ]]; then
         collect_engine_artifacts "$engine_dir" "$resource_dir"
         collect_hello_world_artifacts "$resource_dir"
     fi
 
     log_info "Moving tests to archive directory"
-    run_cmd "mv $PROJECT_DIR/tests $ARCHIVE_DIR/"
+    mkdir -p "$ARCHIVE_DIR"
+    rm -rf "$ARCHIVE_DIR/tests"
+    run_cmd "mv $PROJECT_DIR/tests $ARCHIVE_DIR/tests"
 
     log_info "Tests preparation completed"
 }

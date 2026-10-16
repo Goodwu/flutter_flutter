@@ -221,7 +221,7 @@ compilation_steps:
   - name: Prepare Tests
     script: ci/scripts/prepare_tests.sh
     description: Clone testcases, generate PR info, move tests to archive, and collect hello_world flutter_assets + native libs into resource/ for unit test
-    args: ["https://gitcode.com/CPF-Flutter/tests.git", "unit", "$TARGET_BRANCH"]
+    args: ["https://gitcode.com/CPF-Flutter/tests.git", "flutter_UT", "$TARGET_BRANCH"]
     required: true
 
   - name: Upload to cloud
@@ -246,6 +246,38 @@ test_steps:
   - name: Unit Tests (Parallel Shards)
     script: ci/scripts/run_parallel_shards.sh
     description: Run all unit tests in parallel shard groups (single machine)
+    required: true
+
+# prepare for Integration Gate Test
+integration_gate_steps:
+  - name: Prepare Tests
+    script: ci/scripts/prepare_tests.sh
+    description: Clone flutter_gate testcases, generate PR info and move tests to archive directory for integration gate test
+    args: ["https://gitcode.com/CPF-Flutter/tests.git", "flutter_gate", "$TARGET_BRANCH"]
+    required: true
+
+# prepare for Daily Integration Test
+daily_integration_steps:
+  - name: Prepare Tests
+    script: ci/scripts/prepare_tests.sh
+    description: Clone flutter_daily_integration testcases and move tests to archive directory for daily integration test
+    args: ["https://gitcode.com/CPF-Flutter/tests.git", "flutter_daily_integration", "$TARGET_BRANCH"]
+    required: true
+
+# prepare for Daily Memory Test
+daily_memory_steps:
+  - name: Prepare Tests
+    script: ci/scripts/prepare_tests.sh
+    description: Clone flutter_daily_memory testcases and move tests to archive directory for daily memory test
+    args: ["https://gitcode.com/CPF-Flutter/tests.git", "flutter_daily_memory", "$TARGET_BRANCH"]
+    required: true
+
+# prepare for Daily Perf Test
+daily_perf_steps:
+  - name: Prepare Tests
+    script: ci/scripts/prepare_tests.sh
+    description: Clone flutter_daily_perf testcases and move tests to archive directory for daily perf test
+    args: ["https://gitcode.com/CPF-Flutter/tests.git", "flutter_daily_perf", "$TARGET_BRANCH"]
     required: true
 
 # Customer Testing
