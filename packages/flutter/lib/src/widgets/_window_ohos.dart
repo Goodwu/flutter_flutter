@@ -9,7 +9,6 @@ import 'dart:convert' show utf8;
 import 'dart:ffi' hide Size;
 import 'dart:io';
 import 'dart:math' as math show max, min;
-import 'dart:typed_data';
 import 'dart:ui' show Display, FlutterView;
 
 import 'package:flutter/foundation.dart';
@@ -98,7 +97,7 @@ class WindowingOwnerOHOS extends WindowingOwner {
     String? title,
     bool decorated = true,
   }) {
-    final RegularWindowControllerOHOS controller = RegularWindowControllerOHOS(
+    final controller = RegularWindowControllerOHOS(
       owner: this,
       delegate: delegate,
       preferredSize: preferredSize,
@@ -118,7 +117,7 @@ class WindowingOwnerOHOS extends WindowingOwner {
     String? title,
     bool decorated = true,
   }) {
-    final DialogWindowControllerOHOS controller = DialogWindowControllerOHOS(
+    final controller = DialogWindowControllerOHOS(
       owner: this,
       delegate: delegate,
       preferredSize: preferredSize,
@@ -139,7 +138,7 @@ class WindowingOwnerOHOS extends WindowingOwner {
     required WindowPositioner positioner,
     required BaseWindowController parent,
   }) {
-    final TooltipWindowControllerOHOS controller = TooltipWindowControllerOHOS(
+    final controller = TooltipWindowControllerOHOS(
       owner: this,
       delegate: delegate,
       contentSizeConstraints: preferredConstraints,
@@ -159,7 +158,7 @@ class WindowingOwnerOHOS extends WindowingOwner {
     required WindowPositioner positioner,
     required BaseWindowController parent,
   }) {
-    final PopupWindowControllerOHOS controller = PopupWindowControllerOHOS(
+    final controller = PopupWindowControllerOHOS(
       owner: this,
       delegate: delegate,
       contentSizeConstraints: preferredConstraints,
@@ -307,13 +306,17 @@ mixin _WindowControllerMixin {
 ///
 /// {@macro flutter.widgets.windowing.experimental}
 class RegularWindowControllerOHOS extends RegularWindowController with _WindowControllerMixin {
+  /// Creates a new regular window controller for OHOS.
+  ///
+  /// When this constructor completes the native window has been created and
+  /// has a view associated with it.
   RegularWindowControllerOHOS({
     required WindowingOwnerOHOS owner,
     required RegularWindowControllerDelegate delegate,
     required Size? preferredSize,
     BoxConstraints? preferredConstraints,
     String? title,
-    bool decorated = true,
+    bool decorated = true, // ignore: avoid_unused_constructor_parameters
   }) : _delegate = delegate,
        super.empty() {
     _initController(owner);
@@ -465,6 +468,10 @@ class RegularWindowControllerOHOS extends RegularWindowController with _WindowCo
 ///
 /// {@macro flutter.widgets.windowing.experimental}
 class DialogWindowControllerOHOS extends DialogWindowController with _WindowControllerMixin {
+  /// Creates a new dialog window controller for OHOS.
+  ///
+  /// When this constructor completes the native window has been created and
+  /// has a view associated with it.
   DialogWindowControllerOHOS({
     required WindowingOwnerOHOS owner,
     required DialogWindowControllerDelegate delegate,
@@ -472,7 +479,7 @@ class DialogWindowControllerOHOS extends DialogWindowController with _WindowCont
     this.parent,
     BoxConstraints? preferredConstraints,
     String? title,
-    bool decorated = true,
+    bool decorated = true, // ignore: avoid_unused_constructor_parameters
   }) : _delegate = delegate,
        super.empty() {
     _initController(owner);
@@ -1264,7 +1271,7 @@ class _OHOSPlatformInterface {
   static Offset getWindowOffsetFromParent(Pointer<Void> windowHandle) {
     final Pointer<_Size> ffiOffset = _allocator<_Size>();
     _getOffsetFromParentPtr(windowHandle, ffiOffset);
-    final Offset result = Offset(ffiOffset.ref.width, ffiOffset.ref.height);
+    final result = Offset(ffiOffset.ref.width, ffiOffset.ref.height);
     _free(ffiOffset);
     return result;
   }

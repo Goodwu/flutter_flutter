@@ -209,8 +209,8 @@ void main() {
     'sdkNameAndVersion reports the system fullname verbatim',
     () async {
       final processManager = FakeProcessManager.list(<FakeCommand>[
-        FakeCommand(
-          command: const <String>['hdc', '-t', '123', 'shell', 'param', 'get'],
+        const FakeCommand(
+          command: <String>['hdc', '-t', '123', 'shell', 'param', 'get'],
           stdout:
               'const.product.name=HUAWEI Mate 70 Pro \r\n'
               'const.product.model=PLR-AL00\r\n'
@@ -243,8 +243,8 @@ void main() {
     'name falls back to the model code without a product name',
     () async {
       final processManager = FakeProcessManager.list(<FakeCommand>[
-        FakeCommand(
-          command: const <String>['hdc', '-t', '123', 'shell', 'param', 'get'],
+        const FakeCommand(
+          command: <String>['hdc', '-t', '123', 'shell', 'param', 'get'],
           stdout: 'const.product.model=PLR-AL00\r\nconst.product.cpu.abilist=arm64-v8a\r\n',
         ),
       ]);
@@ -301,8 +301,8 @@ void main() {
     'toJson reports the marketing name and stripped sdk version',
     () async {
       final processManager = FakeProcessManager.list(<FakeCommand>[
-        FakeCommand(
-          command: const <String>['hdc', '-t', '123', 'shell', 'param', 'get'],
+        const FakeCommand(
+          command: <String>['hdc', '-t', '123', 'shell', 'param', 'get'],
           stdout:
               'const.product.name=HUAWEI Mate 70 Pro\r\n'
               'const.product.model=PLR-AL00\r\n'
