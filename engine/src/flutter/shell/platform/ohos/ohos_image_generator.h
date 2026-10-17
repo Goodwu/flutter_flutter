@@ -67,7 +67,8 @@ class OHOSImageGenerator : public ImageGenerator {
  private:
   explicit OHOSImageGenerator(OH_ImageSourceNative* image_source,
                               const sk_sp<SkData>& data,
-                              bool unsupportedDmaEncodedData);
+                              bool unsupportedDmaEncodedData,
+                              int playCount);
 
  public:
   ~OHOSImageGenerator();
@@ -88,7 +89,7 @@ class OHOSImageGenerator : public ImageGenerator {
                  size_t row_bytes,
                  unsigned int frame_index,
                  std::optional<unsigned int> prior_frame) override;
-  
+
   uint32_t GetColorSpace(unsigned int frame_index) override;
 
 #if defined(FML_OS_OHOS) && IMPELLER_SUPPORTS_RENDERING
@@ -118,6 +119,9 @@ class OHOSImageGenerator : public ImageGenerator {
   float rotate_degree_ = 0.f;
   bool need_flip_ = false;
   uint32_t frame_count_ = 0;
+  // Total play count of the animated image parsed from the encoded data:
+  // 0 = infinite, >0 = total play count, -1 = unknown (not parsed).
+  int32_t play_count_ = -1;
   bool is_hdr_ = false;
   bool unsupported_dma_encoded_data_ = false;
   std::vector<int32_t> frame_time_duration_;
@@ -131,9 +135,8 @@ class OHOSImageGenerator : public ImageGenerator {
   std::map<uint32_t, uint32_t> cached_colorspaces_;
 
 #if defined(FML_OS_OHOS) && IMPELLER_SUPPORTS_RENDERING
-  bool CanCreateDmaPixelMap(
-      const SkISize& decodeDimensions,
-      std::optional<unsigned int> priorFrame) const;
+  bool CanCreateDmaPixelMap(const SkISize& decodeDimensions,
+                            std::optional<unsigned int> priorFrame) const;
 
   bool IsValidDmaPixelMap(const std::shared_ptr<PixelMapOHOS>& pixelmap,
                           const SkISize& decodeDimensions) const;
@@ -157,6 +160,13 @@ class OHOSImageGenerator : public ImageGenerator {
       IMAGE_ALLOCATOR_TYPE actualAllocator,
       int frameIndex,
       bool preferDma);
+
+  // Parses the total play count of an animated image from its encoded bytes:
+  // 0 = infinite, >0 = total play count, -1 = not a supported animation or
+  // the loop metadata cannot be parsed. Exposed for unit testing.
+  static int ParseEncodedPlayCount(const sk_sp<SkData>& data);
+  static int ParseGifLoopCount(const sk_sp<SkData>& data);
+  static int ParseWebpAnimLoopCount(const sk_sp<SkData>& data);
 
   bool IsValidImageData();
 

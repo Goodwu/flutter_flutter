@@ -40,8 +40,105 @@ const unsigned int ImageGenerator::kInfinitePlayCount;
 namespace testing {
 namespace {
 
+// Named constants for the values used to build container test data and the
+// expected results, so the tests document the wire format semantics.
+constexpr unsigned int kBitsPerByte = 8;
+constexpr size_t kLeUint32Bytes = 4;
+constexpr size_t kGifSignatureSize = 6;  // "GIF89a"
+// Wire loop counts. A GIF wire value N means N repeats after the first play
+// (N + 1 total plays); a WebP ANIM value is already the total play count.
+constexpr uint16_t kInfiniteLoop = 0;
+constexpr uint16_t kSingleRepeatWireValue = 1;
+constexpr uint16_t kTwoRepeatsWireValue = 2;
+constexpr uint16_t kFiveRepeatsWireValue = 5;
+constexpr uint16_t kSevenPlaysTotal = 7;
+// Expected total play counts.
+constexpr int kPlaysOnce = 1;
+constexpr int kSingleRepeatTotalPlays = 2;  // wire 1 -> 1 + 1 plays
+constexpr int kTwoRepeatsTotalPlays = 3;    // wire 2 -> 2 + 1 plays
+constexpr int kFiveRepeatsTotalPlays = 6;   // wire 5 -> 5 + 1 plays
+constexpr int kInfinitePlays = 0;
+constexpr int kUnknownPlays = -1;
+constexpr size_t kTruncatedAnimTailBytes = 3;
+
 sk_sp<SkData> Bytes(const std::vector<uint8_t>& bytes) {
   return SkData::MakeWithCopy(bytes.data(), bytes.size());
+}
+
+// Builds a minimal GIF byte stream: the GIF89a header, a placeholder
+// logical screen descriptor, and an optional NETSCAPE2.0 / ANIMEXTS1.0
+// application extension (a null app_id means no looping extension).
+std::vector<uint8_t> MakeGifBytes(const char* app_id, uint16_t loop) {
+  std::vector<uint8_t> bytes = {'G', 'I', 'F', '8', '9', 'a'};
+  const uint8_t kDescriptor[] = {0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00};
+  bytes.insert(bytes.end(), kDescriptor, kDescriptor + sizeof(kDescriptor));
+  if (app_id != nullptr) {
+    const uint8_t kExtHeader[] = {0x21, 0xFF, 0x0B};
+    bytes.insert(bytes.end(), kExtHeader, kExtHeader + sizeof(kExtHeader));
+    while (*app_id != '\0') {
+      bytes.push_back(static_cast<uint8_t>(*app_id++));
+    }
+    bytes.push_back(0x03);
+    bytes.push_back(0x01);
+    bytes.push_back(static_cast<uint8_t>(loop & 0xFF));
+    bytes.push_back(static_cast<uint8_t>(loop >> kBitsPerByte));
+    bytes.push_back(0x00);
+  }
+  bytes.push_back(0x3B);  // trailer
+  return bytes;
+}
+
+// Inserts a comment extension containing the "NETSCAPE2.0" text as a decoy
+// before the real extension, to verify that only a structurally valid
+// application extension is recognized.
+std::vector<uint8_t> MakeGifWithDecoy() {
+  std::vector<uint8_t> bytes = {'G', 'I', 'F', '8', '9', 'a'};
+  const char kDecoyText[] = "see NETSCAPE2.0 here";
+  bytes.push_back(0x21);
+  bytes.push_back(0xFE);  // comment extension
+  bytes.push_back(static_cast<uint8_t>(sizeof(kDecoyText) - 1));
+  bytes.insert(bytes.end(), kDecoyText, kDecoyText + sizeof(kDecoyText) - 1);
+  bytes.push_back(0x00);
+  const auto real = MakeGifBytes("NETSCAPE2.0", kTwoRepeatsWireValue);
+  bytes.insert(bytes.end(), real.begin() + kGifSignatureSize, real.end());
+  return bytes;
+}
+
+// Builds a minimal WebP: a RIFF/WEBP container with a VP8X chunk and an
+// optional ANIM chunk.
+std::vector<uint8_t> MakeWebpBytes(uint16_t loop, bool with_anim = true) {
+  auto push_chunk = [](std::vector<uint8_t>& out, const char* tag,
+                       const std::vector<uint8_t>& payload) {
+    out.insert(out.end(), tag, tag + 4);
+    const uint32_t size = static_cast<uint32_t>(payload.size());
+    for (size_t i = 0; i < kLeUint32Bytes; ++i) {
+      out.push_back(static_cast<uint8_t>((size >> (kBitsPerByte * i)) & 0xFF));
+    }
+    out.insert(out.end(), payload.begin(), payload.end());
+    if (size & 1) {
+      out.push_back(0x00);  // RIFF chunks are padded to even sizes
+    }
+  };
+
+  std::vector<uint8_t> body = {'W', 'E', 'B', 'P'};
+  push_chunk(body, "VP8X", {0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+  if (with_anim) {
+    const std::vector<uint8_t> anim = {
+        0,
+        0,
+        0,
+        0,  // background color
+        static_cast<uint8_t>(loop & 0xFF),
+        static_cast<uint8_t>(loop >> kBitsPerByte)};
+    push_chunk(body, "ANIM", anim);
+  }
+  std::vector<uint8_t> bytes = {'R', 'I', 'F', 'F'};
+  const uint32_t size = static_cast<uint32_t>(body.size());
+  for (size_t i = 0; i < kLeUint32Bytes; ++i) {
+    bytes.push_back(static_cast<uint8_t>((size >> (kBitsPerByte * i)) & 0xFF));
+  }
+  bytes.insert(bytes.end(), body.begin(), body.end());
+  return bytes;
 }
 
 sk_sp<SkData> RealPngData() {
@@ -404,7 +501,17 @@ TEST_F(OHOSImageGeneratorTest, GetPlayCountAndFrameInfo) {
   EXPECT_EQ(generator->GetPlayCount(), 1u);
   generator->frame_count_ = 3;
   EXPECT_EQ(generator->GetPlayCount(), ImageGenerator::kInfinitePlayCount);
+  generator->play_count_ = kTwoRepeatsTotalPlays;
+  EXPECT_EQ(generator->GetPlayCount(), 3u);
+  generator->play_count_ = kSingleRepeatTotalPlays;
+  EXPECT_EQ(generator->GetPlayCount(), 2u);
+  generator->play_count_ = kInfinitePlays;
+  EXPECT_EQ(generator->GetPlayCount(), ImageGenerator::kInfinitePlayCount);
+  generator->play_count_ = kUnknownPlays;
+  EXPECT_EQ(generator->GetPlayCount(), ImageGenerator::kInfinitePlayCount);
+  generator->play_count_ = kTwoRepeatsTotalPlays;
   generator->frame_count_ = 1;
+  EXPECT_EQ(generator->GetPlayCount(), 1u);
 
   generator->frame_time_duration_ = {16, -5};
   EXPECT_EQ(generator->GetFrameInfo(0).duration, 16u);
@@ -568,6 +675,86 @@ TEST_F(OHOSImageGeneratorTest, CreateExternalTextureSourceConsistency) {
     EXPECT_NO_FATAL_FAILURE(generator->CreateExternalTextureSource(
         SkISize::Make(2, 2), 0, std::nullopt));
   }
+}
+
+// ===== Animation loop count parsing (pure functions, no device required) =====
+
+TEST_F(OHOSImageGeneratorTest, ParseEncodedPlayCountGifScenarios) {
+  // A NETSCAPE2.0 wire loop count N means "repeat N times after the first
+  // play", so the total play count is N + 1.
+  const auto netscape_two_repeats =
+      Bytes(MakeGifBytes("NETSCAPE2.0", kTwoRepeatsWireValue));
+  EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(netscape_two_repeats),
+            kTwoRepeatsTotalPlays);
+  const auto netscape_single_repeat =
+      Bytes(MakeGifBytes("NETSCAPE2.0", kSingleRepeatWireValue));
+  EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(netscape_single_repeat),
+            kSingleRepeatTotalPlays);
+  // A loop count of 0 means infinite.
+  const auto netscape_infinite =
+      Bytes(MakeGifBytes("NETSCAPE2.0", kInfiniteLoop));
+  EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(netscape_infinite),
+            kInfinitePlays);
+  // Without a looping extension every frame plays exactly once (matching the
+  // Skia path).
+  const auto no_extension = Bytes(MakeGifBytes(nullptr, 0));
+  EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(no_extension),
+            kPlaysOnce);
+  // ANIMEXTS1.0 is an equivalent alternative application identifier.
+  const auto animexts_two_repeats =
+      Bytes(MakeGifBytes("ANIMEXTS1.0", kTwoRepeatsWireValue));
+  EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(animexts_two_repeats),
+            kTwoRepeatsTotalPlays);
+  // Truncated data with only the file signature is treated as having no
+  // extension.
+  const auto signature_only =
+      Bytes(std::vector<uint8_t>{'G', 'I', 'F', '8', '9', 'a'});
+  EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(signature_only),
+            kPlaysOnce);
+  // The "NETSCAPE2.0" text inside a comment extension must not be mistaken
+  // for a looping extension.
+  const auto decoy = Bytes(MakeGifWithDecoy());
+  EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(decoy),
+            kTwoRepeatsTotalPlays);
+}
+
+TEST_F(OHOSImageGeneratorTest, ParseEncodedPlayCountWebpScenarios) {
+  // The WebP ANIM loop count is the total play count (0 = infinite).
+  const auto webp_two_repeats = Bytes(MakeWebpBytes(kTwoRepeatsWireValue));
+  EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(webp_two_repeats),
+            kTwoRepeatsWireValue);
+  const auto webp_single_repeat = Bytes(MakeWebpBytes(kSingleRepeatWireValue));
+  EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(webp_single_repeat),
+            kSingleRepeatWireValue);
+  const auto webp_infinite = Bytes(MakeWebpBytes(kInfiniteLoop));
+  EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(webp_infinite),
+            kInfinitePlays);
+  // A static WebP without an ANIM chunk is not animated.
+  const auto static_webp = Bytes(MakeWebpBytes(kTwoRepeatsWireValue, false));
+  EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(static_webp),
+            kUnknownPlays);
+  // A truncated ANIM chunk is treated as unknown.
+  auto truncated = MakeWebpBytes(kTwoRepeatsWireValue);
+  truncated.resize(truncated.size() - kTruncatedAnimTailBytes);
+  EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(Bytes(truncated)),
+            kUnknownPlays);
+  // Non-animated format (PNG signature).
+  const uint8_t kPng[] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+  const auto png_bytes = Bytes(std::vector<uint8_t>(kPng, kPng + sizeof(kPng)));
+  EXPECT_EQ(OHOSImageGenerator::ParseEncodedPlayCount(png_bytes),
+            kUnknownPlays);
+}
+
+// Directly exercise the two format-specific parsers (exposed as members for
+// testing).
+TEST_F(OHOSImageGeneratorTest, ParseGifAndWebpLoopCountDirect) {
+  const auto gif_five_repeats =
+      Bytes(MakeGifBytes("NETSCAPE2.0", kFiveRepeatsWireValue));
+  EXPECT_EQ(OHOSImageGenerator::ParseGifLoopCount(gif_five_repeats),
+            kFiveRepeatsTotalPlays);
+  const auto webp_seven_plays = Bytes(MakeWebpBytes(kSevenPlaysTotal));
+  EXPECT_EQ(OHOSImageGenerator::ParseWebpAnimLoopCount(webp_seven_plays),
+            kSevenPlaysTotal);
 }
 
 }  // namespace testing
