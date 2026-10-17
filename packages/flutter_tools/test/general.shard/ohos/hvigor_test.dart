@@ -21,7 +21,7 @@ import '../../src/context.dart';
 void main() {
   group('setHcppEnableFlag', () {
     testUsingContext('updates an existing enable_ohos_hybrid_composition entry', () async {
-      final _BuildInfoHarness harness = _BuildInfoHarness.create();
+      final harness = _BuildInfoHarness.create();
       harness.writeBuildInfo(<Map<String, Object?>>[
         <String, Object?>{'name': 'enable_impeller', 'value': 'true'},
         <String, Object?>{'name': 'enable_ohos_hybrid_composition', 'value': 'false'},
@@ -36,7 +36,7 @@ void main() {
     });
 
     testUsingContext('appends enable_ohos_hybrid_composition when the entry is missing', () async {
-      final _BuildInfoHarness harness = _BuildInfoHarness.create();
+      final harness = _BuildInfoHarness.create();
       harness.writeBuildInfo(<Map<String, Object?>>[
         <String, Object?>{'name': 'enable_impeller', 'value': 'true'},
       ]);
@@ -50,7 +50,7 @@ void main() {
     });
 
     testUsingContext('writes false when enableHcppFlag is false', () async {
-      final _BuildInfoHarness harness = _BuildInfoHarness.create();
+      final harness = _BuildInfoHarness.create();
       harness.writeBuildInfo(<Map<String, Object?>>[
         <String, Object?>{'name': 'enable_ohos_hybrid_composition', 'value': 'true'},
       ]);
@@ -61,7 +61,7 @@ void main() {
     });
 
     testUsingContext('throws when buildinfo.json5 is missing', () async {
-      final _BuildInfoHarness harness = _BuildInfoHarness.create();
+      final harness = _BuildInfoHarness.create();
 
       await expectLater(
         setHcppEnableFlag(harness.project, _ohosBuildInfo(enableHcpp: true)),
@@ -76,7 +76,7 @@ void main() {
 
   group('setImpellerEnableFlag', () {
     testUsingContext('updates an existing enable_impeller entry', () async {
-      final _BuildInfoHarness harness = _BuildInfoHarness.create();
+      final harness = _BuildInfoHarness.create();
       harness.writeBuildInfo(<Map<String, Object?>>[
         <String, Object?>{'name': 'enable_impeller', 'value': 'false'},
       ]);
@@ -87,7 +87,7 @@ void main() {
     });
 
     testUsingContext('does not append enable_impeller when the entry is missing', () async {
-      final _BuildInfoHarness harness = _BuildInfoHarness.create();
+      final harness = _BuildInfoHarness.create();
       harness.writeBuildInfo(<Map<String, Object?>>[
         <String, Object?>{'name': 'enable_ohos_hybrid_composition', 'value': 'false'},
       ]);
