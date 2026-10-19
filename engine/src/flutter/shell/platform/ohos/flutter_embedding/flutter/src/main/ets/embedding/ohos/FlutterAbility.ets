@@ -98,6 +98,9 @@ export class FlutterAbility extends UIAbility implements Host {
     this.delegate = new FlutterAbilityAndEntryDelegate(this);
     this?.delegate?.onAttach(this.context);
     Log.i(TAG, 'onAttach end');
+    // Sync the system font weight scale on cold start, mirroring onConfigurationUpdate
+    this.delegate?.getFlutterNapi()?.setFontWeightScale(this.context.config.fontWeightScale == undefined ? 0 :
+    this.context.config.fontWeightScale);
     this?.delegate?.platformPlugin?.setUIAbilityContext(this.context);
     this?.delegate?.onRestoreInstanceState(want);
 
