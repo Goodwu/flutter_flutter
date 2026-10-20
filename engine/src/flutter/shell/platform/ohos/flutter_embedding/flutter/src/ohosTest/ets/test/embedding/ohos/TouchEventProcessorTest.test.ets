@@ -8,6 +8,7 @@ import { describe, it, expect, Level } from '@ohos/hypium';
 import TouchEventProcessor from '../../../../../main/ets/embedding/ohos/TouchEventProcessor';
 import Any from '../../../../../main/ets/plugin/common/Any';
 import { CustomTouchEvent, CustomTouchObject } from '../../../../../main/ets/plugin/platform/CustomTouchEvent';
+import display from '@ohos.display';
 
 function makeTouch(x: number, y: number): CustomTouchObject {
   return new CustomTouchObject(
@@ -282,6 +283,95 @@ export default function touchEventProcessorTest() {
       let threw = false;
       try { proc.constructMouseEvent([], 0, 0); } catch (e) { threw = true; }
       expect(threw).assertEqual(false);
+    });
+  });
+
+  // ===== Supplement (2026-08-29): packet decoding, dispatch paths and hit tests =====
+
+  /**
+   * Builds a single-point touch packet. Layout mirrors decodeTouchPacket:
+   * numPoint, changed id/screenX/screenY/x/y/type/size/force/deviceId/timeStamp,
+   * then per point id/x/y/localX/localY/type/size/force/deviceId/isPx,
+   * then toolType/tiltX/tiltY.
+   */
+  const mkTouchStrings = (density: number, type: string): Array<string> => {
+    const arr: Array<string> = [
+      '1',                                  // numPoint
+      '7',                                  // changed id
+      String(100 * density),                // changed screenX (px)
+      String(50 * density),                 // changed screenY (px)
+      String((30 + 10) * density),          // changed x (px, left=10)
+      String((40 + 20) * density),          // changed y (px, top=20)
+      type,                                 // changed type
+      '1.5',                                // changed size
+      '0.6',                                // changed force
+      '9',                                  // changed deviceId
+      '12345',                              // changed timeStamp
+      '7',                                  // point id
+      String((25 + 10) * density),          // point x (px)
+      String((35 + 20) * density),          // point y (px)
+      String((25 + 10) * density),          // point local x (px, left=10)
+      String((35 + 20) * density),          // point local y (px, top=20)
+      type,                                 // point type
+      '1.5',                                // point size
+      '0.6',                                // point force
+      '9',                                  // point deviceId
+      '1',                                  // point isPx flag
+      '2',                                  // toolType
+      '3',                                  // tiltX
+      '4'                                   // tiltY
+    ];
+    return arr;
+  };
+
+  describe('TouchEventProcessor.constructCustomTouchEvent', () => {
+    it('parses a single-point packet into a CustomTouchEvent', Level.LEVEL0, () => {
+      const density: number = display.getDefaultDisplaySync().densityPixels;
+      const strings = mkTouchStrings(density, '0');
+      const evt: CustomTouchEvent = TouchEventProcessor.getInstance().constructCustomTouchEvent(strings, 20, 10);
+      expect(evt.type).assertEqual(0);
+      expect(evt.changedTouches.length).assertEqual(1);
+      expect(evt.touches.length).assertEqual(1);
+      expect(evt.touches[0].id).assertEqual(7);
+      expect(Math.abs(evt.touches[0].x - 25) < 1e-6).assertEqual(true);
+      expect(Math.abs(evt.touches[0].y - 35) < 1e-6).assertEqual(true);
+      expect(Math.abs(evt.pressure - 0.6) < 1e-6).assertEqual(true);
+      expect(evt.tiltX).assertEqual(3);
+      expect(evt.tiltY).assertEqual(4);
+      expect(evt.sourceTool).assertEqual(2);
+    });
+
+    it('parses the non-px flag variant without changing local coordinates', Level.LEVEL0, () => {
+      const density: number = display.getDefaultDisplaySync().densityPixels;
+      const strings = mkTouchStrings(density, '1');
+      strings[20] = '0';
+      const evt: CustomTouchEvent = TouchEventProcessor.getInstance().constructCustomTouchEvent(strings, 20, 10);
+      expect(evt.type).assertEqual(1);
+      expect(Math.abs(evt.touches[0].x - 25) < 1e-6).assertEqual(true);
+    });
+
+    // On windowed devices (e.g. desktops) the packet's screenX/screenY
+    // are window-relative (modal title bar origin) while x/y are
+    // XComponent-relative, so the global fields must be derived from the
+    // local x/y plus the view offset instead of the packet screenX/screenY.
+    it('derives global coordinates from local x/y plus the view offset', Level.LEVEL0, () => {
+      const density: number = display.getDefaultDisplaySync().densityPixels;
+      const strings = mkTouchStrings(density, '0');
+      const evt: CustomTouchEvent = TouchEventProcessor.getInstance().constructCustomTouchEvent(strings, 20, 10);
+      // changed point: local (30, 40) + view offset (10, 20) = (40, 60)
+      expect(Math.abs(evt.changedTouches[0].displayX - 40) < 1e-6).assertEqual(true);
+      expect(Math.abs(evt.changedTouches[0].displayY - 60) < 1e-6).assertEqual(true);
+      expect(Math.abs(evt.changedTouches[0].windowX - 40) < 1e-6).assertEqual(true);
+      expect(Math.abs(evt.changedTouches[0].windowY - 60) < 1e-6).assertEqual(true);
+      expect(Math.abs(evt.changedTouches[0].screenX - 40) < 1e-6).assertEqual(true);
+      expect(Math.abs(evt.changedTouches[0].screenY - 60) < 1e-6).assertEqual(true);
+      // touch point: local (25, 35) + view offset (10, 20) = (35, 55)
+      expect(Math.abs(evt.touches[0].displayX - 35) < 1e-6).assertEqual(true);
+      expect(Math.abs(evt.touches[0].displayY - 55) < 1e-6).assertEqual(true);
+      expect(Math.abs(evt.touches[0].windowX - 35) < 1e-6).assertEqual(true);
+      expect(Math.abs(evt.touches[0].windowY - 55) < 1e-6).assertEqual(true);
+      expect(Math.abs(evt.touches[0].screenX - 35) < 1e-6).assertEqual(true);
+      expect(Math.abs(evt.touches[0].screenY - 55) < 1e-6).assertEqual(true);
     });
   });
 
