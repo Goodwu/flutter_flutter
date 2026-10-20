@@ -324,7 +324,8 @@ def main():
     """Main entry point.
 
     Usage: runner.py <stage>
-      stage - preparation | compilation | test | integration | customer
+      stage - preparation | compilation | test | integration_gate |
+              daily_integration | daily_memory | daily_perf | customer
     """
     if len(sys.argv) > 1:
         stage = sys.argv[1]

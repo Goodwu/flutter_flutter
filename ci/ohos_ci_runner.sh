@@ -9,11 +9,14 @@
 # appropriate stage name based on the sub-command provided.
 #
 # Usage: sh ./third_party/flutter_flutter/ci/ohos_ci_runner.sh <stage>
-#   stage: prepare    -> preparation
-#          compile    -> compilation
-#          test       -> test
-#          integration-> integration
-#          customer   -> customer
+#   stage: prepare           -> preparation
+#          compile           -> compilation
+#          test              -> test
+#          integration_gate  -> integration_gate
+#          daily_integration -> daily_integration
+#          daily_memory      -> daily_memory
+#          daily_perf        -> daily_perf
+#          customer          -> customer
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER="$SCRIPT_DIR/scripts/runner.py"
@@ -22,7 +25,7 @@ STAGE="$1"
 
 if [[ -z "$STAGE" ]]; then
     echo "[ERROR] Stage not provided"
-    echo "Usage: $0 <prepare|compile|test|integration|customer>"
+    echo "Usage: $0 <prepare|compile|test|integration_gate|daily_integration|daily_memory|daily_perf|customer>"
     exit 1
 fi
 
@@ -36,15 +39,24 @@ case "$STAGE" in
     test)
         STAGE="test"
         ;;
-    integration)
-        STAGE="integration"
+    integration_gate)
+        STAGE="integration_gate"
+        ;;
+    daily_integration)
+        STAGE="daily_integration"
+        ;;
+    daily_memory)
+        STAGE="daily_memory"
+        ;;
+    daily_perf)
+        STAGE="daily_perf"
         ;;
     customer)
         STAGE="customer"
         ;;
     *)
         echo "[ERROR] Unknown stage: $STAGE"
-        echo "Usage: $0 <prepare|compile|test|integration|customer>"
+        echo "Usage: $0 <prepare|compile|test|integration_gate|daily_integration|daily_memory|daily_perf|customer>"
         exit 1
         ;;
 esac
