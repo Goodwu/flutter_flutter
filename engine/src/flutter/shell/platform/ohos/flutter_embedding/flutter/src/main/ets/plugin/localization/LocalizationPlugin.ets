@@ -91,11 +91,37 @@ export default class LocalizationPlugin {
   }
 
   /**
-   * Sends the system locale to Flutter.
+   * Sends the preferred language list to Flutter.
+   * A language that already has a region keeps it. A language without a region
+   * gets the current system region, matching the list iOS puts in preferredLanguages.
    */
   sendLocaleToFlutter(): void {
-    let preferredLocales: Array<string> = i18n.System.getPreferredLanguageList();
-    this.localizationChannel.sendLocales(preferredLocales);
+    let languages: Array<string> = i18n.System.getPreferredLanguageList();
+    let data: Array<string> = [];
+    if (languages.length === 0) {
+      data.push(i18n.System.getSystemLocale());
+    } else {
+      let systemRegion: string = i18n.System.getSystemRegion();
+      for (let i = 0; i < languages.length; i++) {
+        data.push(this.languageIdWithRegion(languages[i], systemRegion));
+      }
+    }
+    this.localizationChannel.sendLocales(data);
+  }
+
+  /**
+   * Returns the language id unchanged when it already has a region.
+   * Otherwise appends systemRegion, keeping the script when one is present.
+   */
+  private languageIdWithRegion(languageId: string, systemRegion: string): string {
+    let locale: intl.Locale = new intl.Locale(languageId);
+    if (systemRegion.length === 0 || locale.language.length === 0 || locale.region.length > 0) {
+      return languageId;
+    }
+    if (locale.script.length > 0) {
+      return locale.language + '-' + locale.script + '-' + systemRegion;
+    }
+    return locale.language + '-' + systemRegion;
   }
 
   /**
