@@ -97,14 +97,10 @@ export default class LocalizationPlugin {
    */
   sendLocaleToFlutter(): void {
     let languages: Array<string> = i18n.System.getPreferredLanguageList();
+    let systemRegion: string = i18n.System.getSystemRegion();
     let data: Array<string> = [];
-    if (languages.length === 0) {
-      data.push(i18n.System.getSystemLocale());
-    } else {
-      let systemRegion: string = i18n.System.getSystemRegion();
-      for (let i = 0; i < languages.length; i++) {
-        data.push(this.languageIdWithRegion(languages[i], systemRegion));
-      }
+    for (let i = 0; i < languages.length; i++) {
+      data.push(this.languageIdWithRegion(languages[i], systemRegion));
     }
     this.localizationChannel.sendLocales(data);
   }
