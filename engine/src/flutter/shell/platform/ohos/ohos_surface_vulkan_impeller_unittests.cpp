@@ -27,8 +27,9 @@ namespace flutter {
 namespace testing {
 namespace {
 
+char kFakeNativeWindowStorage;
 OHNativeWindow* const kFakeNativeWindow =
-    reinterpret_cast<OHNativeWindow*>(0x1100);
+    reinterpret_cast<OHNativeWindow*>(&kFakeNativeWindowStorage);
 
 class QuietLogs {
  public:
