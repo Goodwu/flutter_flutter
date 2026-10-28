@@ -17,6 +17,8 @@
 #          daily_memory      -> daily_memory
 #          daily_perf        -> daily_perf
 #          customer          -> customer
+#          mac_arm64_build   -> mac arm64 build & package; add --publish to
+#                               also upload to OBS (default: no upload)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER="$SCRIPT_DIR/scripts/runner.py"
@@ -25,7 +27,7 @@ STAGE="$1"
 
 if [[ -z "$STAGE" ]]; then
     echo "[ERROR] Stage not provided"
-    echo "Usage: $0 <prepare|compile|test|integration_gate|daily_integration|daily_memory|daily_perf|customer>"
+    echo "Usage: $0 <prepare|compile|test|integration_gate|daily_integration|daily_memory|daily_perf|customer|mac_arm64_build>"
     exit 1
 fi
 
@@ -54,9 +56,31 @@ case "$STAGE" in
     customer)
         STAGE="customer"
         ;;
+    mac_arm64_build|mac-arm64-build)
+        STAGE="mac_arm64_build"
+        # One shared log dir per pipeline run: every mac_arm64 step writes
+        # its logs into engine/outputs/mac_arm64/<run-id>/
+        MAC_ARM64_RUN_ID="$(date +%Y%m%d-%H%M%S)"
+        export MAC_ARM64_RUN_ID
+        # Publishing is opt-in: only --publish uploads to OBS. Always set the
+        # flag explicitly so a stale value in the environment cannot leak in.
+        MAC_ARM64_PUBLISH=0
+        for arg in "${@:2}"; do
+            case "$arg" in
+                --publish)
+                    MAC_ARM64_PUBLISH=1
+                    ;;
+                *)
+                    echo "[ERROR] Unknown option '$arg' (only --publish is supported)"
+                    exit 1
+                    ;;
+            esac
+        done
+        export MAC_ARM64_PUBLISH
+        ;;
     *)
         echo "[ERROR] Unknown stage: $STAGE"
-        echo "Usage: $0 <prepare|compile|test|integration_gate|daily_integration|daily_memory|daily_perf|customer>"
+        echo "Usage: $0 <prepare|compile|test|integration_gate|daily_integration|daily_memory|daily_perf|customer|mac_arm64_build>"
         exit 1
         ;;
 esac
