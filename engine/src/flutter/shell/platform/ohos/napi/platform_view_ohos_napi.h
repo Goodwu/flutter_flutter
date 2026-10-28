@@ -65,20 +65,21 @@ class PlatformViewOHOSNapi {
   void FlutterViewOnPreEngineRestart();
 
   void OnDisplayPlatformViewHybrid(int64_t view_id,
+                                   double x,
+                                   double y,
+                                   double width,
+                                   double height,
+                                   double view_width,
+                                   double view_height);
+
+  void OnDisplayOverlayHybrid(int64_t view_id,
                               double x,
                               double y,
                               double width,
-                              double height,
-                              double view_width,
-                              double view_height);
+                              double height);
 
-  void OnDisplayOverlayHybrid(int64_t view_id,
-                         double x,
-                         double y,
-                         double width,
-                         double height);
-
-  void OnDisplayMutatorsHybrid(int64_t view_id, const std::vector<double>& data);
+  void OnDisplayMutatorsHybrid(int64_t view_id,
+                               const std::vector<double>& data);
 
   void HidePlatformViewHybrid(int64_t view_id);
 
@@ -128,6 +129,7 @@ class PlatformViewOHOSNapi {
   // moves the sub-window. Unknown/archetype-mismatched views no-op on the
   // ETS side.
   void UpdateTooltipPosition(int64_t view_id);
+  void UpdatePopupPosition(int64_t view_id);
 
   // Content-size report for a sized-to-content view, win32
   // FlutterWindowsViewSizingDelegate::DidUpdateViewSize parity, fired by the

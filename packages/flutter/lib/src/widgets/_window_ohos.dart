@@ -8,7 +8,6 @@
 import 'dart:convert' show utf8;
 import 'dart:ffi' hide Size;
 import 'dart:io';
-import 'dart:math' as math show max, min;
 import 'dart:ui' show Display, FlutterView;
 
 import 'package:flutter/foundation.dart';
@@ -595,34 +594,6 @@ class DialogWindowControllerOHOS extends DialogWindowController with _WindowCont
   final DialogWindowControllerDelegate _delegate;
 }
 
-Rect _flushConstraintAdjustments(
-  Rect rect,
-  Rect displayRect,
-  WindowPositionerConstraintAdjustment adjustment,
-) {
-  double left = rect.left;
-  double top = rect.top;
-  double right = rect.right;
-  double bottom = rect.bottom;
-  if (adjustment.slideX && rect.width < displayRect.width) {
-    left = math.max(math.min(rect.left, displayRect.right - rect.width), displayRect.left);
-    right = left + rect.width;
-  }
-  if (adjustment.slideY && rect.height < displayRect.height) {
-    top = math.max(math.min(rect.top, displayRect.bottom - rect.height), displayRect.top);
-    bottom = top + rect.height;
-  }
-  if (adjustment.resizeX) {
-    left = math.max(left, displayRect.left);
-    right = math.min(right, displayRect.right);
-  }
-  if (adjustment.resizeY) {
-    top = math.max(top, displayRect.top);
-    bottom = math.min(bottom, displayRect.bottom);
-  }
-  return Rect.fromLTRB(left, top, right, bottom);
-}
-
 /// OHOS specific implementation of [TooltipWindowController].
 ///
 /// {@macro flutter.widgets.windowing.experimental}
@@ -699,29 +670,27 @@ class TooltipWindowControllerOHOS extends TooltipWindowController with _WindowCo
   ) {
     super._handleOnGetWindowPosition(childSize, parentRect, outputRect);
     final Pointer<_Rect> result = _allocator.allocate<_Rect>(sizeOf<_Rect>());
-    final Rect targetRect;
     try {
-      final displayRect = Rect.fromLTWH(
-        outputRect.ref.left,
-        outputRect.ref.top,
-        outputRect.ref.width,
-        outputRect.ref.height,
+      final double scale = rootView.devicePixelRatio == 0 ? 1.0 : rootView.devicePixelRatio;
+      final Rect scaledAnchorRect = Rect.fromLTWH(
+        _anchorRect.left * scale,
+        _anchorRect.top * scale,
+        _anchorRect.width * scale,
+        _anchorRect.height * scale,
       );
-      targetRect = _flushConstraintAdjustments(
-        _positioner.placeWindow(
-          childSize: Size(childSize.ref.width, childSize.ref.height),
-          anchorRect: _anchorRect.translate(parentRect.ref.left, parentRect.ref.top),
-          parentRect: Rect.fromLTWH(
-            parentRect.ref.left,
-            parentRect.ref.top,
-            parentRect.ref.width,
-            parentRect.ref.height,
-          ),
-          displayRect: displayRect,
-        ),
-        displayRect,
-        _positioner.constraintAdjustment,
+      final WindowPositioner scaledPositioner = _positioner.copyWith(
+        offset: _positioner.offset * scale,
       );
+      final Rect targetRect = scaledPositioner.placeWindow(
+        childSize: childSize.ref.toSize(),
+        anchorRect: scaledAnchorRect.translate(parentRect.ref.left, parentRect.ref.top),
+        parentRect: parentRect.ref.toRect(),
+        displayRect: outputRect.ref.toRect(),
+      );
+      result.ref.left = targetRect.left;
+      result.ref.top = targetRect.top;
+      result.ref.width = targetRect.width;
+      result.ref.height = targetRect.height;
     } catch (error, stackTrace) {
       _allocator.free(result);
       FlutterError.reportError(
@@ -736,10 +705,6 @@ class TooltipWindowControllerOHOS extends TooltipWindowController with _WindowCo
       );
       return Pointer<_Rect>.fromAddress(0);
     }
-    result.ref.left = targetRect.left;
-    result.ref.top = targetRect.top;
-    result.ref.width = targetRect.width;
-    result.ref.height = targetRect.height;
     return result;
   }
 
@@ -856,6 +821,7 @@ class PopupWindowControllerOHOS extends PopupWindowController with _WindowContro
     if (positioner != null) {
       _positioner = positioner;
     }
+    _OHOSPlatformInterface.updatePopupWindowPosition(getWindowHandle());
   }
 
   @override
@@ -866,29 +832,27 @@ class PopupWindowControllerOHOS extends PopupWindowController with _WindowContro
   ) {
     super._handleOnGetWindowPosition(childSize, parentRect, outputRect);
     final Pointer<_Rect> result = _allocator.allocate<_Rect>(sizeOf<_Rect>());
-    final Rect targetRect;
     try {
-      final displayRect = Rect.fromLTWH(
-        outputRect.ref.left,
-        outputRect.ref.top,
-        outputRect.ref.width,
-        outputRect.ref.height,
+      final double scale = rootView.devicePixelRatio == 0 ? 1.0 : rootView.devicePixelRatio;
+      final Rect scaledAnchorRect = Rect.fromLTWH(
+        _anchorRect.left * scale,
+        _anchorRect.top * scale,
+        _anchorRect.width * scale,
+        _anchorRect.height * scale,
       );
-      targetRect = _flushConstraintAdjustments(
-        _positioner.placeWindow(
-          childSize: Size(childSize.ref.width, childSize.ref.height),
-          anchorRect: _anchorRect.translate(parentRect.ref.left, parentRect.ref.top),
-          parentRect: Rect.fromLTWH(
-            parentRect.ref.left,
-            parentRect.ref.top,
-            parentRect.ref.width,
-            parentRect.ref.height,
-          ),
-          displayRect: displayRect,
-        ),
-        displayRect,
-        _positioner.constraintAdjustment,
+      final WindowPositioner scaledPositioner = _positioner.copyWith(
+        offset: _positioner.offset * scale,
       );
+      final Rect targetRect = scaledPositioner.placeWindow(
+        childSize: childSize.ref.toSize(),
+        anchorRect: scaledAnchorRect.translate(parentRect.ref.left, parentRect.ref.top),
+        parentRect: parentRect.ref.toRect(),
+        displayRect: outputRect.ref.toRect(),
+      );
+      result.ref.left = targetRect.left;
+      result.ref.top = targetRect.top;
+      result.ref.width = targetRect.width;
+      result.ref.height = targetRect.height;
     } catch (error, stackTrace) {
       _allocator.free(result);
       FlutterError.reportError(
@@ -903,10 +867,6 @@ class PopupWindowControllerOHOS extends PopupWindowController with _WindowContro
       );
       return Pointer<_Rect>.fromAddress(0);
     }
-    result.ref.left = targetRect.left;
-    result.ref.top = targetRect.top;
-    result.ref.width = targetRect.width;
-    result.ref.height = targetRect.height;
     return result;
   }
 
@@ -953,6 +913,7 @@ typedef _SetConstraintsNative = Void Function(Pointer<Void>, Pointer<_Constraint
 typedef _SetTitleNative = Void Function(Pointer<Void>, Pointer<_Utf8>);
 typedef _ActivateNative = Void Function(Pointer<Void>);
 typedef _UpdateTooltipPositionNative = Void Function(Pointer<Void>);
+typedef _UpdatePopupPositionNative = Void Function(Pointer<Void>);
 typedef _SetMaximizedNative = Void Function(Pointer<Void>, Bool);
 typedef _SetMinimizedNative = Void Function(Pointer<Void>, Bool);
 typedef _SetFullscreenNative = Void Function(Pointer<Void>, Bool);
@@ -1226,6 +1187,14 @@ class _OHOSPlatformInterface {
   static void updateTooltipWindowPosition(Pointer<Void> windowHandle) =>
       _updateTooltipPositionPtr(windowHandle);
 
+  static final void Function(Pointer<Void>) _updatePopupPositionPtr = _flutterLib
+      .lookupFunction<_UpdatePopupPositionNative, void Function(Pointer<Void>)>(
+        'InternalFlutter_Window_UpdatePopupPosition',
+      );
+
+  static void updatePopupWindowPosition(Pointer<Void> windowHandle) =>
+      _updatePopupPositionPtr(windowHandle);
+
   // Route to the InternalFlutter_Window_Set{Maximized,Minimized,Fullscreen}
   // FFI symbols, which dispatch to the ETS host window APIs.
   static final void Function(Pointer<Void>, bool) _setWindowMaximizedPtr = _flutterLib
@@ -1306,6 +1275,15 @@ final class _Size extends Struct {
 
   @Double()
   external double height;
+
+  @override
+  String toString() {
+    return 'Size(width: $width, height: $height)';
+  }
+
+  Size toSize() {
+    return Size(width, height);
+  }
 }
 
 final class _Rect extends Struct {
@@ -1320,6 +1298,15 @@ final class _Rect extends Struct {
 
   @Double()
   external double height;
+
+  Rect toRect() {
+    return Rect.fromLTWH(left, top, width, height);
+  }
+
+  @override
+  String toString() {
+    return 'Rect(left: $left, top: $top, width: $width, height: $height)';
+  }
 }
 
 final class _Constraints extends Struct {

@@ -109,8 +109,7 @@ class OHOSWindowController {
   // ---- Host-side (ArkTS) accessors --------------------------------------
   WindowSize GetContentSize(void* window) const;
   void SetContentSize(void* window, const WindowSize& size);
-  void SetConstraints(void* window,
-                      const WindowConstraints& constraints);
+  void SetConstraints(void* window, const WindowConstraints& constraints);
   void SetTitle(void* window, const char* title);
   // Copies the cached title (see OHOSWindow::SetTitleCache) into `out`,
   // truncating to `capacity - 1` bytes; always NUL-terminates. The window's
@@ -122,6 +121,7 @@ class OHOSWindowController {
   // anchorRect/positioner. Pure router — the archetype check and the
   // positioner math both live in ArkTS.
   void UpdateTooltipPosition(void* window);
+  void UpdatePopupPosition(void* window);
   // Window-state mutations, dispatched to the ETS host via the napi facade
   // (`window` is reinterpret_cast<void*>(view_id)).
   void SetMaximized(void* window, bool maximized);
@@ -207,7 +207,6 @@ class OHOSWindowController {
   static int64_t ViewIdForHandle(void* handle);
 
  private:
-
   // Registers the view with the engine synchronously inline on the FFI/UI
   // thread: the Dart add_view_ callback runs inline, so the FlutterView is in
   // PlatformDispatcher.views before this returns. False = engine refused;
@@ -309,9 +308,8 @@ FLUTTER_OHOS_WINDOWING_API
 flutter::WindowSize InternalFlutter_Window_GetContentSize(void* window);
 
 FLUTTER_OHOS_WINDOWING_API
-void InternalFlutter_Window_SetContentSize(
-    void* window,
-    const flutter::WindowSize* size);
+void InternalFlutter_Window_SetContentSize(void* window,
+                                           const flutter::WindowSize* size);
 
 FLUTTER_OHOS_WINDOWING_API
 void InternalFlutter_Window_SetConstraints(
@@ -329,6 +327,9 @@ void InternalFlutter_Window_Activate(void* window);
 // and repositions the ArkTS sub-window.
 FLUTTER_OHOS_WINDOWING_API
 void InternalFlutter_Window_UpdateTooltipPosition(void* window);
+
+FLUTTER_OHOS_WINDOWING_API
+void InternalFlutter_Window_UpdatePopupPosition(void* window);
 
 FLUTTER_OHOS_WINDOWING_API
 void InternalFlutter_Window_SetMaximized(void* window, bool maximized);
