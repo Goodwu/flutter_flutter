@@ -445,6 +445,7 @@ class PlatformMethodCallback implements MethodCallHandler {
   onMethodCall(call: MethodCall, result: MethodResult) {
     if (this.platform.platformMessageHandler == null) {
       Log.w(PlatformMethodCallback.TAG, "platformMessageHandler is null");
+      result.success(null);
       return;
     }
 
@@ -454,6 +455,7 @@ class PlatformMethodCallback implements MethodCallHandler {
     try {
       switch (method) {
         case "SystemSound.play":
+          result.success(null);
           break;
         case "HapticFeedback.vibrate":
           try {
@@ -465,9 +467,11 @@ class PlatformMethodCallback implements MethodCallHandler {
               })
               .catch((e: BusinessError) => {
                 Log.e(PlatformMethodCallback.TAG, `HapticFeedback.vibrate error: ${e.code} - ${e.message}`);
+                result.success(null);
               });
           } catch (e) {
             Log.e(PlatformMethodCallback.TAG, "HapticFeedback.vibrate error:" + JSON.stringify(e));
+            result.success(null);
           }
           break;
         case "SystemChrome.setPreferredOrientations":
@@ -546,18 +550,21 @@ class PlatformMethodCallback implements MethodCallHandler {
             result.success(response);
           }).catch((err: Any) => {
             Log.e(PlatformMethodCallback.TAG, "systemPasteboard.hasData err: " + JSON.stringify(err));
+            result.success(response);
           })
           break;
         case "Scroll.Activity":
           /// Report the behavior of scrolling components.
           /// The optional values for Scroll.Activity include [start] and [end].
           this.recordScrollActivity(args as string);
+          result.success(null);
           break;
         case "Scroll.type":
           /// Report the type of the scrolling component.
           /// Track scrollable widget names to identify [_PagePosition] instances.
           let type: string = args.get("type");
           this.recordTabSwitch(type);
+          result.success(null);
           break;
         default:
           result.notImplemented();
