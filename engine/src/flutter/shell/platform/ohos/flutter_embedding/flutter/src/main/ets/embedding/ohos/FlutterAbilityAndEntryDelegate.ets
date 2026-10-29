@@ -466,10 +466,8 @@ class FlutterAbilityAndEntryDelegate implements ExclusiveAppComponent<UIAbility>
     this.ensureAlive();
     this.isPageShow = true;
     this.flutterView?.setActive(true);
-    if (this.shouldDispatchAppLifecycleState()) {
-      // Aggregate per-engine host visibility
-      this.flutterView?.onPageVisibilityChanged(true);
-    }
+    // Aggregate per-engine host visibility
+    this.flutterView?.onPageVisibilityChanged(true);
   }
 
   /**
@@ -497,12 +495,10 @@ class FlutterAbilityAndEntryDelegate implements ExclusiveAppComponent<UIAbility>
    * Notifies Flutter that the app is paused.
    */
   onHide() {
-    if (this.shouldDispatchAppLifecycleState()) {
-      this.isPageShow = false;
-      this.flutterView?.setActive(false);
-      // Aggregate per-engine host visibility
-      this.flutterView?.onPageVisibilityChanged(false);
-    }
+    this.isPageShow = false;
+    this.flutterView?.setActive(false);
+    // Aggregate per-engine host visibility
+    this.flutterView?.onPageVisibilityChanged(false);
   }
 
   /**
