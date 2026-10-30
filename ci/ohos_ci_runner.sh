@@ -19,6 +19,8 @@
 #          customer          -> customer
 #          mac_arm64_build   -> mac arm64 build & package; add --publish to
 #                               also upload to OBS (default: no upload)
+#          mac_x86_build     -> mac x86 build & package; add --publish to
+#                               also upload to OBS (default: no upload)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER="$SCRIPT_DIR/scripts/runner.py"
@@ -27,7 +29,7 @@ STAGE="$1"
 
 if [[ -z "$STAGE" ]]; then
     echo "[ERROR] Stage not provided"
-    echo "Usage: $0 <prepare|compile|test|integration_gate|daily_integration|daily_memory|daily_perf|customer|mac_arm64_build>"
+    echo "Usage: $0 <prepare|compile|test|integration_gate|daily_integration|daily_memory|daily_perf|customer|mac_arm64_build|mac_x86_build>"
     exit 1
 fi
 
@@ -78,9 +80,31 @@ case "$STAGE" in
         done
         export MAC_ARM64_PUBLISH
         ;;
+    mac_x86_build|mac-x86-build)
+        STAGE="mac_x86_build"
+        # One shared log dir per pipeline run: every mac_x86 step writes
+        # its logs into engine/outputs/mac_x86/<run-id>/
+        MAC_X86_RUN_ID="$(date +%Y%m%d-%H%M%S)"
+        export MAC_X86_RUN_ID
+        # Publishing is opt-in: only --publish uploads to OBS. Always set the
+        # flag explicitly so a stale value in the environment cannot leak in.
+        MAC_X86_PUBLISH=0
+        for arg in "${@:2}"; do
+            case "$arg" in
+                --publish)
+                    MAC_X86_PUBLISH=1
+                    ;;
+                *)
+                    echo "[ERROR] Unknown option '$arg' (only --publish is supported)"
+                    exit 1
+                    ;;
+            esac
+        done
+        export MAC_X86_PUBLISH
+        ;;
     *)
         echo "[ERROR] Unknown stage: $STAGE"
-        echo "Usage: $0 <prepare|compile|test|integration_gate|daily_integration|daily_memory|daily_perf|customer|mac_arm64_build>"
+        echo "Usage: $0 <prepare|compile|test|integration_gate|daily_integration|daily_memory|daily_perf|customer|mac_arm64_build|mac_x86_build>"
         exit 1
         ;;
 esac

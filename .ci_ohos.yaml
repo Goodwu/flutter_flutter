@@ -331,3 +331,42 @@ mac_arm64_build_steps:
     script: ci/scripts/mac_arm64/mac_arm64_publish.sh
     description: Upload dart-sdk and artifacts to OBS cloud (upload_dart_sdk + auto_compile) - opt-in, only with --publish
     required: true
+
+# mac-x86 build & publish pipeline; publishing is opt-in via --publish.
+mac_x86_build_steps:
+  - name: Check mac-x86 Environment
+    script: ci/scripts/mac_x86/mac_x86_check_env.sh
+    description: Verify x86_64 host
+    required: true
+
+  - name: Sync Repos (mac-x86)
+    script: ci/scripts/mac_x86/mac_x86_sync.sh
+    description: git fetch + git reset --hard to remote tip + gclient sync -f -D -v
+    required: true
+
+  - name: Skip unittests (mac-x86)
+    script: ci/scripts/replace_in_file.sh
+    description: Skip running unit tests
+    args: ["engine/src/flutter/testing/testing.gni", "s|enable_unittests = current_toolchain == host_toolchain \\|\\| is_fuchsia \\|\\| is_mac|enable_unittests = false|g"]
+    required: true
+
+  - name: Patch Logger.swift (mac-x86)
+    script: ci/scripts/replace_in_file.sh
+    description: Replace vsyslog/getVaList for new Apple Swift toolchains
+    args: ["engine/src/flutter/shell/platform/darwin/common/framework/Source/Logger.swift", "s|message\\.withCString { vsyslog(LOG_ALERT, \"%s\", getVaList(\\[$0\\])) }|fputs(message + \"\\\\n\", stderr)|"]
+    required: true
+
+  - name: Build Engine Artifacts (mac-x86)
+    script: ci/scripts/mac_x86/mac_x86_build.sh
+    description: Build host_release + host_debug + 6 ohos gen_snapshot configs in parallel via ./ohos
+    required: true
+
+  - name: Package (mac-x86)
+    script: ci/scripts/mac_x86/mac_x86_package.sh
+    description: Zip dart-sdk (darwin-x64) and artifacts
+    required: true
+
+  - name: Upload and Publish (mac-x86)
+    script: ci/scripts/mac_x86/mac_x86_publish.sh
+    description: Upload dart-sdk and artifacts to OBS cloud (upload_dart_sdk + auto_compile) - opt-in, only with --publish
+    required: true
