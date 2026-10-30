@@ -19,8 +19,6 @@ const TAG = 'PopupWindowHost'
 
 const SUB_WINDOW_NAME_PREFIX: string = 'Popup-';
 
-const kPlacementTolerancePx: number = 2;
-
 const kBirthOffscreenPx: number = -10000;
 
 /** A parent-bound, decoration-free, never-focusable SubWindow anchored by
@@ -33,8 +31,12 @@ export class PopupWindowHost extends FlutterWindowHost {
 
   private positionInFlight: boolean = false;
   private positionPending: boolean = false;
-
   private surfaceStorage: LocalStorage | null = null;
+  private lastLeft: number = NaN;
+  private lastTop: number = NaN;
+  private lastWidth: number = NaN;
+  private lastHeight: number = NaN;
+  private placedOnScreen: boolean = false;
 
   private parentWnd: window.Window | null = null;
   private parentWindowEventHandler: ((event: window.WindowEventType) => void) | null = null;
@@ -86,9 +88,13 @@ export class PopupWindowHost extends FlutterWindowHost {
     const storage = new LocalStorage();
     storage.setOrCreate('viewId', String(this.viewId));
     this.surfaceStorage = storage;
+    const surface = this.initialSurfaceSize(parentWnd);
+    const dpr = this.densityPixels(parentWnd);
+    const disp = display.getDefaultDisplaySync();
+    storage.setOrCreate('surfaceWidth', Math.min(Math.round(surface.width * dpr), disp.width));
+    storage.setOrCreate('surfaceHeight', Math.min(Math.round(surface.height * dpr), disp.height));
     try {
       await subWindow.loadContent(this.ctx.subWindowPage(), storage);
-      await this.setWindowStyle(subWindow);
       try {
         await subWindow.setWindowFocusable(false);
       } catch (e) {
@@ -96,8 +102,8 @@ export class PopupWindowHost extends FlutterWindowHost {
       }
       const showOptions: window.ShowWindowOptions = { focusOnShow: false };
       await subWindow.showWindow(showOptions);
+      await this.setWindowStyle(subWindow);
       subWindow.on('windowSizeChange', (size: window.Size) => {
-        Log.d(TAG, `windowSizeChange viewId=${String(this.viewId)} ${size.width}x${size.height}px`);
         storage.setOrCreate('windowWidth', size.width);
         storage.setOrCreate('windowHeight', size.height);
       });
@@ -152,6 +158,21 @@ export class PopupWindowHost extends FlutterWindowHost {
     return { width: width, height: height };
   }
 
+  private initialSurfaceSize(parentWnd: window.Window): window.Size {
+    const c = this.request.preferredConstraints;
+    const maxW = c.hasViewConstraints && Number.isFinite(c.viewMaxWidth) ? c.viewMaxWidth : 0;
+    const maxH = c.hasViewConstraints && Number.isFinite(c.viewMaxHeight) ? c.viewMaxHeight : 0;
+    const minW = c.hasViewConstraints && c.viewMinWidth > 0 ? c.viewMinWidth : 0;
+    const minH = c.hasViewConstraints && c.viewMinHeight > 0 ? c.viewMinHeight : 0;
+    const dr = parentWnd.getWindowProperties().drawableRect;
+    const dpr = this.densityPixels(parentWnd);
+    const fallbackW = dr.width / dpr;
+    const fallbackH = dr.height / dpr;
+    const width = maxW > 0 ? maxW : (minW > 0 ? minW : fallbackW);
+    const height = maxH > 0 ? maxH : (minH > 0 ? minH : fallbackH);
+    return { width: width, height: height };
+  }
+
   // ---- Placement ------------------------------------------------------------
 
   protected async computePlacementRect(parentWnd: window.Window,
@@ -159,30 +180,28 @@ export class PopupWindowHost extends FlutterWindowHost {
     const size = this.getWindowSizeForClientSize(logical, undefined, undefined, parentWnd);
     const fallback: window.Rect = { left: 0, top: 0, width: size?.width ?? 0, height: size?.height ?? 0 };
     try {
-      const dpr = this.densityPixels(parentWnd);
       const props = parentWnd.getWindowProperties();
       const frame = props.windowRect;
       const dr = props.drawableRect;
       const wa = await this.workAreaPhysical();
-      const parentRect: window.Rect = {
-        left: (frame.left + dr.left) / dpr, top: (frame.top + dr.top) / dpr,
-        width: dr.width / dpr, height: dr.height / dpr,
-      };
-      const workArea: window.Rect = {
-        left: wa.left / dpr, top: wa.top / dpr,
-        width: wa.width / dpr, height: wa.height / dpr,
+      const childPhysical: window.Size =
+        this.contentWidthPx > 0 && this.contentHeightPx > 0
+          ? { width: this.contentWidthPx, height: this.contentHeightPx }
+          : { width: fallback.width, height: fallback.height };
+      const parentPhysical: window.Rect = {
+        left: frame.left + dr.left, top: frame.top + dr.top,
+        width: dr.width, height: dr.height,
       };
       const pos = new WindowPositionResult();
-      const placed = this.computePlacement(pos, logical, parentRect, workArea);
+      const placed = this.computePlacement(pos, childPhysical, parentPhysical, wa);
       if (!placed) {
         return { rect: fallback, placed: false };
       }
-      // win32 parity: the positioner rect applies verbatim (no host-side clamp).
       const rect: window.Rect = {
-        left: Math.round(pos.left * dpr),
-        top: Math.round(pos.top * dpr),
-        width: pos.width > 0 ? Math.round(pos.width * dpr) : fallback.width,
-        height: pos.height > 0 ? Math.round(pos.height * dpr) : fallback.height,
+        left: Math.round(pos.left),
+        top: Math.round(pos.top),
+        width: pos.width > 0 ? Math.round(pos.width) : fallback.width,
+        height: pos.height > 0 ? Math.round(pos.height) : fallback.height,
       };
       return { rect: rect, placed: true };
     } catch (e) {
@@ -215,16 +234,13 @@ export class PopupWindowHost extends FlutterWindowHost {
   }
 
   didUpdateViewSize(widthPx: number, heightPx: number): void {
-    if (Math.abs(widthPx - this.contentWidthPx) <= kPlacementTolerancePx &&
-        Math.abs(heightPx - this.contentHeightPx) <= kPlacementTolerancePx) {
+    if (widthPx === this.contentWidthPx && heightPx === this.contentHeightPx) {
       return;
     }
     this.contentWidthPx = widthPx;
     this.contentHeightPx = heightPx;
-    Log.d(TAG, `didUpdateViewSize viewId=${String(this.viewId)} content=${widthPx}x${heightPx}px`);
-    // The render surface follows the content size (tooltip parity).
-    this.surfaceStorage?.setOrCreate('surfaceWidth', widthPx);
-    this.surfaceStorage?.setOrCreate('surfaceHeight', heightPx);
+    this.surfaceStorage?.setOrCreate('contentWidth', widthPx);
+    this.surfaceStorage?.setOrCreate('contentHeight', heightPx);
     this.scheduleUpdatePosition();
   }
 
@@ -262,6 +278,9 @@ export class PopupWindowHost extends FlutterWindowHost {
     if (win === undefined || parentWnd === undefined) {
       return;
     }
+    if (!this.placedOnScreen && this.contentWidthPx <= 0) {
+      return;
+    }
     try {
       const placement =
         await this.computePlacementRect(parentWnd, this.childLogicalSize(parentWnd));
@@ -269,28 +288,28 @@ export class PopupWindowHost extends FlutterWindowHost {
         return;
       }
       const r = placement.rect;
-      const cur = win.getWindowProperties().windowRect;
-      const needsResize = r.width > 0 && r.height > 0 &&
-        (Math.abs(cur.width - r.width) > kPlacementTolerancePx ||
-         Math.abs(cur.height - r.height) > kPlacementTolerancePx);
-      const needsMove = Math.abs(cur.left - r.left) > kPlacementTolerancePx ||
-        Math.abs(cur.top - r.top) > kPlacementTolerancePx;
-      if (!needsResize && !needsMove) {
+      if (this.placedOnScreen &&
+          r.left === this.lastLeft && r.top === this.lastTop &&
+          r.width === this.lastWidth && r.height === this.lastHeight) {
         return;
       }
-      if (needsMove) {
-        await win.moveWindowToAsync(r.left, r.top);
-      }
-      if (needsResize) {
+      if (r.width > 0 && r.height > 0 &&
+          (r.width !== this.lastWidth || r.height !== this.lastHeight)) {
         try {
           await win.resizeAsync(r.width, r.height);
+          this.lastWidth = r.width;
+          this.lastHeight = r.height;
         } catch (e) {
-          Log.w(TAG, `updatePosition: resize rejected (non-FLOATING?) for ` +
-            `${String(this.viewId)}: ${JSON.stringify(e)}`);
+          Log.w(TAG, `resize rejected viewId=${String(this.viewId)} ` +
+            `${r.width}x${r.height}px: ${JSON.stringify(e)}`);
         }
       }
+      await win.moveWindowToAsync(r.left, r.top);
+      this.lastLeft = r.left;
+      this.lastTop = r.top;
+      this.placedOnScreen = true;
     } catch (e) {
-      Log.w(TAG, `updatePosition failed for ${String(this.viewId)}: ${JSON.stringify(e)}`);
+      Log.w(TAG, `updatePosition failed viewId=${String(this.viewId)}: ${JSON.stringify(e)}`);
     }
   }
 
@@ -329,8 +348,7 @@ export class PopupWindowHost extends FlutterWindowHost {
     }
     const onSize = (size: window.Size) => {
       const unchanged = lastWidth >= 0 &&
-        Math.abs(lastWidth - size.width) <= kPlacementTolerancePx &&
-        Math.abs(lastHeight - size.height) <= kPlacementTolerancePx;
+        lastWidth === size.width && lastHeight === size.height;
       lastWidth = size.width;
       lastHeight = size.height;
       if (unchanged) {

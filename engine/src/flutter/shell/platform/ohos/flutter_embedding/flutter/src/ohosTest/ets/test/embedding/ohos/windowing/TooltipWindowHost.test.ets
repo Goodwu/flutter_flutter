@@ -24,25 +24,16 @@ class TestTooltipHost extends TooltipWindowHost {
 
   // ---- computePlacementRect seams ----
 
-  /** Fixed density for the positioner math AND the base size funnel
-   * (densityPixels now lives on FlutterWindowHost, so the override feeds
-   * both — deterministic regardless of the test device). */
   testDpr: number = 2.0;
 
-  /** Fake positioner outcome: 0 → returns placeLogical, else "no
-   * positioner" (the native rc !== 0 default-placement branch). */
+  /** 0 → returns placePhysical (PHYSICAL px); else "no positioner". */
   placementRc: number = 1;
-  placeLogical: window.Rect = { left: 160, top: 240, width: 250, height: 100 };
+  placePhysical: window.Rect = { left: 160, top: 240, width: 250, height: 100 };
 
-  /** Positioner invocation args in call order (child W/H, parent L/T/W/H,
-   * work L/T/W/H — all LOGICAL). */
+  /** Positioner args per call (child W/H, parent L/T/W/H, work L/T/W/H —
+   * all PHYSICAL). */
   placementArgs: Array<number> = new Array<number>();
-
-  /** Positioner invocation count (dedup/coalescing probes). */
   placementCalls: number = 0;
-
-  /** Work area handed to the positioner (PHYSICAL; default = full
-   * 1000x800 display like the phone fallback). */
   workAreaPhysicalRect: window.Rect = { left: 0, top: 0, width: 1000, height: 800 };
 
   protected computePlacement(pos: WindowPositionResult,
@@ -54,8 +45,8 @@ class TestTooltipHost extends TooltipWindowHost {
       workArea.left, workArea.top, workArea.width, workArea.height];
     this.placementCalls += 1;
     if (this.placementRc === 0) {
-      pos.set(this.placeLogical.left, this.placeLogical.top,
-        this.placeLogical.width, this.placeLogical.height);
+      pos.set(this.placePhysical.left, this.placePhysical.top,
+        this.placePhysical.width, this.placePhysical.height);
       return true;
     }
     return false;
@@ -75,14 +66,11 @@ class TestTooltipHost extends TooltipWindowHost {
   }
 }
 
-// Parent-move tracking / policy close is deliberately NOT host-side (the
-// old attempts were compensation artifacts); the window's lifetime policy
-// belongs to the framework, not to this host.
+// Parent-move tracking / policy close is deliberately NOT host-side; the
+// window's lifetime policy belongs to the framework.
 
-/** Parent with a decorated frame: outer (100,200 1000x800), the (10,20)
- * decoration inset — drawableRect is FRAME-LOCAL physical px (device-
- * verified), so the content rect sits at screen (110,220 980x760) after
- * the ClientToScreen translate by the frame origin. */
+/** Decorated parent: frame (100,200 1000x800) + (10,20) inset → content
+ * rect (110,220 980x760) in physical px. */
 function decoratedParent(): FakeWindow {
   const fake = new FakeWindow();
   fake.props.windowRect = new FakeRect(100, 200, 1000, 800) as ESObject as window.Rect;
@@ -90,8 +78,7 @@ function decoratedParent(): FakeWindow {
   return fake;
 }
 
-/** A tooltip host with `own` mounted as its OS window and a view-0
- * parent host holding `parent` (both registered in the context). */
+/** Host with `own` as its OS window and a view-0 parent host. */
 function mountedHost(ctx: FakeHostContext, own: FakeWindow,
                      parent: FakeWindow, viewId: number): TestTooltipHost {
   const parentHost = new TestTooltipHost(ctx, 0, 0);
@@ -111,27 +98,24 @@ export default function tooltipWindowHostTest() {
     });
   });
 
-  // prepareShow is gone from the host (never-focusable is now birth-only:
-  // showWindow({ focusOnShow: false }) inside attach) — no unit seam remains.
-
   describe('TooltipWindowHost.computePlacementRect', () => {
-    it('anchors at the positioner result, logical→physical ×dpr',
+    it('anchors at the positioner result verbatim (physical domain)',
       Level.LEVEL0, async (done: Function) => {
         const ctx = new FakeHostContext();
         const parent = decoratedParent();
         const host = new TestTooltipHost(ctx, 5, 0);
-        host.placementRc = 0; // positioner present → (160,240 250x100) logical
+        host.placementRc = 0;
         const birth = await host.placementRectForTest(
           parent as ESObject as window.Window, { width: 400, height: 200 });
         expect(birth.placed).assertTrue();
-        expect(birth.rect.left).assertEqual(320);  // 160 × 2.0
-        expect(birth.rect.top).assertEqual(480);   // 240 × 2.0
-        expect(birth.rect.width).assertEqual(500); // 250 × 2.0
-        expect(birth.rect.height).assertEqual(200);// 100 × 2.0
+        expect(birth.rect.left).assertEqual(160);
+        expect(birth.rect.top).assertEqual(240);
+        expect(birth.rect.width).assertEqual(250);
+        expect(birth.rect.height).assertEqual(100);
         done();
       });
 
-    it('feeds the positioner preferred-logical size + parent content rect + work area, all logical',
+    it('feeds the positioner funnel-physical size + parent content rect + work area, all physical',
       Level.LEVEL0, async (done: Function) => {
         const ctx = new FakeHostContext();
         const parent = decoratedParent();
@@ -141,19 +125,16 @@ export default function tooltipWindowHostTest() {
           parent as ESObject as window.Window, { width: 400, height: 200 });
         const a = host.placementArgs;
         expect(a.length).assertEqual(10);
-        // Child = preferred LOGICAL size (win32 passes width_/height_).
-        expect(a[0]).assertEqual(400);
-        expect(a[1]).assertEqual(200);
-        // Parent content origin = drawableRect (screen px) / dpr.
-        expect(a[2]).assertEqual(55);   // 110 / 2
-        expect(a[3]).assertEqual(110);  // 220 / 2
-        expect(a[4]).assertEqual(490);  // 980 / 2
-        expect(a[5]).assertEqual(380);  // 760 / 2
-        // Work area physical 1000x800 → logical.
-        expect(a[6]).assertEqual(0);
+        expect(a[0]).assertEqual(800);   // funnel 400x200 × dpr 2
+        expect(a[1]).assertEqual(400);
+        expect(a[2]).assertEqual(110);   // content rect, physical
+        expect(a[3]).assertEqual(220);
+        expect(a[4]).assertEqual(980);
+        expect(a[5]).assertEqual(760);
+        expect(a[6]).assertEqual(0);     // work area, physical
         expect(a[7]).assertEqual(0);
-        expect(a[8]).assertEqual(500);
-        expect(a[9]).assertEqual(400);
+        expect(a[8]).assertEqual(1000);
+        expect(a[9]).assertEqual(800);
         done();
       });
 
@@ -166,14 +147,12 @@ export default function tooltipWindowHostTest() {
         const birth = await host.placementRectForTest(
           parent as ESObject as window.Window, { width: 400, height: 200 });
         expect(birth.placed).assertFalse();
-        // {0,0} sentinel + funnel size (logical 400x200 × override dpr 2.0).
         expect(birth.rect.left).assertEqual(0);
         expect(birth.rect.top).assertEqual(0);
-        expect(birth.rect.width).assertEqual(800);
+        expect(birth.rect.width).assertEqual(800);  // funnel × dpr
         expect(birth.rect.height).assertEqual(400);
-        // The positioner was still consulted with the preferred size.
-        expect(host.placementArgs[0]).assertEqual(400);
-        expect(host.placementArgs[1]).assertEqual(200);
+        expect(host.placementArgs[0]).assertEqual(800);
+        expect(host.placementArgs[1]).assertEqual(400);
         done();
       });
 
@@ -183,12 +162,12 @@ export default function tooltipWindowHostTest() {
         const parent = decoratedParent();
         const host = new TestTooltipHost(ctx, 8, 0);
         host.placementRc = 0;
-        host.placeLogical = { left: 160, top: 240, width: 120, height: 80 };
+        host.placePhysical = { left: 160, top: 240, width: 120, height: 80 };
         const birth = await host.placementRectForTest(
           parent as ESObject as window.Window, { width: 400, height: 200 });
         expect(birth.placed).assertTrue();
-        expect(birth.rect.width).assertEqual(240);  // 120 × 2.0
-        expect(birth.rect.height).assertEqual(160); // 80 × 2.0
+        expect(birth.rect.width).assertEqual(120);
+        expect(birth.rect.height).assertEqual(80);
         done();
       });
 
@@ -198,23 +177,20 @@ export default function tooltipWindowHostTest() {
         const parent = decoratedParent();
         const host = new TestTooltipHost(ctx, 9, 0);
         host.placementRc = 0;
-        host.placeLogical = { left: 160, top: 240, width: 0, height: 0 };
+        host.placePhysical = { left: 160, top: 240, width: 0, height: 0 };
         const birth = await host.placementRectForTest(
           parent as ESObject as window.Window, { width: 400, height: 200 });
         expect(birth.placed).assertTrue();
-        expect(birth.rect.left).assertEqual(320);
-        expect(birth.rect.top).assertEqual(480);
-        // Funnel fallback (× dpr) applied verbatim — no host-side work-area
-        // clamp (win32 parity; only the positioner's resize adjustments
-        // may shrink the rect).
-        expect(birth.rect.width).assertEqual(800);
+        expect(birth.rect.left).assertEqual(160);
+        expect(birth.rect.top).assertEqual(240);
+        expect(birth.rect.width).assertEqual(800);  // funnel fallback, no clamp
         expect(birth.rect.height).assertEqual(400);
         done();
       });
   });
 
   describe('TooltipWindowHost.didUpdateViewSize', () => {
-    it('feeds the stored content size (physical→logical ÷dpr) to the positioner, not the birth size',
+    it('feeds the stored content size (physical, verbatim) to the positioner, not the funnel size',
       Level.LEVEL0, async (done: Function) => {
         const ctx = new FakeHostContext();
         const own = new FakeWindow();
@@ -222,19 +198,15 @@ export default function tooltipWindowHostTest() {
         const host = mountedHost(ctx, own, parent, 11);
         host.placementRc = 0;
 
-        // Before any frame: updatePosition sees the BIRTH size (default
-        // 400x200 — the request carries no constraints).
+        // No content report yet → early-out (birth stays offscreen).
         await host.updatePosition();
-        expect(host.placementCalls).assertEqual(1);
-        expect(host.placementArgs[0]).assertEqual(400);
-        expect(host.placementArgs[1]).assertEqual(200);
+        expect(host.placementCalls).assertEqual(0);
 
-        // Content size arrives (PHYSICAL px); dpr = 2 → logical 300x150.
         host.didUpdateViewSize(600, 300);
         await sleep(0);
-        expect(host.placementCalls).assertEqual(2);
-        expect(host.placementArgs[0]).assertEqual(300);
-        expect(host.placementArgs[1]).assertEqual(150);
+        expect(host.placementCalls).assertEqual(1);
+        expect(host.placementArgs[0]).assertEqual(600);
+        expect(host.placementArgs[1]).assertEqual(300);
         done();
       });
 
@@ -261,17 +233,16 @@ export default function tooltipWindowHostTest() {
         const host = mountedHost(ctx, own, parent, 13);
         host.placementRc = 0;
 
-        // Three reports back-to-back while the first placement is still
-        // awaiting its microtasks: exactly two runs (first + one pending
-        // re-run), the re-run seeing the LATEST content size (400x200).
+        // Three reports while the first placement is in flight → two runs,
+        // the re-run seeing the LATEST size (physical).
         host.didUpdateViewSize(600, 300);
         host.didUpdateViewSize(700, 350);
         host.didUpdateViewSize(800, 400);
         await sleep(0);
         await sleep(0);
         expect(host.placementCalls).assertEqual(2);
-        expect(host.placementArgs[0]).assertEqual(400);
-        expect(host.placementArgs[1]).assertEqual(200);
+        expect(host.placementArgs[0]).assertEqual(800);
+        expect(host.placementArgs[1]).assertEqual(400);
         done();
       });
 
@@ -282,17 +253,15 @@ export default function tooltipWindowHostTest() {
         const parent = new FakeWindow();
         const host = mountedHost(ctx, own, parent, 14);
         host.placementRc = 0;
-        // Logical (160,240 250x100) × dpr 2 → physical (320,480 500x200).
         host.didUpdateViewSize(600, 300);
         await sleep(0);
         await sleep(0);
         expect(own.moveCalls.length).assertEqual(1);
-        expect(own.moveCalls[0][0]).assertEqual(320);
-        expect(own.moveCalls[0][1]).assertEqual(480);
-        // FakeWindow starts at 1000x800 → the 500x200 rect is applied.
+        expect(own.moveCalls[0][0]).assertEqual(160);
+        expect(own.moveCalls[0][1]).assertEqual(240);
         expect(own.resizeCalls.length).assertEqual(1);
-        expect(own.resizeCalls[0][0]).assertEqual(500);
-        expect(own.resizeCalls[0][1]).assertEqual(200);
+        expect(own.resizeCalls[0][0]).assertEqual(250);
+        expect(own.resizeCalls[0][1]).assertEqual(100);
         done();
       });
   });

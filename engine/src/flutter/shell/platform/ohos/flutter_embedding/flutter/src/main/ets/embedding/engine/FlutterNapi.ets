@@ -740,6 +740,10 @@ export default class FlutterNapi {
     FlutterManager.getInstance().updateTooltipPosition(viewId);
   }
 
+  updatePopupPosition(viewId: number): void {
+    FlutterManager.getInstance().updatePopupPosition(viewId);
+  }
+
   /** Native entry (InvokeJsMethod "didUpdateViewSize"): the raster thread
    * reported a sized-to-content view's new content size (PHYSICAL px;
    * win32 HostWindowTooltip::DidUpdateViewSize parity). */

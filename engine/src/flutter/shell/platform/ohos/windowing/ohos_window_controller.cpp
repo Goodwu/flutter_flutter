@@ -112,15 +112,13 @@ OHOSWindow* OHOSWindowController::LookupWindow(void* window) {
 }
 
 bool OHOSWindowController::IsViewSizedToContent(int64_t view_id) const {
-  const OHOSWindow* const win =
-      LookupWindow(HandleForViewId(view_id));
+  const OHOSWindow* const win = LookupWindow(HandleForViewId(view_id));
   return win != nullptr && win->IsSizedToContent();
 }
 
 bool OHOSWindowController::GetViewConstraints(int64_t view_id,
                                               WindowConstraints* out) const {
-  const OHOSWindow* const win =
-      LookupWindow(HandleForViewId(view_id));
+  const OHOSWindow* const win = LookupWindow(HandleForViewId(view_id));
   return win != nullptr && win->GetConstraints(out);
 }
 
@@ -178,7 +176,8 @@ int64_t OHOSWindowController::AllocateAndAddView() {
   return view_id;
 }
 
-int64_t OHOSWindowController::CreateRegularWindow(const RegularWindowCreationRequest* request) {
+int64_t OHOSWindowController::CreateRegularWindow(
+    const RegularWindowCreationRequest* request) {
   // The FIRST Regular window ADOPTS implicit view 0 — the EntryAbility's
   // pre-created window, already added at engine startup, so it must NOT be
   // re-AddView'd (AddView DCHECKs view_id != implicit). Only a Regular
@@ -214,7 +213,8 @@ int64_t OHOSWindowController::CreateRegularWindow(const RegularWindowCreationReq
   return view_id;
 }
 
-int64_t OHOSWindowController::CreateDialogWindow(const DialogWindowCreationRequest* request) {
+int64_t OHOSWindowController::CreateDialogWindow(
+    const DialogWindowCreationRequest* request) {
   const int64_t view_id = AllocateAndAddView();
   if (view_id == kCreateWindowFailedViewId) {
     return view_id;
@@ -228,15 +228,15 @@ int64_t OHOSWindowController::CreateDialogWindow(const DialogWindowCreationReque
 
   auto facade = GetNapiFacade();
   if (!facade) {
-    FML_LOG(ERROR) << "CreateDialogWindow: no napi facade for view "
-                   << view_id;
+    FML_LOG(ERROR) << "CreateDialogWindow: no napi facade for view " << view_id;
     return view_id;
   }
   facade->CreateDialogWindow(view_id, *request);
   return view_id;
 }
 
-int64_t OHOSWindowController::CreateTooltipWindow(const TooltipWindowCreationRequest* request) {
+int64_t OHOSWindowController::CreateTooltipWindow(
+    const TooltipWindowCreationRequest* request) {
   const int64_t view_id = AllocateAndAddView();
   if (view_id == kCreateWindowFailedViewId) {
     return view_id;
@@ -258,7 +258,8 @@ int64_t OHOSWindowController::CreateTooltipWindow(const TooltipWindowCreationReq
   return view_id;
 }
 
-int64_t OHOSWindowController::CreatePopupWindow(const PopupWindowCreationRequest* request) {
+int64_t OHOSWindowController::CreatePopupWindow(
+    const PopupWindowCreationRequest* request) {
   const int64_t view_id = AllocateAndAddView();
   if (view_id == kCreateWindowFailedViewId) {
     return view_id;
@@ -272,8 +273,7 @@ int64_t OHOSWindowController::CreatePopupWindow(const PopupWindowCreationRequest
 
   auto facade = GetNapiFacade();
   if (!facade) {
-    FML_LOG(ERROR) << "CreatePopupWindow: no napi facade for view "
-                   << view_id;
+    FML_LOG(ERROR) << "CreatePopupWindow: no napi facade for view " << view_id;
     return view_id;
   }
   facade->CreatePopupWindow(view_id, *request);
@@ -445,6 +445,13 @@ void OHOSWindowController::UpdateTooltipPosition(void* window) {
   }
 }
 
+void OHOSWindowController::UpdatePopupPosition(void* window) {
+  const int64_t view_id = ViewIdForHandle(window);
+  if (auto facade = holder_->GetNapiFacade()) {
+    facade->UpdatePopupPosition(view_id);
+  }
+}
+
 void OHOSWindowController::SetMaximized(void* window, bool maximized) {
   const int64_t view_id = ViewIdForHandle(window);
   if (auto facade = holder_->GetNapiFacade()) {
@@ -466,12 +473,11 @@ void OHOSWindowController::SetFullscreen(void* window, bool fullscreen) {
   }
 }
 
-bool OHOSWindowController::ComputeWindowPosition(
-    int64_t view_id,
-    const WindowSize& child_size,
-    const WindowRect& parent_rect,
-    const WindowRect& work_area,
-    WindowRect* out) {
+bool OHOSWindowController::ComputeWindowPosition(int64_t view_id,
+                                                 const WindowSize& child_size,
+                                                 const WindowRect& parent_rect,
+                                                 const WindowRect& work_area,
+                                                 WindowRect* out) {
   if (out == nullptr) {
     return false;
   }
@@ -686,9 +692,8 @@ flutter::WindowSize InternalFlutter_Window_GetContentSize(void* window) {
   return flutter::WindowSize{0, 0};
 }
 
-void InternalFlutter_Window_SetContentSize(
-    void* window,
-    const flutter::WindowSize* size) {
+void InternalFlutter_Window_SetContentSize(void* window,
+                                           const flutter::WindowSize* size) {
   if (auto* c = ControllerForWindow(window); c && size != nullptr) {
     c->SetContentSize(window, *size);
   }
@@ -717,6 +722,12 @@ void InternalFlutter_Window_Activate(void* window) {
 void InternalFlutter_Window_UpdateTooltipPosition(void* window) {
   if (auto* c = ControllerForWindow(window)) {
     c->UpdateTooltipPosition(window);
+  }
+}
+
+void InternalFlutter_Window_UpdatePopupPosition(void* window) {
+  if (auto* c = ControllerForWindow(window)) {
+    c->UpdatePopupPosition(window);
   }
 }
 
@@ -757,7 +768,9 @@ void InternalFlutter_Window_GetOffsetFromParent(
   *out_offset_physical = {0.0, 0.0};
 }
 
-void InternalFlutter_Window_GetTitle(void* window, char* out, int64_t capacity) {
+void InternalFlutter_Window_GetTitle(void* window,
+                                     char* out,
+                                     int64_t capacity) {
   if (out == nullptr || capacity <= 0) {
     return;
   }

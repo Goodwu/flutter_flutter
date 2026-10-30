@@ -397,6 +397,15 @@ export default class FlutterManager implements WindowHostContext {
     }
   }
 
+  updatePopupPosition(viewId: number): void {
+    const host = this.windowHosts.get(viewId);
+    if (host instanceof PopupWindowHost) {
+      host.updatePosition();
+    } else {
+      Log.w(TAG, `updatePopupPosition: viewId=${viewId} is not a popup host`);
+    }
+  }
+
   /** Raster content-size report (napi didUpdateViewSize, PHYSICAL px;
    * win32 HostWindowTooltip::DidUpdateViewSize parity): re-place the
    * sized-to-content tooltip/popup. Unknown or other views no-op. */

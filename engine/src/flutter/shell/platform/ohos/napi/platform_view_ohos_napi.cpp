@@ -517,10 +517,9 @@ bool MarshalWindowConstraints(napi_env env,
   return true;
 }
 
-bool MarshalRegularWindowRequest(
-    napi_env env,
-    const RegularWindowCreationRequest& request,
-    napi_value* out) {
+bool MarshalRegularWindowRequest(napi_env env,
+                                 const RegularWindowCreationRequest& request,
+                                 napi_value* out) {
   napi_status status = napi_create_object(env, out);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_object regular request fail ";
@@ -558,10 +557,9 @@ bool MarshalRegularWindowRequest(
   return true;
 }
 
-bool MarshalDialogWindowRequest(
-    napi_env env,
-    const DialogWindowCreationRequest& request,
-    napi_value* out) {
+bool MarshalDialogWindowRequest(napi_env env,
+                                const DialogWindowCreationRequest& request,
+                                napi_value* out) {
   napi_status status = napi_create_object(env, out);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_object dialog request fail ";
@@ -609,10 +607,9 @@ bool MarshalDialogWindowRequest(
   return true;
 }
 
-bool MarshalTooltipWindowRequest(
-    napi_env env,
-    const TooltipWindowCreationRequest& request,
-    napi_value* out) {
+bool MarshalTooltipWindowRequest(napi_env env,
+                                 const TooltipWindowCreationRequest& request,
+                                 napi_value* out) {
   napi_status status = napi_create_object(env, out);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_object tooltip request fail ";
@@ -640,10 +637,9 @@ bool MarshalTooltipWindowRequest(
   return true;
 }
 
-bool MarshalPopupWindowRequest(
-    napi_env env,
-    const PopupWindowCreationRequest& request,
-    napi_value* out) {
+bool MarshalPopupWindowRequest(napi_env env,
+                               const PopupWindowCreationRequest& request,
+                               napi_value* out) {
   napi_status status = napi_create_object(env, out);
   if (status != napi_ok) {
     FML_DLOG(ERROR) << "napi_create_object popup request fail ";
@@ -981,6 +977,25 @@ void PlatformViewOHOSNapi::UpdateTooltipPosition(int64_t view_id) {
                                      "updateTooltipPosition", 1, args);
   if (status != napi_ok) {
     FML_LOG(ERROR) << "InvokeJsMethod updateTooltipPosition fail ";
+  }
+  napi_close_handle_scope(env_, scope);
+}
+
+void PlatformViewOHOSNapi::UpdatePopupPosition(int64_t view_id) {
+  napi_handle_scope scope;
+  napi_open_handle_scope(env_, &scope);
+  napi_value args[1];
+  napi_status status;
+  status = napi_create_int64(env_, view_id, &args[0]);
+  if (status != napi_ok) {
+    FML_DLOG(ERROR) << "napi_create_int64 view_id fail ";
+    napi_close_handle_scope(env_, scope);
+    return;
+  }
+  status = fml::napi::InvokeJsMethod(env_, ref_napi_obj_, "updatePopupPosition",
+                                     1, args);
+  if (status != napi_ok) {
+    FML_LOG(ERROR) << "InvokeJsMethod updatePopupPosition fail ";
   }
   napi_close_handle_scope(env_, scope);
 }
@@ -1965,11 +1980,13 @@ napi_value PlatformViewOHOSNapi::nativeSetViewportMetrics(
   }
   // NOTE: hilog drops messages formatted with "%{public}lf" (the 'l' modifier
   // is not supported for 'f'), so cast to int like the other metrics logs.
-  LOGD("nativeSetViewportMetrics::displayCornerRadii TL:%{public}ld TR:%{public}ld BR:%{public}ld BL:%{public}ld",
-       static_cast<int64_t>(displayCornerRadiusTopLeft),
-       static_cast<int64_t>(displayCornerRadiusTopRight),
-       static_cast<int64_t>(displayCornerRadiusBottomRight),
-       static_cast<int64_t>(displayCornerRadiusBottomLeft));
+  LOGD(
+      "nativeSetViewportMetrics::displayCornerRadii TL:%{public}ld "
+      "TR:%{public}ld BR:%{public}ld BL:%{public}ld",
+      static_cast<int64_t>(displayCornerRadiusTopLeft),
+      static_cast<int64_t>(displayCornerRadiusTopRight),
+      static_cast<int64_t>(displayCornerRadiusBottomRight),
+      static_cast<int64_t>(displayCornerRadiusBottomLeft));
 
   flutter::ViewportMetrics metrics{
       static_cast<double>(devicePixelRatio),
@@ -1996,7 +2013,7 @@ napi_value PlatformViewOHOSNapi::nativeSetViewportMetrics(
       std::vector<int>(displayFeaturesType.begin(), displayFeaturesType.end()),
       std::vector<int>(displayFeaturesState.begin(),
                        displayFeaturesState.end()),
-      0,     // Display ID
+      0,  // Display ID
       displayCornerRadiusTopLeft,
       displayCornerRadiusTopRight,
       displayCornerRadiusBottomRight,

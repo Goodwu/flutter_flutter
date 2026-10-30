@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2026 Huawei Device Co., Ltd. All rights reserved.
  * Use of this source code is governed by a BSD-style license that can be
- * found in the LICENSE file.
+ * found in the LICENSE_HW file.
  */
 
 import { FlutterPage } from '@ohos/flutter_ohos'
@@ -15,18 +15,18 @@ let storage = LocalStorage.getShared()
 @Component
 struct FlutterWindowPage {
   @LocalStorageLink('viewId') viewId: string = "";
-  // Render-surface size, physical px (tooltip: the CONTENT size).
   @LocalStorageLink('surfaceWidth') surfaceWidth: number = 0;
   @LocalStorageLink('surfaceHeight') surfaceHeight: number = 0;
-  // OS-window size; content scales down to fill a clamped window.
   @LocalStorageLink('windowWidth') windowWidth: number = 0;
   @LocalStorageLink('windowHeight') windowHeight: number = 0;
+  @LocalStorageLink('contentWidth') contentWidth: number = 0;
+  @LocalStorageLink('contentHeight') contentHeight: number = 0;
 
-  private fitScale(surface: number, win: number): number {
-    if (surface <= 0 || win <= 0 || surface <= win) {
+  private fitScale(content: number, win: number): number {
+    if (content <= 0 || win <= 0 || win >= content) {
       return 1;
     }
-    return win / surface;
+    return win / content;
   }
 
   build() {
@@ -41,8 +41,8 @@ struct FlutterWindowPage {
     .width(this.surfaceWidth > 0 ? `${this.surfaceWidth}px` : '100%')
     .height(this.surfaceHeight > 0 ? `${this.surfaceHeight}px` : '100%')
     .scale({
-      x: this.fitScale(this.surfaceWidth, this.windowWidth),
-      y: this.fitScale(this.surfaceHeight, this.windowHeight),
+      x: this.fitScale(this.contentWidth, this.windowWidth),
+      y: this.fitScale(this.contentHeight, this.windowHeight),
       centerX: 0,
       centerY: 0,
     })
