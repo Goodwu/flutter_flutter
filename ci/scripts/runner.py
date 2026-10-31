@@ -325,7 +325,8 @@ def main():
 
     Usage: runner.py <stage>
       stage - preparation | compilation | test | integration_gate |
-              daily_integration | daily_memory | daily_perf | customer | mac_arm64_build
+              daily_integration | daily_memory | daily_perf | customer |
+              mac_arm64_build | mac_x86_build
     """
     if len(sys.argv) > 1:
         stage = sys.argv[1]
