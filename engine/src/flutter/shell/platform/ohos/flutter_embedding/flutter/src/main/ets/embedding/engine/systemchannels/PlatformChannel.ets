@@ -175,7 +175,7 @@ export default class PlatformChannel {
    * Gets a SystemUiOverlay from an encoded name.
    * @param encodedName - The encoded overlay name
    * @returns The SystemUiOverlay
-   * @throws Error if the overlay name is not recognized
+   * @throws {Error} if the overlay name is not recognized
    */
   getSystemUiOverlayFromValue(encodedName: string): SystemUiOverlay {
     let systemUiOverlays: string[] = [SystemUiOverlay.TOP_OVERLAYS, SystemUiOverlay.BOTTOM_OVERLAYS];
@@ -189,7 +189,7 @@ export default class PlatformChannel {
    * Gets a SystemUiMode from an encoded name.
    * @param encodedName - The encoded mode name
    * @returns The SystemUiMode
-   * @throws Error if the mode name is not recognized
+   * @throws {Error} if the mode name is not recognized
    */
   getSystemUiModeFromValue(encodedName: string): SystemUiMode {
     let systemUiModes: string[] = [
@@ -206,7 +206,7 @@ export default class PlatformChannel {
    * Gets a Brightness from an encoded name.
    * @param encodedName - The encoded brightness name
    * @returns The Brightness
-   * @throws Error if the brightness name is not recognized
+   * @throws {Error} if the brightness name is not recognized
    */
   getBrightnessFromValue(encodedName: string): Brightness {
     let brightnesses: string[] = [Brightness.LIGHT, Brightness.DARK];
@@ -220,7 +220,7 @@ export default class PlatformChannel {
    * Gets a DeviceOrientation from an encoded name.
    * @param encodedName - The encoded orientation name
    * @returns The DeviceOrientation
-   * @throws Error if the orientation name is not recognized
+   * @throws {Error} if the orientation name is not recognized
    */
   getDeviceOrientationFromValue(encodedName: string): DeviceOrientation {
     let deviceOrientations: DeviceOrientation[] = [
@@ -237,7 +237,7 @@ export default class PlatformChannel {
    * Gets a ScrollActivity from an encoded activity string.
    * @param activity - The encoded activity string
    * @returns The ScrollActivity
-   * @throws Error if the activity string is not recognized
+   * @throws {Error} if the activity string is not recognized
    */
   getScrollActivityFromValue(activity: string): ScrollActivity {
     let activityTypes: string[] = [
