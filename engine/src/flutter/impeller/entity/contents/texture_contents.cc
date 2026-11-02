@@ -16,6 +16,7 @@
 #include "impeller/entity/texture_fill.vert.h"
 #include "impeller/entity/texture_fill_strict_src.frag.h"
 #include "impeller/entity/tiled_texture_fill_external.frag.h"
+#include "impeller/geometry/color.h"
 #include "impeller/geometry/constants.h"
 #include "impeller/renderer/render_pass.h"
 #include "impeller/renderer/vertex_buffer_builder.h"
@@ -149,6 +150,39 @@ bool TextureContents::Render(const ContentContext& renderer,
   }
 #endif  // IMPELLER_DEBUG
 
+#ifdef FML_OS_OHOS
+  // OHOS wide-gamut swapchains (A2B10G10R10) render into a Display P3
+  // working space. Convert texture data from its declared color space to
+  // the render target color space, mirroring SolidColorContents.
+  float source_color_space = static_cast<float>(ColorSpace::kSRGB);
+  switch (texture_->GetTextureDescriptor().color_space) {
+    case TextureColorSpace::kDisplayP3:
+      source_color_space = static_cast<float>(ColorSpace::kDisplayP3);
+      break;
+    case TextureColorSpace::kExtendedSRGB:
+      source_color_space = static_cast<float>(ColorSpace::kExtendedSRGB);
+      break;
+    case TextureColorSpace::kSRGB:
+      break;
+  }
+  float target_color_space = static_cast<float>(renderer.GetTargetColorSpace());
+  if (texture_->GetTextureDescriptor().usage & TextureUsage::kRenderTarget) {
+    // Render target textures (save layers, filter intermediates) already
+    // hold data in the working color space, so no conversion is needed.
+    source_color_space = target_color_space;
+  }
+  // NOTE: The external texture (GL_TEXTURE_EXTERNAL_OES) branch below does
+  // not consume these uniforms. That branch only exists on the GLES
+  // backend, where the render target color space is always kSRGB (the
+  // Display P3 working space is only selected for Vulkan swapchains), so
+  // no conversion is needed there. If wide-gamut external sources on GLES
+  // ever require color management, the external shader must grow the same
+  // conversion.
+#else
+  float source_color_space = 0.0f;
+  float target_color_space = 0.0f;
+#endif
+
   auto pipeline_options = OptionsFromPassAndEntity(pass, entity);
   if (!stencil_enabled_) {
     pipeline_options.stencil_mode = ContentContextOptions::StencilMode::kIgnore;
@@ -195,6 +229,8 @@ bool TextureContents::Render(const ContentContext& renderer,
       frag_info.source_rect = Vector4(strict_texture_coords.GetLTRB());
     }
     frag_info.alpha = GetOpacity();
+    frag_info.source_color_space = source_color_space;
+    frag_info.target_color_space = target_color_space;
     FSStrict::BindFragInfo(pass, data_host_buffer.EmplaceUniform((frag_info)));
     FSStrict::BindTextureSampler(
         pass, texture_,
@@ -227,6 +263,8 @@ bool TextureContents::Render(const ContentContext& renderer,
   } else {
     FS::FragInfo frag_info;
     frag_info.alpha = GetOpacity();
+    frag_info.source_color_space = source_color_space;
+    frag_info.target_color_space = target_color_space;
     FS::BindFragInfo(pass, data_host_buffer.EmplaceUniform((frag_info)));
     FS::BindTextureSampler(
         pass, texture_,
