@@ -135,8 +135,7 @@ TEST_F(OhosSurfaceVulkanImpellerTest, TeardownToleratesMissingSurfaceContext) {
   EXPECT_FALSE(surface_->HasValidOnscreenContext());
 }
 
-TEST_F(OhosSurfaceVulkanImpellerTest,
-       OnscreenValidityTracksSwapchainResources) {
+TEST_F(OhosSurfaceVulkanImpellerTest, OnscreenValidityTracksSwapchain) {
   auto context = surface_->SurfaceContext();
   ASSERT_NE(context, nullptr);
   EXPECT_FALSE(surface_->HasValidOnscreenContext());

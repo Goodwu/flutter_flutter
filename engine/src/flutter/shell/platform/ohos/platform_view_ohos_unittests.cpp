@@ -1358,8 +1358,7 @@ TEST_F(PlatformViewOHOSUt, RestoreObservesEarlierRasterCreation) {
   EXPECT_EQ(delegate().schedule_frame_count(), 0);
 }
 
-TEST_F(PlatformViewOHOSUt,
-       RestoreLifecycleRebuildsMissingResourcesAtRestoreLevel) {
+TEST_F(PlatformViewOHOSUt, RestoreRebuildsMissingResourcesAtRestoreLevel) {
   constexpr int kInitialCreateCount = 1;
   constexpr int kExpectedCreateCount = 2;
   FlushTasks();
