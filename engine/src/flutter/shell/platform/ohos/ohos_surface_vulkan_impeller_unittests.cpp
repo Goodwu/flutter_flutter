@@ -19,14 +19,11 @@
 #include "flutter/impeller/renderer/backend/vulkan/surface_context_vk.h"
 #include "flutter/shell/gpu/gpu_surface_vulkan_impeller.h"
 #include "flutter/shell/platform/ohos/context/ohos_context.h"
+#include "flutter/shell/platform/ohos/ohos_surface_vulkan_impeller.h"
 #include "flutter/shell/platform/ohos/surface/ohos_native_window.h"
 #include "flutter/shell/platform/ohos/surface/ohos_surface.h"
 #include "flutter/shell/platform/ohos/test_stubs/ace_graphic_ndk_stub.h"
 #include "impeller/renderer/backend/vulkan/test/mock_vulkan.h"
-
-#define private public
-#include "flutter/shell/platform/ohos/ohos_surface_vulkan_impeller.h"
-#undef private
 
 namespace flutter {
 namespace testing {
