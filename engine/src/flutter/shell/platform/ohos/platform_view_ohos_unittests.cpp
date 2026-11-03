@@ -1319,11 +1319,11 @@ TEST_F(PlatformViewOHOSUt, ReclaimDecisionPreservesLifecycleAndPipPolicy) {
           const bool restore = pip_visible ||
                                new_state == AppLifecycleState::kResumed ||
                                new_state == AppLifecycleState::kInactive;
-          const auto expected =
-              restore ? GpuReclaimDecision::kRestore
-                      : (level == GpuReclaimLevel::kAggressive
-                             ? GpuReclaimDecision::kNoChange
-                             : GpuReclaimDecision::kAggressive);
+          const auto expected = restore
+                                    ? GpuReclaimDecision::kRestore
+                                    : (level == GpuReclaimLevel::kAggressive
+                                           ? GpuReclaimDecision::kNoChange
+                                           : GpuReclaimDecision::kAggressive);
           EXPECT_EQ(view()->EvaluateReclaimLevel(old_state, new_state),
                     expected);
         }
@@ -1359,7 +1359,7 @@ TEST_F(PlatformViewOHOSUt, RestoreObservesEarlierRasterCreation) {
 }
 
 TEST_F(PlatformViewOHOSUt,
-    RestoreLifecycleRebuildsMissingResourcesAtRestoreLevel) {
+       RestoreLifecycleRebuildsMissingResourcesAtRestoreLevel) {
   constexpr int kInitialCreateCount = 1;
   constexpr int kExpectedCreateCount = 2;
   FlushTasks();

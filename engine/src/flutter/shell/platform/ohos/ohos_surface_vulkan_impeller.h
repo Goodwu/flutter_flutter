@@ -26,7 +26,6 @@ class OhosSurfaceVulkanImpellerTest_TeardownToleratesMissingSurfaceContext_Test;
 }  // namespace testing
 #endif  // defined(FRIEND_TEST)
 
-
 class OHOSSurfaceVulkanImpeller : public GPUSurfaceVulkanDelegate,
                                   public OHOSSurface {
  public:
@@ -102,7 +101,8 @@ class OHOSSurfaceVulkanImpeller : public GPUSurfaceVulkanDelegate,
   // `is_surface_preload_` so tests can simulate a torn-down / preloaded
   // surface without the `#define private public` hack.
 #if defined(FRIEND_TEST)
-  friend class testing::OhosSurfaceVulkanImpellerTest_TeardownToleratesMissingSurfaceContext_Test;
+  friend class testing::
+      OhosSurfaceVulkanImpellerTest_TeardownToleratesMissingSurfaceContext_Test;
 #endif  // defined(FRIEND_TEST)
 };
 }  // namespace flutter
