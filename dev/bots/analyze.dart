@@ -2798,6 +2798,12 @@ const Set<String> kExecutableAllowlist = <String>{
   'ci/scripts/run_shard_test.sh',
   'ci/scripts/runner.py',
   'ci/scripts/upload_to_cloud.sh',
+  'ci/scripts/windows/windows_build.sh',
+  'ci/scripts/windows/windows_check_env.sh',
+  'ci/scripts/windows/windows_common.sh',
+  'ci/scripts/windows/windows_package.sh',
+  'ci/scripts/windows/windows_publish.sh',
+  'ci/scripts/windows/windows_sync.sh',
   'ci/test.sh',
 };
 
