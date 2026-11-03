@@ -139,7 +139,7 @@ TEST_F(OhosSurfaceVulkanImpellerTest, TeardownToleratesMissingSurfaceContext) {
 }
 
 TEST_F(OhosSurfaceVulkanImpellerTest,
-       OnscreenValidityTracksSwapchainResources) {
+    OnscreenValidityTracksSwapchainResources) {
   auto context = surface_->SurfaceContext();
   ASSERT_NE(context, nullptr);
   EXPECT_FALSE(surface_->HasValidOnscreenContext());

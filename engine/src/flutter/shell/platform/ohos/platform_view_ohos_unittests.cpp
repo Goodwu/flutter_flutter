@@ -1341,7 +1341,8 @@ TEST_F(PlatformViewOHOSUt, RestoreObservesEarlierRasterCreation) {
   auto window = MakePvUtWindow(kPvUtHandleA);
   view()->cached_native_window_ = window;
 
-  fml::AutoResetWaitableEvent raster_ready, allow_create;
+  fml::AutoResetWaitableEvent raster_ready;
+  fml::AutoResetWaitableEvent allow_create;
   runners().GetRasterTaskRunner()->PostTask([&] {
     raster_ready.Signal();
     allow_create.Wait();
@@ -1358,7 +1359,8 @@ TEST_F(PlatformViewOHOSUt, RestoreObservesEarlierRasterCreation) {
 }
 
 TEST_F(PlatformViewOHOSUt,
-       RestoreLifecycleRebuildsMissingResourcesAtRestoreLevel) {
+    RestoreLifecycleRebuildsMissingResourcesAtRestoreLevel) {
+  constexpr int kExpectedCreateCount = 2;
   FlushTasks();
   auto surface = std::make_shared<ReclaimTestSurface>(
       view()->ohos_context_, view()->ohos_surface_,
@@ -1381,7 +1383,7 @@ TEST_F(PlatformViewOHOSUt,
   SendLifecycle("AppLifecycleState.inactive");
   SendLifecycle("AppLifecycleState.resumed");
   FlushTasks();
-  EXPECT_EQ(surface->create_count, 2);
+  EXPECT_EQ(surface->create_count, kExpectedCreateCount);
   EXPECT_EQ(surface->resize_count, 0);
   EXPECT_EQ(surface->teardown_count, teardown_count);
   EXPECT_EQ(delegate().schedule_frame_count(), 1);
@@ -1395,7 +1397,8 @@ TEST_F(PlatformViewOHOSUt, QueuedRestoresRebuildOnlyOnce) {
   view()->ohos_surface_ = surface;
   view()->cached_native_window_ = MakePvUtWindow(kPvUtHandleA);
 
-  fml::AutoResetWaitableEvent raster_ready, allow_restore;
+  fml::AutoResetWaitableEvent raster_ready;
+  fml::AutoResetWaitableEvent allow_restore;
   runners().GetRasterTaskRunner()->PostTask([&] {
     raster_ready.Signal();
     allow_restore.Wait();
@@ -1412,6 +1415,7 @@ TEST_F(PlatformViewOHOSUt, QueuedRestoresRebuildOnlyOnce) {
 }
 
 TEST_F(PlatformViewOHOSUt, ReclaimCoreToleratesRepeatedTeardown) {
+  constexpr int kExpectedTeardownCount = 2;
   FlushTasks();
   auto surface = std::make_shared<ReclaimTestSurface>(
       view()->ohos_context_, view()->ohos_surface_,
@@ -1425,7 +1429,7 @@ TEST_F(PlatformViewOHOSUt, ReclaimCoreToleratesRepeatedTeardown) {
 
   view()->ExecuteReclaimAggressiveCore();
   view()->ExecuteReclaimAggressiveCore();
-  EXPECT_EQ(surface->teardown_count, 2);
+  EXPECT_EQ(surface->teardown_count, kExpectedTeardownCount);
   view()->RunOnRasterAndWait(
       [&] { EXPECT_FALSE(surface->HasValidOnscreenContext()); });
 }
@@ -1766,6 +1770,7 @@ TEST_F(PlatformViewOHOSUt, DeferredAggressiveSupersededSkipsTeardown) {
 }
 
 TEST_F(PlatformViewOHOSUt, SurfaceRecreationCancelsDeferredAggressiveTeardown) {
+  constexpr int kExpectedCreateCount = 2;
   FlushTasks();
   auto surface = std::make_shared<ReclaimTestSurface>(
       view()->ohos_context_, view()->ohos_surface_,
@@ -1788,7 +1793,7 @@ TEST_F(PlatformViewOHOSUt, SurfaceRecreationCancelsDeferredAggressiveTeardown) {
   });
   recreated.Wait();
   FlushTasks();
-  ASSERT_EQ(surface->create_count, 2);
+  ASSERT_EQ(surface->create_count, kExpectedCreateCount);
   const int teardown_count = surface->teardown_count;
 
   ASSERT_TRUE(WaitForPlatformIdleAfter(fml::TimeDelta::FromMilliseconds(1400)));
