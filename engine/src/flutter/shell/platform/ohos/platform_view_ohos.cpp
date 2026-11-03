@@ -520,9 +520,8 @@ ViewportMetrics PlatformViewOHOS::BuildViewMetricsForView(
     // FULL display size — the work area (dock-excluded) isn't known on this
     // side; the ETS positioner still constrains placement against the true
     // work area, so only oversized-content layout differs slightly.
-    double max_w = constraints.max_width > 0
-                       ? constraints.max_width
-                       : viewport_metrics_.physical_width;
+    double max_w = constraints.max_width > 0 ? constraints.max_width
+                                             : viewport_metrics_.physical_width;
     double max_h = constraints.max_height > 0
                        ? constraints.max_height
                        : viewport_metrics_.physical_height;
@@ -854,9 +853,8 @@ PlatformViewOHOS::CreateExternalViewEmbedder() {
       // raster thread -> platform (napi) thread -> ETS host
       // TooltipWindowHost.didUpdateViewSize. Same post-then-invoke pattern
       // as OHOSExternalViewEmbedder's facade calls.
-      [task_runners = task_runners_,
-       napi_facade = napi_facade_](int64_t view_id, double width,
-                                   double height) {
+      [task_runners = task_runners_, napi_facade = napi_facade_](
+          int64_t view_id, double width, double height) {
         task_runners.GetPlatformTaskRunner()->PostTask(
             [napi_facade, view_id, width, height]() {
               if (napi_facade) {

@@ -118,9 +118,9 @@ class PlatformViewOHOS final : public PlatformView {
   void NotifySurfaceWindowChanged(fml::RefPtr<OHOSNativeWindow> native_window);
 
   /// @brief Per-view NotifySurfaceWindowChanged: rebuilds the swapchain and
-  ///        metrics; skipping it leaves the view on a dead window (black screen).
-  ///        `constraints` (PHYSICAL px) keeps a sized-to-content view's
-  ///        metrics constraint RANGE across resizes (win32 re-sends
+  ///        metrics; skipping it leaves the view on a dead window (black
+  ///        screen). `constraints` (PHYSICAL px) keeps a sized-to-content
+  ///        view's metrics constraint RANGE across resizes (win32 re-sends
   ///        CreateWindowMetricsEvent with the original box constraints).
   void NotifySurfaceChangedForView(int64_t view_id,
                                    fml::RefPtr<OHOSNativeWindow> native_window,
@@ -279,7 +279,9 @@ class PlatformViewOHOS final : public PlatformView {
   void ClearHybridCompositionOverlayWindowSync();
 
   /// @brief  Whether Hybrid Composition (HCPP) is enabled for this engine.
-  bool IsHybridCompositionEnabled() const { return hybrid_composition_enabled_; }
+  bool IsHybridCompositionEnabled() const {
+    return hybrid_composition_enabled_;
+  }
 
   /// @brief Updates whether the current engine is still visibly rendered in a
   ///        same-engine PiP window while the app is backgrounded.

@@ -145,9 +145,7 @@ class SurfaceContextVK : public Context,
     target_color_space_ = color_space;
   }
 
-  ColorSpace GetTargetColorSpace() const {
-    return target_color_space_;
-  }
+  ColorSpace GetTargetColorSpace() const { return target_color_space_; }
 #endif
 
  private:

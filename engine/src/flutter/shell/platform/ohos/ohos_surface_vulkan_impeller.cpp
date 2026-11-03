@@ -28,7 +28,7 @@ OHOSSurfaceVulkanImpeller::OHOSSurfaceVulkanImpeller(
   surface_context_vk_ = context_vk.CreateSurfaceContext();
   if (!surface_context_vk_) {
     FML_LOG(ERROR) << "CreateSurfaceContext returned null";
- 	}
+  }
 }
 
 OHOSSurfaceVulkanImpeller::~OHOSSurfaceVulkanImpeller() {}
