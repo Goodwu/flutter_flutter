@@ -20,9 +20,11 @@
 #include "surface/ohos_surface.h"
 
 namespace flutter {
+#if defined(FRIEND_TEST)
 namespace testing {
 class OhosSurfaceVulkanImpellerTest_TeardownToleratesMissingSurfaceContext_Test;
 }  // namespace testing
+#endif  // defined(FRIEND_TEST)
 
 
 class OHOSSurfaceVulkanImpeller : public GPUSurfaceVulkanDelegate,
@@ -99,7 +101,9 @@ class OHOSSurfaceVulkanImpeller : public GPUSurfaceVulkanDelegate,
   // Grant the unit-test fixture access to `surface_context_vk_` and
   // `is_surface_preload_` so tests can simulate a torn-down / preloaded
   // surface without the `#define private public` hack.
+#if defined(FRIEND_TEST)
   friend class testing::OhosSurfaceVulkanImpellerTest_TeardownToleratesMissingSurfaceContext_Test;
+#endif  // defined(FRIEND_TEST)
 };
 }  // namespace flutter
 #endif  // FLUTTER_SHELL_PLATFORM_OHOS_OHOS_SURFACE_VULKAN_IMPELLER_H_
