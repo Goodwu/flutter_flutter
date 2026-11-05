@@ -108,8 +108,9 @@ export default class LocalizationPlugin {
   /**
    * Returns the language id unchanged when it already has a region.
    * Otherwise appends systemRegion, keeping the script when one is present.
+   * Not private so unit tests can call each synthesis branch directly.
    */
-  private languageIdWithRegion(languageId: string, systemRegion: string): string {
+  languageIdWithRegion(languageId: string, systemRegion: string): string {
     let locale: intl.Locale = new intl.Locale(languageId);
     if (systemRegion.length === 0 || locale.language.length === 0 || locale.region.length > 0) {
       return languageId;
