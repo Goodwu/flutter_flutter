@@ -92,6 +92,11 @@ export default function LocalizationPluginTest() {
     })
 
     it('languageIdWithRegion returns original when parsed language is empty', 0, () => {
+      // Probe for an input that intl.Locale parses into an empty language. OHOS may
+      // reject these candidates (throwing) or fall back to the system locale, in which
+      // case none of them works. Fail loudly instead of falling back to an unrelated
+      // 'already has a region' assertion: that would be a tautology duplicating the
+      // test above and would leave this guard branch silently uncovered.
       const candidates: string[] = new Array<string>();
       candidates.push('');
       candidates.push('-');
@@ -109,9 +114,7 @@ export default function LocalizationPluginTest() {
         } catch (e) {
         }
       }
-      if (!found) {
-        expect(localizationPlugin.languageIdWithRegion('en-US', 'CN')).assertEqual('en-US');
-      }
+      expect(found).assertTrue();
     })
 
     it('composed preferred locales become a 4 field setLocale payload', 0, () => {
