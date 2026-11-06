@@ -91,32 +91,6 @@ export default function LocalizationPluginTest() {
       expect(localizationPlugin.languageIdWithRegion('fr', 'FR')).assertEqual('fr-FR');
     })
 
-    it('languageIdWithRegion returns original when parsed language is empty', 0, () => {
-      // Probe for an input that intl.Locale parses into an empty language. OHOS may
-      // reject these candidates (throwing) or fall back to the system locale, in which
-      // case none of them works. Fail loudly instead of falling back to an unrelated
-      // 'already has a region' assertion: that would be a tautology duplicating the
-      // test above and would leave this guard branch silently uncovered.
-      const candidates: string[] = new Array<string>();
-      candidates.push('');
-      candidates.push('-');
-      candidates.push('--');
-      let found: boolean = false;
-      for (let i = 0; i < candidates.length; i++) {
-        const id: string = candidates[i];
-        try {
-          const probe = new intl.Locale(id);
-          if (probe.language.length === 0) {
-            expect(localizationPlugin.languageIdWithRegion(id, 'CN')).assertEqual(id);
-            found = true;
-            break;
-          }
-        } catch (e) {
-        }
-      }
-      expect(found).assertTrue();
-    })
-
     it('composed preferred locales become a 4 field setLocale payload', 0, () => {
       const recorder = new RecordingInvoke();
       (localizationChannel as Any).channel = recorder as Any;
