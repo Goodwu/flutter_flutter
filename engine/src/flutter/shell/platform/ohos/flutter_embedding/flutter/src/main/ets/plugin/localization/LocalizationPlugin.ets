@@ -109,6 +109,16 @@ export default class LocalizationPlugin {
    * Returns the language id unchanged when it already has a region.
    * Otherwise appends systemRegion, keeping the script when one is present.
    * Not private so unit tests can call each synthesis branch directly.
+   *
+   * The `locale.language.length === 0` check is purely defensive: a
+   * preferred-language entry that intl.Locale cannot resolve to a language
+   * keeps its original value instead of getting a region appended. The same
+   * case is treated as reachable on iOS, which skips such entries
+   * (FlutterEngine.mm: `if (!languageCode) { continue; }`); OHOS returns
+   * them unchanged. It has no deterministic unit-test coverage because the
+   * test HAP lacks full i18n capability: intl.Locale either throws on
+   * ''/'-'/'--' or falls back to the system locale, so an empty language
+   * cannot be constructed reliably.
    */
   languageIdWithRegion(languageId: string, systemRegion: string): string {
     let locale: intl.Locale = new intl.Locale(languageId);
