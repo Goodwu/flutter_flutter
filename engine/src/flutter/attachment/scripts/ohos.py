@@ -344,6 +344,13 @@ def addParseParam(parser):
       help="Enable ccache for compilation. Requires ccache to be installed. "
       "Not supported for host engine builds on Windows.",
   )
+  parser.add_argument(
+      "--ninja-target",
+      type=str,
+      default="",
+      help="Ninja target(s) to build for host engine builds instead of the full default "
+      "target, e.g. flutter/lib/snapshot:generate_snapshot_bin.",
+  )
 
 
 def updateCode(args):
@@ -388,7 +395,10 @@ def buildLocalEngine(buildType, args):
   append1 = "_unopt" if args.unoptimized else ""
   append2 = "_arm64" if args.host_cpu == "arm64" else ""
   outputName = f"host_{buildType}{append1}{append2}"
-  runCommand(f"ninja -C src/out/{outputName}")
+  if args.ninja_target:
+    runCommand(f"ninja -C src/out/{outputName} {args.ninja_target}")
+  else:
+    runCommand(f"ninja -C src/out/{outputName}")
 
 
 def uploadFiles():

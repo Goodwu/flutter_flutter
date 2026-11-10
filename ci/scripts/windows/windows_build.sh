@@ -4,8 +4,9 @@
 # found in the LICENSE_HW file.
 #
 # Build the upload artifact set on a Windows x64 host: 6 targeted gn+ninja
-# jobs in parallel, mirroring engine/build.bat (gn + ninja integrated
-# directly so targeted ninja goals can be passed instead of "default"):
+# jobs in parallel (the host builds go through ./ohos, the single source of
+# truth for host gn args; the ohos_* variants call gn.bat + ninja directly
+# so targeted ninja goals can be passed instead of "default"):
 #   host_release            -> default (host tools + dart-sdk for upload)
 #   host_debug              -> flutter/lib/snapshot:generate_snapshot_bin only
 #   ohos_{release,profile}_{arm64,x64}
@@ -21,12 +22,32 @@ cd "$ENGINE_DIR" || exit 1
 init_log_dir
 
 GN="src/flutter/tools/gn.bat"
-HOST_ARGS="--no-goma --no-prebuilt-dart-sdk --full-dart-sdk --disable-desktop-embeddings --no-build-embedder-examples --verbose"
 OHOS_ARGS="--no-goma --no-prebuilt-dart-sdk --full-dart-sdk --embedder-for-target --disable-desktop-embeddings --no-build-embedder-examples --ohos-api-int 13 --verbose"
 
 pids=()
 names=()
 
+# Run a whole build command in the background, logging to build.<name>.log.
+launch_cmd() {
+    local name="$1"
+    shift
+    local log="$LOG_DIR/build.${name}.log"
+    log_info "start: ${name} (log: ${log})"
+    ( "$@" ) >"$log" 2>&1 &
+    pids+=("$!")
+    names+=("$name")
+}
+
+# host_release / host_debug go through ./ohos (ohos.py), keeping the host gn
+# args in one place; --ninja-target restricts host_debug to the snapshot
+# target instead of the full default (issue #3034).
+launch_cmd host_release ./ohos -t release -n host
+launch_cmd host_debug ./ohos -t debug -n host \
+    --ninja-target flutter/lib/snapshot:generate_snapshot_bin
+
+# The ohos_* targets keep invoking gn.bat directly: engineConfig() in
+# ohos.py would first need an OHOS SDK layout via getNdkHome(), which the
+# windows runner environment does not provide.
 launch_build() {
     local name="$1" out="$2" target="$3"
     shift 3
@@ -40,10 +61,6 @@ launch_build() {
     names+=("$name")
 }
 
-launch_build host_release         host_release         "" \
-    --runtime-mode release $HOST_ARGS
-launch_build host_debug           host_debug           flutter/lib/snapshot:generate_snapshot_bin \
-    --runtime-mode debug --no-lto $HOST_ARGS
 launch_build ohos_release_arm64   ohos_release_arm64   flutter/build/archives:archive_win_gen_snapshot \
     --ohos --ohos-cpu arm64 --runtime-mode release $OHOS_ARGS
 launch_build ohos_profile_arm64   ohos_profile_arm64   flutter/build/archives:archive_win_gen_snapshot \
