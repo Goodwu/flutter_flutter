@@ -31,6 +31,9 @@ import { AUTOFILL_SUPPORT_API } from '../plugin/editing/OhosAutoFillHelper';
 
 const TAG = "FlutterViewTag";
 const EVENT_BACK_PRESS = 'EVENT_BACK_PRESS';
+// @deprecated: The Dart-side OhosFlexOverflowStrategy is deprecated and no longer sends dpiScale = -1.
+// This constant is only used in the reset branch of onDevicePixelRatioChange, which is dead code.
+// Kept for transitional compatibility only, and will be removed in a future release.
 const DPI_SCALE_RESET: number = -1;
 /** display.getRoundedCorner() is available since API 23 (flutter/flutter#179219). */
 const ROUNDED_CORNER_SUPPORT_API: number = 23;
@@ -464,6 +467,9 @@ export class FlutterView {
       this.flutterEngine?.getTextInputChannel()?.setDevicePixelRatio(this.displayInfo.densityPixels);
 
       // Calculate device pixel ratio
+      // @deprecated: The DPI_SCALE_RESET branch is dead code. The Dart-side OhosFlexOverflowStrategy is deprecated
+      // and no longer sends dpiScale = -1. The scale passed by densityUpdateCallback is customDensity / sysDensity,
+      // which is never -1. Kept for transitional compatibility only, and will be removed in a future release.
       // When dpiScaleFactor is DPI_SCALE_RESET, reset DPI to system default
       let newDevicePixelRatio: number;
       if (dpiScaleFactor === DPI_SCALE_RESET) {
@@ -728,6 +734,9 @@ export class FlutterView {
 
     try {
       this.context.eventHub.on(EVENT_BACK_PRESS, this.onBackPressCallback);
+      // @deprecated: The 'changeDevicePixelRatio' event is only triggered by DisplayMetricsChannel.updateDpiScale case,
+      // which is dead code (the Dart side no longer sends updateDpiScale). Kept for transitional compatibility only,
+      // and will be removed in a future release.
       this.context.eventHub.on('changeDevicePixelRatio', this.onDevicePixelRatioChange);
     } catch (e) {
       Log.e(TAG, "eventHub on error: " + JSON.stringify(e));
@@ -774,6 +783,8 @@ export class FlutterView {
 
     try {
       this.context.eventHub.off(EVENT_BACK_PRESS, this.onBackPressCallback);
+      // @deprecated: Corresponds to the @deprecated listener in
+      // registerDefaultCallbacks, will be removed together in a future release.
       this.context.eventHub.off('changeDevicePixelRatio', this.onDevicePixelRatioChange);
     } catch (e) {
       Log.e(TAG, "eventHub off error: " + JSON.stringify(e));

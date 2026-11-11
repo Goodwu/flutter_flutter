@@ -44,6 +44,8 @@ export default class DisplayMetricsChannel implements MethodCallHandler {
     try {
       // More methods are expected to be added here, hence the switch.
       switch (method) {
+        // @deprecated: The Dart-side OhosFlexOverflowStrategy is deprecated and no longer sends updateDpiScale.
+        // This case is dead code, kept for transitional compatibility only, and will be removed in a future release.
         case "updateDpiScale":
           if (this.customDpiActive && this.currentUri) {
             result.success(true);
@@ -52,6 +54,7 @@ export default class DisplayMetricsChannel implements MethodCallHandler {
           }
           let dpiScaleFactor: number = call.argument('dpiScale');
           Log.i(TAG, "Received dpiScaleFactor '" + dpiScaleFactor + "' message.");
+          // @deprecated: eventHub.emit('changeDevicePixelRatio') is only triggered by this case, which has no callers.
           this.context.eventHub.emit('changeDevicePixelRatio', dpiScaleFactor)
           result.success(true);
           break;

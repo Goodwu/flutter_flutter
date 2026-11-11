@@ -19,6 +19,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
+import '../rendering/auto_fit_scale.dart' show RenderAutoFitScale;
 import 'binding.dart';
 import 'debug.dart';
 import 'framework.dart';
@@ -2146,6 +2147,79 @@ class FittedBox extends SingleChildRenderObjectWidget {
     super.debugFillProperties(properties);
     properties.add(EnumProperty<BoxFit>('fit', fit));
     properties.add(DiagnosticsProperty<AlignmentGeometry>('alignment', alignment));
+  }
+}
+
+/// A widget that automatically scales its child to fit the available height.
+///
+/// _This widget is used internally by the framework on OHOS platforms to
+/// automatically resolve vertical overflow in route content via local
+/// scaling. It is wrapped around each route's page content by
+/// [_ModalScopeState] and should not normally be used directly by app
+/// developers. Using it manually on content that is already inside a route
+/// will cause double scaling. Only use it directly if you fully understand
+/// the framework's overflow handling and have a route-external scenario
+/// (e.g. custom overlays) that requires the same behavior._
+///
+/// When the child's natural height exceeds the available height, the child is
+/// scaled down (to a minimum of [minScaleFactor]) so that it fits. The scaling
+/// is applied in two stages:
+///
+/// 1. **Layout stage**: The child is first laid out with the original
+///    constraints. If any internal [RenderFlex] reports overflow, the child
+///    is re-laid out with a proportionally larger constraint (available size
+///    ÷ scale). This eliminates internal overflow states (e.g. the red/yellow
+///    stripes in debug mode) without shrinking fixed-size children.
+///
+/// 2. **Paint stage**: A uniform transform is applied so that the child is
+///    visually scaled to fit within the available height. This is what
+///    actually makes fixed-size content appear smaller.
+///
+/// Because the scale is recomputed every frame from the child's natural
+/// overflow (not from the previous frame's scale), there is no feedback loop
+/// and the result is stable across frames.
+///
+/// See also:
+///
+/// * [FittedBox], which scales and positions its child within itself according
+///   to [BoxFit]. [AutoFitScale] is similar but only scales when the child
+///   overflows (never enlarges).
+///
+/// This widget is used internally by the Flutter framework (see `ModalRoute`)
+/// to implement automatic page-content scaling on OHOS. It is not exported
+/// through `package:flutter/widgets.dart` and is not part of the public API.
+///
+/// The type is visible within `src/widgets/basic.dart` so that
+/// `src/widgets/routes.dart` can construct it; it is hidden from the public
+/// export list in `package:flutter/widgets.dart`.
+@internal
+class AutoFitScale extends SingleChildRenderObjectWidget {
+  /// Creates a widget that automatically scales its child to fit.
+  const AutoFitScale({super.key, super.child, this.minScaleFactor = 0.85, this.debugLabel});
+
+  /// The minimum scale factor that can be applied.
+  ///
+  /// Defaults to 0.85 to ensure content remains legible.
+  final double minScaleFactor;
+
+  /// A label used in debug logs to identify which page this AutoFitScale wraps.
+  final String? debugLabel;
+
+  @override
+  RenderAutoFitScale createRenderObject(BuildContext context) {
+    return RenderAutoFitScale(minScaleFactor: minScaleFactor, debugLabel: debugLabel);
+  }
+
+  @override
+  void updateRenderObject(BuildContext context, RenderAutoFitScale renderObject) {
+    renderObject.minScaleFactor = minScaleFactor;
+    renderObject.debugLabel = debugLabel;
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DoubleProperty('minScaleFactor', minScaleFactor));
   }
 }
 
