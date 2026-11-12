@@ -245,7 +245,7 @@ test_steps:
 
   - name: Unit Tests (Parallel Shards)
     script: ci/scripts/run_parallel_shards.sh
-    description: Run all unit tests in parallel shard groups (single machine)
+    description: Run all unit tests in parallel shard groups (single machine), collecting framework coverage
     required: true
 
 # prepare for Integration Gate Test
