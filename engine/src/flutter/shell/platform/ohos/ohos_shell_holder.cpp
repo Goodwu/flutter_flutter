@@ -265,6 +265,12 @@ OHOSShellHolder::OHOSShellHolder(
                                     io_runner         // io
   );
 
+#if (FLUTTER_RUNTIME_MODE != FLUTTER_RUNTIME_MODE_DEBUG)
+  fml::TaskRunner::RunNowOrPostTask(raster_runner, [this, raster_runner]() {
+    watchdogPair_ = fml::OhosWatchdog::MakeWatchdog(raster_runner);
+  });
+#endif
+
   napi_facade_->SetPlatformTaskRunner(platform_runner);
   FML_DLOG(INFO) << "before shell create";
   shell_ =
@@ -318,6 +324,11 @@ OHOSShellHolder::OHOSShellHolder(
 OHOSShellHolder::~OHOSShellHolder() {
   FML_LOG(INFO) << "MHN enter ~OHOSShellHolder()";
   StopDartMemoryMonitor();
+  std::function<void(size_t)> watchdogResetFunc = watchdogPair_.second;
+  size_t watchdogIndex = watchdogPair_.first;
+  if (watchdogIndex != 0 && watchdogResetFunc) {
+    watchdogResetFunc(watchdogIndex - 1);
+  }
   shell_.reset();
   thread_host_.reset();
   napi_facade_.reset();

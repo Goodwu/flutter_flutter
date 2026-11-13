@@ -12,14 +12,16 @@ if (is_fuchsia) {
 config("fml_ohos_config") {
   if (is_ohos) {
     flutter_version = exec_script(
-        "//flutter/attachment/scripts/ohos_har_version.py",
-        [
-          "--package-file",
-          rebase_path("//flutter/shell/platform/ohos/flutter_embedding/oh-package.json5", root_build_dir),
-          "--git-dir",
-          rebase_path("//", root_build_dir),
-        ],
-        "value")
+            "//flutter/attachment/scripts/ohos_har_version.py",
+            [
+              "--package-file",
+              rebase_path(
+                  "//flutter/shell/platform/ohos/flutter_embedding/oh-package.json5",
+                  root_build_dir),
+              "--git-dir",
+              rebase_path("//", root_build_dir),
+            ],
+            "value")
     defines = [ "FLUTTER_VERSION=\"$flutter_version\"" ]
   }
 }
@@ -210,6 +212,7 @@ source_set("fml") {
       "platform/ohos/message_loop_ohos.cc",
       "platform/ohos/message_loop_ohos.h",
       "platform/ohos/napi_util.cc",
+      "platform/ohos/watchdog/ohos_watchdog.cpp",
 
       #"platform/ohos/message_loop_ohos_test.cc",
       #"platform/ohos/message_loop_ohos_test.h",
@@ -223,6 +226,7 @@ source_set("fml") {
       "platform/ohos/timerfd.cc",
       "platform/ohos/timerfd.h",
     ]
+    libs += [ "ohhicollie" ]
     libs += [ "hilog_ndk.z" ]
     libs += [ "ace_napi.z" ]
     libs += [ "uv" ]
@@ -353,6 +357,19 @@ source_set("string_conversion") {
 }
 
 if (enable_unittests) {
+  if (is_ohos) {
+    executable("ohos_watchdog_unittests") {
+      testonly = true
+
+      sources = [ "platform/ohos/watchdog/ohos_watchdog_unittests.cc" ]
+
+      deps = [
+        "//flutter/fml",
+        "//flutter/testing",
+      ]
+    }
+  }
+
   test_fixtures("fml_fixtures") {
     fixtures = []
   }
