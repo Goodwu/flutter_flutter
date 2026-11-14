@@ -672,7 +672,7 @@ class TooltipWindowControllerOHOS extends TooltipWindowController with _WindowCo
     final Pointer<_Rect> result = _allocator.allocate<_Rect>(sizeOf<_Rect>());
     try {
       final double scale = rootView.devicePixelRatio == 0 ? 1.0 : rootView.devicePixelRatio;
-      final Rect scaledAnchorRect = Rect.fromLTWH(
+      final scaledAnchorRect = Rect.fromLTWH(
         _anchorRect.left * scale,
         _anchorRect.top * scale,
         _anchorRect.width * scale,
@@ -834,7 +834,7 @@ class PopupWindowControllerOHOS extends PopupWindowController with _WindowContro
     final Pointer<_Rect> result = _allocator.allocate<_Rect>(sizeOf<_Rect>());
     try {
       final double scale = rootView.devicePixelRatio == 0 ? 1.0 : rootView.devicePixelRatio;
-      final Rect scaledAnchorRect = Rect.fromLTWH(
+      final scaledAnchorRect = Rect.fromLTWH(
         _anchorRect.left * scale,
         _anchorRect.top * scale,
         _anchorRect.width * scale,

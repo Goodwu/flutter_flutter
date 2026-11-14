@@ -78,11 +78,17 @@ while [ $attempt -le $MAX_RETRIES ]; do
         fi
     fi
 
-    # Asset write conflict: exit code 1 with "Could not write file to" in current attempt's log
-    if [ $exit_code -eq 1 ] && tail -c +$((log_offset + 1)) "$LOG_FILE" | grep -q "Could not write file to"; then
+    # Asset write/copy conflict: exit code 1 with a race signature in the current
+    # attempt's log. The 3.44 wipe loop in installCodeAssets clears the shared
+    # build/native_assets/linux/ while a sibling shard copies the manifest into
+    # build/unit_test_assets/ (build 20261113-1-00022: libraries_2_3 + widgets_1_3
+    # died in 8s with "Cannot copy file to .../NativeAssetsManifest.json"), and
+    # the older shaders/*.spirv conflict surfaces as "Could not write file to".
+    # Both are transient per-shard; a retry after a short backoff passes.
+    if [ $exit_code -eq 1 ] && tail -c +$((log_offset + 1)) "$LOG_FILE" | grep -Eq "Could not write file to|Cannot copy file to|failed to copy file"; then
         attempt=$((attempt + 1))
         if [ $attempt -le $MAX_RETRIES ]; then
-            echo "[$(date +%H:%M:%S)] RETRY ($attempt/$MAX_RETRIES): SHARD=$SHARD SUBSHARD=$SUBSHARD (asset write conflict)" | tee -a "$LOG_FILE"
+            echo "[$(date +%H:%M:%S)] RETRY ($attempt/$MAX_RETRIES): SHARD=$SHARD SUBSHARD=$SUBSHARD (asset write/copy conflict)" | tee -a "$LOG_FILE"
             sleep 15
             continue
         fi
