@@ -35,6 +35,7 @@ import {
 } from './OhosAutoFillHelper';
 
 const INPUT_SUPPORT_API = 15;
+const PLACEHOLDER_SUPPORT_API = 20;
 
 /**
  * Plugin for handling text input in Flutter applications.
@@ -539,6 +540,9 @@ class TextInputMethodHandlerImpl implements TextInputMethodHandler {
         this.textConfig.inputAttribute.textInputType = configuration.inputType.type;
         this.textConfig.inputAttribute.enterKeyType = configuration.inputAction as Any;
       }
+      if (deviceInfo.sdkApiVersion >= PLACEHOLDER_SUPPORT_API) {
+        this.textConfig.inputAttribute.placeholder = configuration.autofill?.hintText ?? undefined;
+      }
       if (configuration.autofill !== undefined) {
         this.updateAutofillConfigurationIfNeeded(configuration);
       }
@@ -897,6 +901,9 @@ class TextInputMethodHandlerImpl implements TextInputMethodHandler {
     if (configuration?.inputType) {
       this.textConfig.inputAttribute.textInputType = configuration.inputType.type;
       this.textConfig.inputAttribute.enterKeyType = configuration.inputAction as Any;
+    }
+    if (deviceInfo.sdkApiVersion >= PLACEHOLDER_SUPPORT_API) {
+      this.textConfig.inputAttribute.placeholder = configuration?.autofill?.hintText ?? undefined;
     }
     if (this.canShowTextInput()) {
       this.inputTarget = new InputTarget(Type.FRAMEWORK_CLIENT, client);
