@@ -13,6 +13,7 @@
 #include <native_image/native_image.h>
 #include <rawfile/raw_file.h>
 #include <rawfile/raw_file_manager.h>
+#include <cinttypes>
 #include <string>
 
 #include "AbilityKit/ability_runtime/application_context.h"
@@ -118,6 +119,12 @@ napi_value PlatformViewOHOSNapi::nativeDispatchEmptyPlatformMessage(
   }
   FML_DLOG(INFO) << "PlatformViewOHOSNapi::nativeDispatchEmptyPlatformMessage "
                     "DispatchEmptyPlatformMessage";
+  if (channel == "flutter/lifecycle") {
+    LOGI(
+        "[FlutterDFX] chain=focus stage=lifecycle_native_dispatch "
+        "bytes=0 response_id=%{public}" PRId64,
+        responseId);
+  }
   OHOS_SHELL_HOLDER->GetPlatformView()->DispatchEmptyPlatformMessage(
       channel, responseId);
   return nullptr;
@@ -198,6 +205,12 @@ napi_value PlatformViewOHOSNapi::nativeDispatchPlatformMessage(
                  << ",message:" << message << ",position:" << position
                  << ",responseId:" << responseId;
 
+  if (channel == "flutter/lifecycle") {
+    LOGI(
+        "[FlutterDFX] chain=focus stage=lifecycle_native_dispatch "
+        "bytes=%{public}" PRId64 " response_id=%{public}" PRId64,
+        position, responseId);
+  }
   OHOS_SHELL_HOLDER->GetPlatformView()->DispatchPlatformMessage(
       channel, message, position, responseId);
   return nullptr;

@@ -4,11 +4,13 @@
  * found in the LICENSE_HW file.
  */
 
-import { describe, it, expect, Level, beforeAll} from '@ohos/hypium';
+import { describe, it, expect, Level, beforeAll, MockKit, when, ArgumentMatchers } from '@ohos/hypium';
+import DfxLog from '../../../../main/ets/util/DfxLog';
+import window from '@ohos.window';
 // import common from '@ohos.app.ability.common';
 import { common } from '@kit.AbilityKit';
 import { deviceInfo } from '@kit.BasicServicesKit';
-import { display } from '@kit.ArkUI';
+import { display, uiObserver } from '@kit.ArkUI';
 import {
   FlutterView,
   ViewportMetrics,
@@ -105,8 +107,184 @@ class TestFirstPreloadFrameListener implements FirstPreloadFrameListener {
   }
 }
 
+interface KeyboardTestHandler {
+  hide: () => void;
+}
+
+interface KeyboardTestChannel {
+  textInputMethodHandler?: KeyboardTestHandler;
+}
+
+interface KeyboardTestNavigation {
+  popRoute: () => void;
+}
+
+interface KeyboardTestEngine {
+  getTextInputChannel: () => KeyboardTestChannel;
+  getNavigationChannel: () => KeyboardTestNavigation;
+}
+
+class KeyboardTestState {
+  view: FlutterView = makeView('keyboard-dfx-view');
+  hideCalls: number = 0;
+  popCalls: number = 0;
+  areaChanges: number = 0;
+  channel: KeyboardTestChannel = {
+    textInputMethodHandler: { hide: () => { this.hideCalls++; } }
+  };
+
+  constructor(height: number) {
+    const engine: KeyboardTestEngine = {
+      getTextInputChannel: () => this.channel,
+      getNavigationChannel: () => {
+        const navigation: KeyboardTestNavigation = { popRoute: () => { this.popCalls++; } };
+        return navigation;
+      }
+    };
+    const emptyRect: window.Rect = { left: 0, top: 0, width: 0, height: 0 };
+    const area: window.AvoidArea = {
+      visible: height > 0,
+      topRect: emptyRect,
+      leftRect: emptyRect,
+      rightRect: emptyRect,
+      bottomRect: { left: 0, top: 0, width: 0, height: height }
+    };
+    (this.view as Any).flutterEngine = engine;
+    (this.view as Any).keyboardAvoidArea = area;
+    (this.view as Any).onAreaChange = () => { this.areaChanges++; };
+  }
+}
+
+function keyboardRouteInfo(state: uiObserver.RouterPageState): uiObserver.RouterPageInfo {
+  const info: uiObserver.RouterPageInfo = {
+    context: getContext() as common.UIAbilityContext,
+    index: 1,
+    name: 'PRIVATE_ROUTE_NAME',
+    path: 'PRIVATE_ROUTE_PATH',
+    pageId: 'PRIVATE_PAGE_ID',
+    state: state
+  };
+  return info;
+}
+
+function captureKeyboardLogs(state: KeyboardTestState, action: () => void): string {
+  const mocker = new MockKit();
+  const logs = new Array<string>();
+  try {
+    const info: Function = mocker.mockFunc(DfxLog, DfxLog.i);
+    when(info)(ArgumentMatchers.anyString, ArgumentMatchers.anyString)
+      .afterAction((tag: string, format: string) => {
+        if (format.includes('[FlutterDFX]')) {
+          logs.push(format);
+        }
+      });
+    action();
+    return logs.join('\n');
+  } finally {
+    mocker.clear(DfxLog);
+    (state.view as Any).flutterEngine = null;
+    (state.view as Any).unRegisterDefaultCallbacks();
+  }
+}
+
 export default function flutterViewTest() {
   let context: common.UIAbilityContext;
+
+  describe('FlutterView.keyboardDfx', () => {
+    it('identifies route initiated hide without exposing route data', Level.LEVEL1, () => {
+      const state = new KeyboardTestState(300);
+      const logs = captureKeyboardLogs(state, () => {
+        (state.view as Any).routerPageUpdateCallback(keyboardRouteInfo(uiObserver.RouterPageState.ON_PAGE_SHOW));
+      });
+      expect(state.hideCalls).assertEqual(1);
+      expect(logs).assertContain('stage=router_page_update RouterPageUpdate: state=2, pageIndex=1, keyboardHeight=300');
+      expect(logs).assertContain('view=keyboard-dfx-view, handler=true');
+      expect(logs.split('\n').length).assertEqual(1);
+      expect(logs.includes('PRIVATE_')).assertEqual(false);
+    });
+
+    it('records zero keyboard height as a skipped route hide', Level.LEVEL1, () => {
+      const state = new KeyboardTestState(0);
+      const logs = captureKeyboardLogs(state, () => {
+        (state.view as Any).routerPageUpdateCallback(keyboardRouteInfo(uiObserver.RouterPageState.ON_PAGE_SHOW));
+      });
+      expect(state.hideCalls).assertEqual(0);
+      expect(logs).assertContain('RouterPageUpdate: state=2, pageIndex=1, keyboardHeight=0');
+      expect(logs.split('\n').length).assertEqual(1);
+    });
+
+    it('records non show route states as skipped hides', Level.LEVEL1, () => {
+      const state = new KeyboardTestState(300);
+      const logs = captureKeyboardLogs(state, () => {
+        (state.view as Any).routerPageUpdateCallback(keyboardRouteInfo(uiObserver.RouterPageState.ON_PAGE_HIDE));
+      });
+      expect(state.hideCalls).assertEqual(0);
+      expect(logs).assertContain('RouterPageUpdate: state=3, pageIndex=1, keyboardHeight=300');
+      expect(logs.split('\n').length).assertEqual(1);
+    });
+
+    it('does not claim a hide request without an input handler or engine', Level.LEVEL1, () => {
+      const state = new KeyboardTestState(300);
+      state.channel.textInputMethodHandler = undefined;
+      const logs = captureKeyboardLogs(state, () => {
+        (state.view as Any).routerPageUpdateCallback(keyboardRouteInfo(uiObserver.RouterPageState.ON_PAGE_SHOW));
+        (state.view as Any).flutterEngine = null;
+        (state.view as Any).routerPageUpdateCallback(keyboardRouteInfo(uiObserver.RouterPageState.ON_PAGE_SHOW));
+      });
+      expect(state.hideCalls).assertEqual(0);
+      expect(logs.split('handler=false').length - 1).assertEqual(2);
+      expect(logs.split('\n').length).assertEqual(2);
+    });
+
+    it('identifies back press initiated hide', Level.LEVEL1, () => {
+      const state = new KeyboardTestState(300);
+      const logs = captureKeyboardLogs(state, () => { state.view.onBackPressCallback(); });
+      expect(state.hideCalls).assertEqual(1);
+      expect(state.popCalls).assertEqual(0);
+      expect(logs).assertContain('stage=back_press BackPress: keyboardHeight=300, view=keyboard-dfx-view, handler=true');
+      expect(logs.split('\n').length).assertEqual(1);
+    });
+
+    it('keeps back navigation when keyboard height is zero', Level.LEVEL1, () => {
+      const state = new KeyboardTestState(0);
+      const logs = captureKeyboardLogs(state, () => { state.view.onBackPressCallback(); });
+      expect(state.popCalls).assertEqual(1);
+      expect(state.hideCalls).assertEqual(0);
+      expect(logs).assertContain('BackPress: keyboardHeight=0, view=keyboard-dfx-view, handler=true');
+      expect(logs.split('\n').length).assertEqual(1);
+    });
+
+    it('records a skipped back press hide without a handler', Level.LEVEL1, () => {
+      const state = new KeyboardTestState(300);
+      state.channel.textInputMethodHandler = undefined;
+      const logs = captureKeyboardLogs(state, () => { state.view.onBackPressCallback(); });
+      expect(state.hideCalls).assertEqual(0);
+      expect(state.popCalls).assertEqual(0);
+      expect(logs).assertContain('BackPress: keyboardHeight=300, view=keyboard-dfx-view, handler=false');
+      expect(logs.split('\n').length).assertEqual(1);
+    });
+
+    it('records height callbacks before updating the active view', Level.LEVEL1, () => {
+      const state = new KeyboardTestState(300);
+      const logs = captureKeyboardLogs(state, () => {
+        (state.view as Any).keyboardHeightChangeCallback(0);
+      });
+      expect(state.view.getKeyboardHeight()).assertEqual(0);
+      expect(state.areaChanges).assertEqual(1);
+      expect(logs).assertContain('stage=keyboard_height_received source=keyboardHeightChange view=keyboard-dfx-view height=0 cachedHeight=300 active=true');
+    });
+
+    it('records height callbacks without updating an inactive view', Level.LEVEL1, () => {
+      const state = new KeyboardTestState(300);
+      (state.view as Any).isActive = false;
+      const logs = captureKeyboardLogs(state, () => {
+        (state.view as Any).keyboardHeightChangeCallback(0);
+      });
+      expect(state.view.getKeyboardHeight()).assertEqual(0);
+      expect(state.areaChanges).assertEqual(0);
+      expect(logs).assertContain('height=0 cachedHeight=300 active=false');
+    });
+  });
 
   describe('FlutterView.isAttachedToFlutterEngine', () => {
     it('returns false when no engine attached on isAttachedToFlutterEngine', Level.LEVEL1, () => {

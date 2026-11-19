@@ -15,6 +15,7 @@ import FlutterShellArgs from '../engine/FlutterShellArgs';
 import DartExecutor, { DartEntrypoint } from '../engine/dart/DartExecutor';
 import FlutterAbilityLaunchConfigs from './FlutterAbilityLaunchConfigs';
 import Log from '../../util/Log';
+import DfxLog from '../../util/DfxLog';
 import FlutterInjector from '../../FlutterInjector';
 import UIAbility from '@ohos.app.ability.UIAbility';
 import ExclusiveAppComponent from './ExclusiveAppComponent';
@@ -448,7 +449,10 @@ class FlutterAbilityAndEntryDelegate implements ExclusiveAppComponent<UIAbility>
    * @param hasFocus - Whether the window has focus
    */
   onWindowFocusChanged(hasFocus: boolean): void {
-    if (this.shouldDispatchAppLifecycleState()) {
+    const dispatch = this.shouldDispatchAppLifecycleState();
+    DfxLog.i(TAG,
+      `[FlutterDFX] chain=focus stage=window_focus_changed hasFocus=${hasFocus} dispatch=${dispatch} engineAvailable=${this.flutterEngine != undefined}`);
+    if (dispatch) {
       this.flutterEngine?.getAbilityControlSurface()?.onWindowFocusChanged(hasFocus);
       if (hasFocus) {
         this.flutterEngine?.getLifecycleChannel()?.aWindowIsFocused();

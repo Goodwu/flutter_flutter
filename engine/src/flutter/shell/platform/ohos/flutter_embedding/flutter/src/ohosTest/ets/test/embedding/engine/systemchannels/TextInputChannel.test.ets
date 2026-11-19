@@ -4,7 +4,7 @@
  * found in the LICENSE_HW file.
  */
 
-import { describe, it, expect, Level } from '@ohos/hypium';
+import { describe, it, expect, Level, MockKit, when, ArgumentMatchers } from '@ohos/hypium';
 import inputMethod from '@ohos.inputMethod';
 import { resourceManager } from '@kit.LocalizationKit';
 import FlutterNapi from '../../../../../../main/ets/embedding/engine/FlutterNapi';
@@ -24,6 +24,7 @@ import JSONMethodCodec from '../../../../../../main/ets/plugin/common/JSONMethod
 import { DartMessenger } from '../../../../../../main/ets/embedding/engine/dart/DartMessenger';
 import { IncomingMethodCallHandler } from '../../../../../../main/ets/plugin/common/MethodChannel';
 import { BinaryReply } from '../../../../../../main/ets/plugin/common/BinaryMessenger';
+import DfxLog from '../../../../../../main/ets/util/DfxLog';
 
 class FakeTextInputHandler implements TextInputMethodHandler {
   showCalls: number = 0;
@@ -119,6 +120,87 @@ function dispatchTicMethodCall(setup: TicTestSetup, method: string, args: Any): 
 }
 
 export default function textInputChannelTest() {
+  describe('TextInputChannel.keyboardDfx', () => {
+    it('does not log high frequency editing state requests', Level.LEVEL1, () => {
+      const channel = getTextInputChannel();
+      const handler = new FakeTextInputHandler();
+      channel.setTextInputMethodHandler(handler);
+      const mocker = new MockKit();
+      const logs = new Array<string>();
+      try {
+        const info: Function = mocker.mockFunc(DfxLog, DfxLog.i);
+        when(info)(ArgumentMatchers.anyString, ArgumentMatchers.anyString)
+          .afterAction((tag: string, format: string) => {
+            if (format.includes('[FlutterDFX]')) {
+              logs.push(format);
+            }
+          });
+        const args: Any = {
+          text: 'PRIVATE_EDITING_TEXT',
+          selectionBase: 0, selectionExtent: 1, composingBase: -1, composingExtent: -1
+        };
+        const result = new FakeMethodResult2();
+        channel.textInputCallback!.onMethodCall(new MethodCall('TextInput.setEditingState', args), result);
+        expect(handler.setEditingStateCalls).assertEqual(1);
+        expect(result.successCalls).assertEqual(1);
+        expect(logs.length).assertEqual(0);
+      } finally {
+        channel.setTextInputMethodHandler(null);
+        mocker.clear(DfxLog);
+      }
+    });
+
+    it('records each channel request once without forwarding duplicates', Level.LEVEL1, () => {
+      const channel = getTextInputChannel();
+      const handler = new FakeTextInputHandler();
+      channel.setTextInputMethodHandler(handler);
+      const mocker = new MockKit();
+      const logs = new Array<string>();
+      try {
+        const info: Function = mocker.mockFunc(DfxLog, DfxLog.i);
+        when(info)(ArgumentMatchers.anyString, ArgumentMatchers.anyString)
+          .afterAction((tag: string, format: string) => {
+            if (format.includes('[FlutterDFX]')) {
+              logs.push(format);
+            }
+          });
+        const config: Any = {
+          inputAction: 'TextInputAction.done',
+          inputType: makeInputTypeJson('TextInputType.text'),
+          actionLabel: 'PRIVATE_ACTION_LABEL'
+        };
+        const platformArgs: Any = { platformViewId: 42, usesVirtualDisplay: false };
+        const calls = new Array<MethodCall>(
+          new MethodCall('TextInput.setClient', new Array<Any>(7, config)),
+          new MethodCall('TextInput.show', null),
+          new MethodCall('TextInput.hide', null),
+          new MethodCall('TextInput.setPlatformViewClient', platformArgs),
+          new MethodCall('TextInput.clearClient', null),
+          new MethodCall('TextInput.requestAutofill', null)
+        );
+        for (const call of calls) {
+          const result = new FakeMethodResult2();
+          channel.textInputCallback!.onMethodCall(call, result);
+          expect(result.successCalls).assertEqual(1);
+        }
+        expect(logs.length).assertEqual(calls.length);
+        for (let i = 0; i < calls.length; i++) {
+          expect(logs[i]).assertContain(`Recv: method=${calls[i].method}`);
+        }
+        expect(handler.showCalls).assertEqual(1);
+        expect(handler.hideCalls).assertEqual(1);
+        expect(handler.setClientCalls).assertEqual(1);
+        expect(handler.setPlatformViewClientCalls).assertEqual(1);
+        expect(handler.clearClientCalls).assertEqual(1);
+        expect(handler.requestAutofillCalls).assertEqual(1);
+        expect(logs.join('\n').includes('PRIVATE_')).assertEqual(false);
+      } finally {
+        channel.setTextInputMethodHandler(null);
+        mocker.clear(DfxLog);
+      }
+    });
+  });
+
   describe('TextInputChannel.createEditingStateJSON', () => {
     it('returns object for basic args', Level.LEVEL1, () => {
       const channel = getTextInputChannel();

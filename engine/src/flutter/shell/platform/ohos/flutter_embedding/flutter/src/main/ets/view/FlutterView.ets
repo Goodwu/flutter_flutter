@@ -6,6 +6,7 @@
 
 import FlutterEngine from '../embedding/engine/FlutterEngine';
 import Log from '../util/Log';
+import DfxLog from '../util/DfxLog';
 import { DVModel, DVModelChildren, DVModelEvents, DVModelParameters } from './DynamicView/dynamicView';
 import { display } from '@kit.ArkUI'
 import FlutterManager from '../embedding/ohos/FlutterManager';
@@ -430,10 +431,14 @@ export class FlutterView {
       this.flutterEngine?.getFlutterNapi()?.LTPODispatchHighFrameRate();
     }
 
-    if (this.getKeyboardHeight() == 0) {
+    const keyboardHeight = this.getKeyboardHeight();
+    DfxLog.i(TAG,
+      `[FlutterDFX] chain=keyboard stage=back_press BackPress: keyboardHeight=${keyboardHeight}, view=${this.id}, handler=${this.flutterEngine?.getTextInputChannel()?.textInputMethodHandler != null}`);
+    if (keyboardHeight == 0) {
       this.flutterEngine?.getNavigationChannel()?.popRoute();
     } else {
-      this.flutterEngine?.getTextInputChannel()?.textInputMethodHandler?.hide();
+      const handler = this.flutterEngine?.getTextInputChannel()?.textInputMethodHandler;
+      handler?.hide();
     }
   };
 
@@ -536,8 +541,12 @@ export class FlutterView {
   }
 
   private routerPageUpdateCallback = (info: uiObserver.RouterPageInfo) => {
-    if (this.getKeyboardHeight() !== 0 && info.state === uiObserver.RouterPageState.ON_PAGE_SHOW) {
-      this.flutterEngine?.getTextInputChannel()?.textInputMethodHandler?.hide();
+    const keyboardHeight = this.getKeyboardHeight();
+    DfxLog.i(TAG,
+      `[FlutterDFX] chain=keyboard stage=router_page_update RouterPageUpdate: state=${info.state}, pageIndex=${info.index}, keyboardHeight=${keyboardHeight}, active=${this.isActive}, view=${this.id}, handler=${this.flutterEngine?.getTextInputChannel()?.textInputMethodHandler != null}`);
+    if (keyboardHeight !== 0 && info.state === uiObserver.RouterPageState.ON_PAGE_SHOW) {
+      const handler = this.flutterEngine?.getTextInputChannel()?.textInputMethodHandler;
+      handler?.hide();
     }
   }
 
@@ -666,6 +675,8 @@ export class FlutterView {
   }
   private keyboardHeightChangeCallback = (data: number) => {
     Log.i(TAG, "keyboardHeightChangeCallback " + data);
+    DfxLog.i(TAG,
+      `[FlutterDFX] chain=keyboard stage=keyboard_height_received source=keyboardHeightChange view=${this.id} height=${data} cachedHeight=${this.getKeyboardHeight()} active=${this.isActive}`);
     if (this.keyboardAvoidArea) {
       this.keyboardAvoidArea.bottomRect.height = data;
     }

@@ -34,6 +34,7 @@ import PlatformViewRegistryImpl from './PlatformViewRegistryImpl';
 import DartExecutor from '../../embedding/engine/dart/DartExecutor';
 import { FlutterMutatorView } from '../../embedding/engine/mutatorsstack/FlutterMutatorView';
 import Log from '../../util/Log'
+import DfxLog from '../../util/DfxLog';
 import PlatformViewFactory from './PlatformViewFactory'
 import { decodePlatformViewCreationParams } from './PlatformViewParamsUtil';
 import { ByteBuffer } from '../../util/ByteBuffer';
@@ -648,7 +649,11 @@ export default class PlatformViewsController implements PlatformViewsHandler {
             // Correct local coordinates for rotation/scale using the global→local
             // affine stored at layout time (PlatformViewsController.offset).
             TouchEventProcessor.applyAffineTransform(it, affineTransform);
-            nodeController.postEvent(it)
+            const posted = nodeController.postEvent(it);
+            if (it.type !== TouchType.Move) {
+              DfxLog.i(TAG,
+                `[FlutterDFX] chain=gesture stage=platform_view_post view=${touch.viewId} type=${it.type} eventTime=${it.timestamp} posted=${posted} mode=legacy`);
+            }
             this.rememberPostedTouchEvent(params, it);
             this.invokeTextInputHandoffOnTouch(touch.viewId, shouldHandoffFrameworkFocus, it.type == TouchType.Down);
           }
@@ -677,6 +682,9 @@ export default class PlatformViewsController implements PlatformViewsHandler {
         params['down'] = false
         params['shouldHandoffFrameworkFocusOnTouch'] = false
       }
+    } else if (touch.action !== TouchEventType.ACTION_MOVE) {
+      DfxLog.i(TAG,
+        `[FlutterDFX] chain=gesture stage=platform_view_dropped view=${touch.viewId} action=${touch.action} reason=no_wrapper`);
     }
   }
 

@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { beforeEach, describe, expect, it } from '@ohos/hypium';
+import { beforeEach, describe, expect, it, Level, MockKit, when, ArgumentMatchers } from '@ohos/hypium';
 import TextInputChannel, {
   Configuration,
   InputType,
@@ -28,6 +28,7 @@ import inputMethod from '@ohos.inputMethod';
 import Any from '../../../../../main/ets/plugin/common/Any';
 import { ListenableEditingState } from '../../../../../main/ets/plugin/editing/ListenableEditingState';
 import { BusinessError } from '@kit.BasicServicesKit';
+import DfxLog from '../../../../../main/ets/util/DfxLog';
 
 /**
  * State-machine / pure-logic coverage for TextInputMethodHandlerImpl.
@@ -104,6 +105,38 @@ class FakeInputMethodController {
     // inputMethod.InputMethodController surface so that the non-active
     // destroy() branch can run cancelListenKeyBoardEvent() (12 off() calls)
     // without a TypeError before the detach/hide assertions are reached.
+  }
+}
+
+class RejectingAttachError extends Error {
+  code: number = 12800001;
+
+  constructor() {
+    super('PRIVATE_IME_ERROR');
+  }
+}
+
+class RejectingAttachController {
+  async attach(): Promise<void> {
+    throw new RejectingAttachError();
+  }
+}
+
+async function captureInputLogs(action: () => Promise<void>): Promise<string> {
+  const mocker = new MockKit();
+  const logs = new Array<string>();
+  try {
+    const info: Function = mocker.mockFunc(DfxLog, DfxLog.i);
+    when(info)(ArgumentMatchers.anyString, ArgumentMatchers.anyString)
+      .afterAction((tag: string, format: string) => {
+        if (format.includes('[FlutterDFX]')) {
+          logs.push(format);
+        }
+      });
+    await action();
+    return logs.join('\n');
+  } finally {
+    mocker.clear(DfxLog);
   }
 }
 
@@ -444,6 +477,130 @@ export default function TextInputPluginStateTest() {
       h.setClient(971, makeConfig(undefined, [], inputMethod.TextInputType.TEXT));
       h.setAutoFillFieldRect(0, 0, 100, 100);
       expect(h.lastClientRect).not().assertNull();
+    })
+
+    it('dfx_show_records_state_without_extra_secure_keyboard_check', Level.LEVEL1, async () => {
+      const h: ESObject = textInputChannelMock.textInputMethodHandler!;
+      h.configuration = makeConfigKind(undefined, [], inputMethod.TextInputType.TEXT, PointerDeviceKind.TOUCH);
+      h.keyboardStatus = inputMethod.KeyboardStatus.SHOW;
+      h.lastKind = PointerDeviceKind.TOUCH;
+      let attachCalls = 0;
+      let secureChecks = 0;
+      h.attach = async () => { attachCalls++; };
+      h.hasSecureKeyboardInSwitch = () => { secureChecks++; return false; };
+      const logs = await captureInputLogs(async () => { await h.showTextInput(); });
+      expect(logs).assertContain(`ShowTextInput: kindSwitch=false, status=${inputMethod.KeyboardStatus.SHOW}, attached=false, imc=false`);
+      expect(logs.split('\n').length).assertEqual(1);
+      expect(attachCalls).assertEqual(1);
+      expect(secureChecks).assertEqual(1);
+    })
+
+    it('dfx_handle_attach_records_both_background_outcomes', Level.LEVEL1, async () => {
+      const h: ESObject = textInputChannelMock.textInputMethodHandler!;
+      let background = false;
+      h.detachIfBackground = async () => background;
+      h.maybeRunPendingAutofillRequest = () => {};
+      const logs = await captureInputLogs(async () => {
+        await h.handleAttach(true);
+        expect(h.isInputMethodAttached).assertEqual(true);
+        expect(h.keyboardStatus).assertEqual(inputMethod.KeyboardStatus.SHOW);
+        background = true;
+        await h.handleAttach(true);
+      });
+      expect(h.isInputMethodAttached).assertEqual(false);
+      expect(h.keyboardStatus).assertEqual(inputMethod.KeyboardStatus.NONE);
+      expect(logs).assertContain('HandleAttach: bgDetached=false, attached=true');
+      expect(logs).assertContain('HandleAttach: bgDetached=true, attached=false');
+      expect(logs.split('\n').length).assertEqual(2);
+    })
+
+    it('dfx_attach_failure_records_code_without_error_message', Level.LEVEL1, async () => {
+      const h: ESObject = textInputChannelMock.textInputMethodHandler!;
+      h.inputMethodController = new RejectingAttachController();
+      h.registerPreviewTextCallbacks = () => {};
+      const logs = await captureInputLogs(async () => { await h.attach(true); });
+      expect(h.keyboardStatus).assertEqual(inputMethod.KeyboardStatus.NONE);
+      expect(logs).assertContain('Attach: api=attach, showKeyboard=true, inputType=');
+      expect(logs).assertContain('api=attach_or_handleAttach success=false');
+      expect(logs).assertContain('code=12800001');
+      expect(logs.includes('PRIVATE_')).assertEqual(false);
+      expect(logs.split('\n').length).assertEqual(2);
+    })
+
+    it('dfx_hide_suppression_keeps_status_and_consumes_token', Level.LEVEL1, async () => {
+      const h: ESObject = textInputChannelMock.textInputMethodHandler!;
+      h.keyboardStatus = inputMethod.KeyboardStatus.SHOW;
+      h.keyboardFocusState = true;
+      h.setPlatformViewClient(21, false);
+      const logs = await captureInputLogs(async () => { h.hide(); });
+      expect(logs).assertContain(`KeyboardHide: status=${inputMethod.KeyboardStatus.SHOW}, skipSuppress=true`);
+      expect(logs.split('\n').length).assertEqual(1);
+      expect(h.suppressNextHideForPhysicalPlatformView).assertEqual(false);
+      expect(h.keyboardStatus).assertEqual(inputMethod.KeyboardStatus.SHOW);
+      expect(h.keyboardFocusState).assertEqual(true);
+    })
+
+    it('dfx_status_records_filters_without_exposing_ime_name', Level.LEVEL1, async () => {
+      const h: ESObject = textInputChannelMock.textInputMethodHandler!;
+      h.configuration = makeConfig(undefined, [], inputMethod.TextInputType.TEXT);
+      h.currentImeName = 'PRIVATE_IME_NAME';
+      h.previousInputType = inputMethod.TextInputType.NUMBER;
+      h.keyboardStatus = inputMethod.KeyboardStatus.SHOW;
+      h.autoFillSessionActive = true;
+      let closeCalls = 0;
+      (textInputChannelMock as ESObject).onConnectionClosed = () => { closeCalls++; };
+      const logs = await captureInputLogs(async () => {
+        h.applyKeyboardStatus(inputMethod.KeyboardStatus.HIDE);
+        expect(h.keyboardStatus).assertEqual(inputMethod.KeyboardStatus.HIDE);
+        expect(closeCalls).assertEqual(0);
+        h.autoFillSessionActive = false;
+        h.applyKeyboardStatus(inputMethod.KeyboardStatus.HIDE);
+        expect(closeCalls).assertEqual(0);
+        h.applyKeyboardStatus(inputMethod.KeyboardStatus.HIDE);
+      });
+      expect(closeCalls).assertEqual(1);
+      expect(logs).assertContain(`ApplyKeyboardStatus: state=${inputMethod.KeyboardStatus.SHOW}->${inputMethod.KeyboardStatus.HIDE}`);
+      expect(logs).assertContain('imeSwitched=true, typeSwitched=true, autofillActive=true');
+      expect(logs).assertContain('imeSwitched=false, typeSwitched=false, autofillActive=false');
+      expect(logs.includes('PRIVATE_')).assertEqual(false);
+      const currentImeName = inputMethod.getCurrentInputMethod().name;
+      if (currentImeName.length > 0) {
+        expect(logs.includes(currentImeName)).assertEqual(false);
+      }
+      expect(logs.split('\n').length).assertEqual(3);
+    })
+
+    it('dfx_soft_callbacks_record_ranges_and_enums_only', Level.LEVEL1, async () => {
+      const h: ESObject = textInputChannelMock.textInputMethodHandler!;
+      let previewText = '';
+      let functionCalls = 0;
+      const editable: ESObject = h.mEditable;
+      editable.handleInsertPreviewTextEvent = (text: string, range: inputMethod.Range) => { previewText = text; };
+      editable.handleFunctionKey = (key: inputMethod.FunctionKey) => { functionCalls++; };
+      const range: inputMethod.Range = { start: 0, end: 3 };
+      const key: inputMethod.FunctionKey = { enterKeyType: inputMethod.EnterKeyType.SEARCH };
+      const logs = await captureInputLogs(async () => {
+        h.setPreviewTextCallback('PRIVATE_PREVIEW_TEXT', range);
+        h.sendFunctionKeyCallback(key);
+      });
+      expect(previewText).assertEqual('PRIVATE_PREVIEW_TEXT');
+      expect(functionCalls).assertEqual(1);
+      expect(logs).assertContain('ImePreview: range=0-3');
+      expect(logs).assertContain(`ImeFuncKey: enterKey=${inputMethod.EnterKeyType.SEARCH}`);
+      expect(logs.includes('PRIVATE_')).assertEqual(false);
+      expect(logs.split('\n').length).assertEqual(2);
+    })
+
+    it('dfx_teardown_records_mismatched_view_without_mutation', Level.LEVEL1, async () => {
+      const h: ESObject = textInputChannelMock.textInputMethodHandler!;
+      h.keyboardStatus = inputMethod.KeyboardStatus.SHOW;
+      h.keyboardFocusState = true;
+      h.setPlatformViewClient(21, false);
+      const logs = await captureInputLogs(async () => { h.clearPlatformViewClientForTeardown(22); });
+      expect(logs).assertContain(`Teardown: viewId=22, status=${inputMethod.KeyboardStatus.SHOW}`);
+      expect(logs.split('\n').length).assertEqual(1);
+      expect(h.inputTarget.id).assertEqual(21);
+      expect(h.keyboardStatus).assertEqual(inputMethod.KeyboardStatus.SHOW);
     })
   })
 
