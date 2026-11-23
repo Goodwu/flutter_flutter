@@ -17,9 +17,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FLUTTER_ROOT="$SCRIPT_DIR/../.."
 
 SHARD="${1:?Usage: run_shard_test.sh <shard> [subshard] [extra_args...]}"
-SUBSHARD="${2:-}"
 shift
-[ -n "$SUBSHARD" ] && shift
+# Optional subshard: only treat $1 as a subshard name when it is not an
+# option flag, so 'run_shard_test.sh analyze --coverage ...' keeps the
+# flags in EXTRA_ARGS instead of swallowing them into SUBSHARD.
+SUBSHARD=""
+if [ $# -gt 0 ] && [[ "$1" != --* ]]; then
+    SUBSHARD="$1"
+    shift
+fi
 EXTRA_ARGS=("$@")
 
 export OHOS_CI=true
