@@ -733,7 +733,11 @@ class _DeprecationMessagesVisitor extends RecursiveAstVisitor<void> {
   );
 
   static final RegExp deprecationVersionPattern = RegExp(
-    r'This feature was deprecated after v(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?<build>-\d+\.\d+\.pre)?\.$',
+    'This feature was deprecated after v'
+    r'(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)'
+    r'(?<build>-\d+\.\d+\.pre)?'
+    r'(?<ohosbuild>\+ohos-\d+\.\d+\.\d+-(?:beta|canary|stable|dev))?'
+    r'\.$',
   );
 
   void _addErrorWithLineInfo(AstNode node, {required String error}) {
@@ -788,10 +792,14 @@ class _DeprecationMessagesVisitor extends RecursiveAstVisitor<void> {
     final int minor = int.parse(versionMatch.namedGroup('minor')!);
     final int patch = int.parse(versionMatch.namedGroup('patch')!);
     final hasBuild = versionMatch.namedGroup('build') != null;
+    // OHOS fork tags (e.g. "v3.35.7+ohos-1.0.7-beta") legitimately identify
+    // the release in which a feature was deprecated, so they satisfy the
+    // "must have a build suffix" requirement just like upstream pre-builds.
+    final hasOhosBuild = versionMatch.namedGroup('ohosbuild') != null;
     // There was a beta release that was mistakenly labeled 3.1.0 without a build.
     final bool specialBeta = major == 3 && minor == 1 && patch == 0;
     if (!specialBeta && (major > 1 || (major == 1 && minor >= 20))) {
-      if (!hasBuild) {
+      if (!hasBuild && !hasOhosBuild) {
         _addErrorWithLineInfo(
           versionLiteral,
           error:

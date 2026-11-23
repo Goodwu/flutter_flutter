@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// This test file verifies the deprecated OhosFlexOverflowStrategy behavior.
+// The overflow adaptation mechanism has been replaced by RenderAutoFitScale,
+// but these tests are retained to validate the deprecated code path until it
+// is removed.
+// ignore_for_file: deprecated_member_use_from_same_package
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -105,7 +110,68 @@ void main() {
     tester.takeException();
 
     final flex = tester.renderObject(find.byType(_OverflowColumn)) as RenderFlex;
+
+    // The framework no longer invokes the strategy from RenderFlex's layout
+    // (overflow adaptation is handled by RenderAutoFitScale now). Drive the
+    // retained strategy code directly, replicating the call the framework
+    // used to make in RenderFlex.performLayout: the container main-axis
+    // size and the children's total main-axis extent.
+    flex.overflowStrategy!.handleOverflow(flex, constraintHeight, childHeight * 2);
+
+    // The strategy records samples during layout and processes them in a
+    // post-frame callback. The automated test binding only runs a frame
+    // when one is scheduled, so mark the flex dirty to force the frame
+    // that flushes the aggregation callback. The re-layout re-throws the
+    // expected overflow assertion — drain it.
+    flex.markNeedsLayout();
+    await tester.pump();
+    tester.takeException();
+
     return flex;
+  }
+
+  /// Drives one overflow cycle of the retained (deprecated) strategy on an
+  /// already-pumped [_OverflowColumn].
+  ///
+  /// The framework no longer invokes the strategy from RenderFlex's layout
+  /// (overflow adaptation is handled by RenderAutoFitScale now). Tests drive
+  /// the retained strategy code directly, replicating the call the framework
+  /// used to make in RenderFlex.performLayout: the container main-axis size
+  /// and the children's total main-axis extent.
+  ///
+  /// A fresh frame is forced first (the automated test binding only runs a
+  /// frame when one is scheduled) so the passed sizes match what the
+  /// framework would have provided during layout, then another frame runs
+  /// the strategy's post-frame aggregation callback.
+  Future<void> driveOverflowCycle(WidgetTester tester) async {
+    final flex = tester.renderObject(find.byType(_OverflowColumn)) as RenderFlex;
+
+    // Relayout under the current view metrics so sizes are fresh.
+    flex.markNeedsLayout();
+    await tester.pump();
+    try {
+      tester.takeException();
+    } on TestFailure {
+      // No assertion was thrown — nothing to drain.
+    }
+
+    final double actualSize = flex.size.height;
+    var allocatedSize = 0.0;
+    RenderBox? child = flex.firstChild;
+    while (child != null) {
+      allocatedSize += child.size.height;
+      child = flex.childAfter(child);
+    }
+    flex.overflowStrategy!.handleOverflow(flex, actualSize, allocatedSize);
+
+    // Flush the strategy's post-frame aggregation callback.
+    flex.markNeedsLayout();
+    await tester.pump();
+    try {
+      tester.takeException();
+    } on TestFailure {
+      // No assertion was thrown — nothing to drain.
+    }
   }
 
   // ===========================================================================
@@ -229,10 +295,8 @@ void main() {
           ),
         );
 
-        // Pump to start the confirmation timer.
-        await tester.pump();
-        // Drain the expected overflow assertion.
-        tester.takeException();
+        // Drive one overflow cycle of the retained strategy directly.
+        await driveOverflowCycle(tester);
         expect(methodCalls, isEmpty);
 
         final OhosFlexOverflowDebugState state1 = OhosFlexOverflowStrategy.debugState;
@@ -243,11 +307,10 @@ void main() {
         // Keep height < 300 so overflow still exists after the change.
         tester.view.physicalSize = const Size(100, 250);
 
-        // Pump a frame — _aggregateAndReport sees isHeightChanged=true and
-        // commits immediately, bypassing the 180ms confirmation window.
-        await tester.pump();
-        // Drain the expected overflow assertion from the re-layout.
-        tester.takeException();
+        // Drive a cycle under the new metrics — _aggregateAndReport sees
+        // isHeightChanged=true and commits immediately, bypassing the
+        // 180ms confirmation window.
+        await driveOverflowCycle(tester);
 
         expect(methodCalls, hasLength(1));
         expect(methodCalls.first.method, 'updateDpiScale');
@@ -289,9 +352,7 @@ void main() {
             ),
           ),
         );
-        await tester.pump();
-        // Drain the expected overflow assertion.
-        tester.takeException();
+        await driveOverflowCycle(tester);
 
         final OhosFlexOverflowDebugState state1 = OhosFlexOverflowStrategy.debugState;
         // Verify suppression was triggered.
@@ -301,7 +362,7 @@ void main() {
 
         // Change screen height — should clear all suppression state.
         tester.view.physicalSize = const Size(100, 400);
-        await tester.pump();
+        await driveOverflowCycle(tester);
 
         final OhosFlexOverflowDebugState state2 = OhosFlexOverflowStrategy.debugState;
         expect(state2.hasSuppressedInitialKeyboardOverflow, isFalse);
@@ -461,9 +522,7 @@ void main() {
             ),
           ),
         );
-        await tester.pump();
-        // Drain the expected overflow assertion.
-        tester.takeException();
+        await driveOverflowCycle(tester);
 
         final OhosFlexOverflowDebugState state1 = OhosFlexOverflowStrategy.debugState;
         expect(state1.hasSuppressedOverflowTimer, isTrue);
@@ -712,9 +771,7 @@ void main() {
             ),
           ),
         );
-        await tester.pump();
-        // Drain the expected overflow assertion.
-        tester.takeException();
+        await driveOverflowCycle(tester);
 
         // No DPR report — overflow was suppressed.
         expect(methodCalls, isEmpty);
@@ -747,9 +804,9 @@ void main() {
 
         // Pump a non-overflowing column first so _lastViewInsetsBottom gets
         // set to 300 via _aggregateAndReport. Using a RenderFlex (not a
-        // plain SizedBox) ensures handleOverflow is called, which triggers
-        // _onPostFrame → _scheduleAggregation → _aggregateAndReport →
-        // _updateScreenState (which sets _lastViewInsetsBottom = 300).
+        // plain SizedBox) allows the test to drive the strategy, which
+        // triggers _onPostFrame → _scheduleAggregation → _aggregateAndReport
+        // → _updateScreenState (which sets _lastViewInsetsBottom = 300).
         await tester.pumpWidget(
           Directionality(
             textDirection: TextDirection.ltr,
@@ -762,7 +819,7 @@ void main() {
             ),
           ),
         );
-        await tester.pump();
+        await driveOverflowCycle(tester); // No overflow — only records screen state.
 
         // Now _lastViewInsetsBottom = 300. The next overflow with
         // viewInsets still > 0 and _lastScaleFactor == 1.0 should trigger
@@ -779,9 +836,7 @@ void main() {
             ),
           ),
         );
-        await tester.pump();
-        // Drain the expected overflow assertion.
-        tester.takeException();
+        await driveOverflowCycle(tester);
 
         // No DPR report — overflow was suppressed.
         expect(methodCalls, isEmpty);
@@ -821,9 +876,7 @@ void main() {
             ),
           ),
         );
-        await tester.pump();
-        // Drain the expected overflow assertion.
-        tester.takeException();
+        await driveOverflowCycle(tester);
 
         final OhosFlexOverflowDebugState state1 = OhosFlexOverflowStrategy.debugState;
         expect(state1.hasSuppressedOverflowTimer, isTrue);
@@ -892,9 +945,7 @@ void main() {
             ),
           ),
         );
-        await tester.pump();
-        // Drain the expected overflow assertion.
-        tester.takeException();
+        await driveOverflowCycle(tester);
 
         final OhosFlexOverflowDebugState state1 = OhosFlexOverflowStrategy.debugState;
         expect(state1.hasSuppressedOverflowTimer, isTrue);
@@ -906,9 +957,7 @@ void main() {
         // returns true and _startSuppressionTimer is called again,
         // but since the timer is already running, it's a no-op.
         // The deadline should NOT be extended.
-        await tester.pump();
-        // Drain the expected overflow assertion from the re-layout.
-        tester.takeException();
+        await driveOverflowCycle(tester);
 
         final OhosFlexOverflowDebugState state2 = OhosFlexOverflowStrategy.debugState;
         // Timer still running, not expired yet.
@@ -945,9 +994,7 @@ void main() {
             ),
           ),
         );
-        await tester.pump();
-        // Drain the expected overflow assertion.
-        tester.takeException();
+        await driveOverflowCycle(tester);
 
         final OhosFlexOverflowDebugState state1 = OhosFlexOverflowStrategy.debugState;
         expect(state1.hasSuppressedOverflowTimer, isTrue);

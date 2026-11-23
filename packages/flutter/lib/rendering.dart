@@ -36,6 +36,10 @@ export 'package:flutter/semantics.dart';
 export 'package:vector_math/vector_math_64.dart' show Matrix4;
 
 export 'src/rendering/animated_size.dart';
+// AutoFitScale's render object (src/rendering/auto_fit_scale.dart) is internal
+// to the framework (used by `ModalRoute` on OHOS) and is intentionally not part
+// of the public API. Framework code imports that file directly; it is not
+// exported from this library.
 export 'src/rendering/binding.dart';
 export 'src/rendering/box.dart';
 export 'src/rendering/custom_layout.dart';
@@ -46,6 +50,10 @@ export 'src/rendering/decorated_sliver.dart';
 export 'src/rendering/editable.dart';
 export 'src/rendering/error.dart';
 export 'src/rendering/flex.dart';
+// Deprecated: The overflow adaptation mechanism has been replaced by
+// RenderAutoFitScale. The symbols exported from this file are retained for
+// compatibility but are no longer invoked by the framework.
+// ignore_for_file: deprecated_export
 export 'src/rendering/flex_overflow_strategy.dart';
 export 'src/rendering/flow.dart';
 export 'src/rendering/image.dart';

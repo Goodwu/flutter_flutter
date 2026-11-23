@@ -1181,6 +1181,18 @@ class _ModalScope<T> extends StatefulWidget {
 }
 
 class _ModalScopeState<T> extends State<_ModalScope<T>> {
+  /// Whether the flex overflow adaptation feature is enabled.
+  ///
+  /// Defaults to `true`. To disable, pass
+  /// `--dart-define=ENABLE_FLEX_OVERFLOW=false` at compile time.
+  static const bool _kEnableFlexOverflow = bool.fromEnvironment(
+    'ENABLE_FLEX_OVERFLOW',
+    defaultValue: true,
+  );
+
+  // Whether the flex overflow switch status has been logged at startup.
+  static bool _overflowSwitchLogged = false;
+
   // We cache the result of calling the route's buildPage, and clear the cache
   // whenever the dependencies change. This implements the contract described in
   // the documentation for buildPage, namely that it gets called once, unless
@@ -1340,11 +1352,42 @@ class _ModalScopeState<T> extends State<_ModalScope<T>> {
                             key: widget.route._subtreeKey, // immutable
                             child: Builder(
                               builder: (BuildContext context) {
-                                return widget.route.buildPage(
+                                final Widget pageContent = widget.route.buildPage(
                                   context,
                                   widget.route.animation!,
                                   widget.route.secondaryAnimation!,
                                 );
+                                // OHOS: Wrap route content in AutoFitScale so
+                                // that vertical overflow is resolved by local
+                                // scaling. The wrapper is present in both debug
+                                // and release builds to keep the widget tree
+                                // identical; debug mode detects overflow without
+                                // scaling (stripes remain visible), release mode
+                                // applies the full two-stage layout + paint.
+                                // Disable with --dart-define=ENABLE_FLEX_OVERFLOW=false.
+                                final isOhosFlexOverflowPlatform =
+                                    defaultTargetPlatform == TargetPlatform.ohos;
+                                if (isOhosFlexOverflowPlatform && !_overflowSwitchLogged) {
+                                  _overflowSwitchLogged = true;
+                                  debugPrint(
+                                    'AutoFitScale: ENABLE_FLEX_OVERFLOW=${_kEnableFlexOverflow ? 'true' : 'false'} '
+                                    '(mode=${kDebugMode
+                                        ? 'debug'
+                                        : kProfileMode
+                                        ? 'profile'
+                                        : 'release'}, '
+                                    'scale applies in release only)',
+                                  );
+                                }
+                                if (isOhosFlexOverflowPlatform && _kEnableFlexOverflow) {
+                                  return AutoFitScale(
+                                    debugLabel:
+                                        widget.route.settings.name ??
+                                        pageContent.runtimeType.toString(),
+                                    child: pageContent,
+                                  );
+                                }
+                                return pageContent;
                               },
                             ),
                           ),

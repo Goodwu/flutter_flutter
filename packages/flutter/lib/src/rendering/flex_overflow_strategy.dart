@@ -11,9 +11,21 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
-/// Data class to hold screen information
+/// Data class to hold screen information.
+///
+/// This class was used by the old global-DPR overflow strategy
+/// ([OhosFlexOverflowStrategy]). The new local-scaling approach
+/// ([RenderAutoFitScale]) does not use it.
+@Deprecated(
+  'No longer used. '
+  'This feature was deprecated after v3.44.9+ohos-1.0.0-beta.',
+)
 class ScreenInfo {
   /// Creates a snapshot of the current screen state used by overflow handling.
+  @Deprecated(
+    'No longer used. '
+    'This feature was deprecated after v3.44.9+ohos-1.0.0-beta.',
+  )
   ScreenInfo({required this.height, required this.viewInsetsBottom, required this.isHeightChanged});
 
   /// Physical screen height in device pixels.
@@ -31,8 +43,16 @@ class ScreenInfo {
 /// Used solely by tests to verify intermediate state that cannot be observed
 /// through the public API alone (e.g. timer flags, instance tracking counts).
 @visibleForTesting
+@Deprecated(
+  'No longer used. '
+  'This feature was deprecated after v3.44.9+ohos-1.0.0-beta.',
+)
 class OhosFlexOverflowDebugState {
   /// Creates a snapshot of the current overflow strategy state.
+  @Deprecated(
+    'No longer used. '
+    'This feature was deprecated after v3.44.9+ohos-1.0.0-beta.',
+  )
   const OhosFlexOverflowDebugState({
     required this.isReportingOverflow,
     required this.lastScaleFactor,
@@ -89,7 +109,16 @@ class OhosFlexOverflowDebugState {
   final bool routeChanged;
 }
 
-/// Strategy interface for handling overflow in flex layouts
+/// Strategy interface for handling overflow in flex layouts.
+///
+/// The overflow adaptation mechanism has been replaced by [RenderAutoFitScale],
+/// which performs local layout + paint scaling without modifying the global
+/// device pixel ratio. This interface and all implementations are retained
+/// for compatibility but are no longer invoked.
+@Deprecated(
+  'Use RenderAutoFitScale instead. '
+  'This feature was deprecated after v3.44.9+ohos-1.0.0-beta.',
+)
 abstract class FlexOverflowStrategy {
   /// Handles overflow for the given flex render object
   void handleOverflow(RenderFlex renderFlex, double actualSize, double allocatedSize);
@@ -101,7 +130,14 @@ abstract class FlexOverflowStrategy {
   void dispose(RenderFlex renderFlex);
 }
 
-/// Creates the default overflow strategy based on the platform
+/// Creates the default overflow strategy based on the platform.
+///
+/// This function is no longer called by the framework. The overflow
+/// adaptation is now handled by [RenderAutoFitScale].
+@Deprecated(
+  'Use RenderAutoFitScale instead. '
+  'This feature was deprecated after v3.44.9+ohos-1.0.0-beta.',
+)
 FlexOverflowStrategy createDefaultOverflowStrategy(Axis direction) {
   if (OhosFlexOverflowStrategy.isFlexOverflowEnabled && direction == Axis.vertical) {
     return OhosFlexOverflowStrategy();
@@ -110,7 +146,11 @@ FlexOverflowStrategy createDefaultOverflowStrategy(Axis direction) {
   }
 }
 
-/// Default implementation that doesn't handle overflow
+/// Default implementation that doesn't handle overflow.
+@Deprecated(
+  'No longer used. '
+  'This feature was deprecated after v3.44.9+ohos-1.0.0-beta.',
+)
 class DefaultFlexOverflowStrategy implements FlexOverflowStrategy {
   @override
   void handleOverflow(RenderFlex renderFlex, double actualSize, double allocatedSize) {
@@ -123,9 +163,22 @@ class DefaultFlexOverflowStrategy implements FlexOverflowStrategy {
   }
 }
 
-/// OHOS-specific implementation for handling overflow
+/// OHOS-specific implementation for handling overflow.
+///
+/// This implementation modified the global device pixel ratio via
+/// [SystemChannels.displayMetrics]. It has been superseded by
+/// [RenderAutoFitScale], which performs local scaling without affecting
+/// the global DPR.
+@Deprecated(
+  'Use RenderAutoFitScale instead. '
+  'This feature was deprecated after v3.44.9+ohos-1.0.0-beta.',
+)
 class OhosFlexOverflowStrategy implements FlexOverflowStrategy {
   /// Creates a new strategy instance.
+  @Deprecated(
+    'Use RenderAutoFitScale instead. '
+    'This feature was deprecated after v3.44.9+ohos-1.0.0-beta.',
+  )
   OhosFlexOverflowStrategy() {
     _initializeState();
   }
