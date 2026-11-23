@@ -216,8 +216,8 @@ export class TooltipWindowHost extends FlutterWindowHost {
       const rect: window.Rect = {
         left: Math.round(pos.left),
         top: Math.round(pos.top),
-        width: pos.width > 0 ? Math.round(pos.width) : fallback.width,
-        height: pos.height > 0 ? Math.round(pos.height) : fallback.height,
+        width: Math.max(1, Math.round(pos.width)),
+        height: Math.max(1, Math.round(pos.height)),
       };
       return { rect: rect, placed: true };
     } catch (e) {

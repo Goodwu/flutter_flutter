@@ -175,7 +175,7 @@ export default function popupWindowHostTest() {
         done();
       });
 
-    it('keeps the funnel size when the positioner returns degenerate dims',
+    it('floors the size at 1px when the positioner returns degenerate dims',
       Level.LEVEL0, async (done: Function) => {
         const ctx = new FakeHostContext();
         const parent = decoratedParent();
@@ -187,8 +187,8 @@ export default function popupWindowHostTest() {
         expect(birth.placed).assertTrue();
         expect(birth.rect.left).assertEqual(160);
         expect(birth.rect.top).assertEqual(240);
-        expect(birth.rect.width).assertEqual(800);  // funnel fallback, no clamp
-        expect(birth.rect.height).assertEqual(400);
+        expect(birth.rect.width).assertEqual(1);  // floored at 1px, no funnel
+        expect(birth.rect.height).assertEqual(1);
         done();
       });
   });
