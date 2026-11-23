@@ -9,6 +9,7 @@
 #define FLUTTER_SHELL_PLATFORM_OHOS_OHOS_SHELL_HOLDER_H_
 #define FML_USED_ON_EMBEDDER
 #include <atomic>
+#include <functional>
 
 #include "flutter/assets/asset_manager.h"
 #include "flutter/fml/macros.h"
@@ -23,6 +24,7 @@
 #include "accessibility/ohos_semantics_bridge.h"
 #include "flutter/assets/asset_resolver.h"
 #include "flutter/common/settings.h"
+#include "flutter/fml/platform/ohos/watchdog/ohos_watchdog.h"
 #include "flutter/shell/platform/ohos/napi/platform_view_ohos_napi.h"
 #include "flutter/shell/platform/ohos/platform_view_ohos.h"
 #include "flutter/shell/platform/ohos/windowing/ohos_window_controller.h"
@@ -146,6 +148,7 @@ class OHOSShellHolder {
   std::unique_ptr<OHOSWindowController> window_controller_;
   uint64_t next_pointer_flow_id_ = 0;
   std::string local_font_path_;
+  std::pair<size_t, std::function<void(size_t)>> watchdogPair_;
 
   std::unique_ptr<OHOSAssetProvider> asset_provider_;
 
