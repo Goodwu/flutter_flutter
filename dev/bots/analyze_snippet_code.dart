@@ -1192,7 +1192,13 @@ class _SnippetChecker {
     stderr.removeWhere((String line) {
       return line.startsWith('Building flutter tool...') ||
           line.startsWith('Waiting for another flutter command to release the startup lock...') ||
-          line.startsWith('Flutter assets will be downloaded from ');
+          line.startsWith('Flutter assets will be downloaded from ') ||
+          // Progress printed to stderr by the implicit "pub get" inside
+          // "flutter analyze" when the shared PUB_CACHE is cold (CN CI
+          // machines); build 20261123-1-00090 crashed on these.
+          line.startsWith('Resolving dependencies...') ||
+          line.startsWith('Downloading packages...') ||
+          line.startsWith('Got dependencies.');
     });
     // Check out the stderr to see if the analyzer had it's own issues.
     if (stderr.isNotEmpty && stderr.first.contains(RegExp(r' issues? found\. \(ran in '))) {
