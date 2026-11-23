@@ -15,6 +15,7 @@ import TextInputChannel, {
 } from '../../embedding/engine/systemchannels/TextInputChannel';
 import inputMethod from '@ohos.inputMethod';
 import Log from '../../util/Log';
+import DfxLog from '../../util/DfxLog';
 import { EditingStateWatcher, ListenableEditingState } from './ListenableEditingState';
 import Any from '../common/Any';
 import { inputDevice } from '@kit.InputKit';
@@ -537,10 +538,14 @@ class TextInputMethodHandlerImpl implements TextInputMethodHandler {
     }
     if (this.canShowTextInput()) {
       // Ensure the Xcomponent gains focus before the soft keyboard is displayed.
-      focusControl.requestFocus(this.focusViewId);
+      const focused = focusControl.requestFocus(this.focusViewId);
+      DfxLog.i(TextInputMethodHandlerImpl.TAG,
+        `[FlutterDFX] chain=focus stage=os_focus_request focusView=${this.focusViewId} success=${focused} target=${this.inputTarget.type}:${this.inputTarget.id}`);
       this.keyboardFocusState = true;
       this.showTextInput();
     } else {
+      DfxLog.i(TextInputMethodHandlerImpl.TAG,
+        `[FlutterDFX] chain=keyboard stage=ime_show_denied target=${this.inputTarget.type}:${this.inputTarget.id} reason=input_type_none`);
       this.hide();
     }
   }
@@ -549,13 +554,17 @@ class TextInputMethodHandlerImpl implements TextInputMethodHandler {
    * Hides the text input keyboard.
    */
   hide(): void {
+    DfxLog.i(TextInputMethodHandlerImpl.TAG,
+      `[FlutterDFX] chain=keyboard stage=ime_hide KeyboardHide: status=${this.keyboardStatus}, skipSuppress=${this.inputTarget.type == Type.PHYSICAL_DISPLAY_PLATFORM_VIEW && this.suppressNextHideForPhysicalPlatformView}, target=${this.inputTarget.type}:${this.inputTarget.id}`);
     // Do not notifyViewExited here: keyboard hide must not tear down autofill session.
     if (this.inputTarget.type == Type.PHYSICAL_DISPLAY_PLATFORM_VIEW && this.suppressNextHideForPhysicalPlatformView) {
       this.suppressNextHideForPhysicalPlatformView = false;
       return;
     }
     // Ensure the Xcomponent loses focus before the soft keyboard is hided.
-    focusControl.requestFocus("unfocus-xcomponent-node");
+    const focused = focusControl.requestFocus("unfocus-xcomponent-node");
+    DfxLog.i(TextInputMethodHandlerImpl.TAG,
+      `[FlutterDFX] chain=focus stage=os_focus_request focusView=unfocus-xcomponent-node success=${focused} target=${this.inputTarget.type}:${this.inputTarget.id}`);
     this.keyboardFocusState = false;
     this.hideTextInput();
   }
@@ -723,6 +732,8 @@ class TextInputMethodHandlerImpl implements TextInputMethodHandler {
   }
 
   clearPlatformViewClientForTeardown(viewId: number): void {
+    DfxLog.i(TextInputMethodHandlerImpl.TAG,
+      `[FlutterDFX] chain=keyboard stage=platform_view_teardown Teardown: viewId=${viewId}, status=${this.keyboardStatus}, target=${this.inputTarget.type}:${this.inputTarget.id}`);
     const teardownClientId = this.inputTarget.id;
     if (this.inputTarget.type != Type.PHYSICAL_DISPLAY_PLATFORM_VIEW || this.inputTarget.id != viewId) {
       return;
@@ -758,16 +769,29 @@ class TextInputMethodHandlerImpl implements TextInputMethodHandler {
     if (this.lastKind === undefined && this.configuration?.deviceKind !== undefined) {
       this.lastKind = this.configuration.deviceKind;
     }
+    DfxLog.i(TextInputMethodHandlerImpl.TAG,
+      `[FlutterDFX] chain=keyboard stage=ime_show ShowTextInput: kindSwitch=${this.lastKind != this.configuration?.deviceKind}, status=${this.keyboardStatus}, attached=${this.isInputMethodAttached}, imc=${this.imcFlag}, target=${this.inputTarget.type}:${this.inputTarget.id}`);
     if (this.keyboardStatus == inputMethod.KeyboardStatus.SHOW) {
       // When the state is Show and the keyboard has been dismissed, it can cause the keyboard to not come up again.
       await this.attach(true);
       if (this.lastKind != this.configuration?.deviceKind ||
         this.hasSecureKeyboardInSwitch()) {
-        if (deviceInfo.sdkApiVersion >= INPUT_SUPPORT_API) {
-          await this.inputMethodController.showTextInput(this.getRequestReason());
-        } else {
-          await this.inputMethodController.showTextInput();
+        const target = `${this.inputTarget.type}:${this.inputTarget.id}`;
+        DfxLog.i(TextInputMethodHandlerImpl.TAG,
+          `[FlutterDFX] chain=keyboard stage=ime_os_request api=showTextInput target=${target}`);
+        try {
+          if (deviceInfo.sdkApiVersion >= INPUT_SUPPORT_API) {
+            await this.inputMethodController.showTextInput(this.getRequestReason());
+          } else {
+            await this.inputMethodController.showTextInput();
+          }
+        } catch (err) {
+          DfxLog.i(TextInputMethodHandlerImpl.TAG,
+            `[FlutterDFX] chain=keyboard stage=ime_os_result api=showTextInput success=false target=${target} code=${(err as BusinessError).code}`);
+          throw err as Error;
         }
+        DfxLog.i(TextInputMethodHandlerImpl.TAG,
+          `[FlutterDFX] chain=keyboard stage=ime_os_result api=showTextInput success=true target=${target}`);
         if (this.configuration?.deviceKind !== undefined) {
           this.lastKind = this.configuration.deviceKind;
         }
@@ -786,11 +810,18 @@ class TextInputMethodHandlerImpl implements TextInputMethodHandler {
   }
 
   private async hideTextInput(): Promise<void> {
+    const target = `${this.inputTarget.type}:${this.inputTarget.id}`;
+    DfxLog.i(TextInputMethodHandlerImpl.TAG,
+      `[FlutterDFX] chain=keyboard stage=ime_os_request api=detach target=${target}`);
     await this.inputMethodController.detach().then(() => {
+      DfxLog.i(TextInputMethodHandlerImpl.TAG,
+        `[FlutterDFX] chain=keyboard stage=ime_os_result api=detach success=true target=${target}`);
       this.keyboardStatus = inputMethod.KeyboardStatus.HIDE;
       this.cancelListenKeyBoardEvent();
     }).catch((err: BusinessError) => {
       Log.e(TextInputMethodHandlerImpl.TAG, "Failed to detach: " + JSON.stringify(err));
+      DfxLog.i(TextInputMethodHandlerImpl.TAG,
+        `[FlutterDFX] chain=keyboard stage=ime_os_result api=detach success=false target=${target} code=${err.code}`);
       this.keyboardStatus = inputMethod.KeyboardStatus.NONE;
     });
   }
@@ -801,6 +832,9 @@ class TextInputMethodHandlerImpl implements TextInputMethodHandler {
    * @private
    */
   async attach(showKeyboard: boolean): Promise<void> {
+    const target = `${this.inputTarget.type}:${this.inputTarget.id}`;
+    DfxLog.i(TextInputMethodHandlerImpl.TAG,
+      `[FlutterDFX] chain=keyboard stage=ime_os_request Attach: api=attach, showKeyboard=${showKeyboard}, inputType=${this.textConfig.inputAttribute.textInputType}, target=${target}`);
     try {
       // must register preview text callbacks before attachment
       if (isPreviewTextSupported()) {
@@ -817,6 +851,8 @@ class TextInputMethodHandlerImpl implements TextInputMethodHandler {
       }
     } catch (err) {
       Log.e(TextInputMethodHandlerImpl.TAG, "Failed to attach:" + JSON.stringify(err));
+      DfxLog.i(TextInputMethodHandlerImpl.TAG,
+        `[FlutterDFX] chain=keyboard stage=ime_os_result api=attach_or_handleAttach success=false target=${target} code=${(err as BusinessError).code}`);
       this.keyboardStatus = inputMethod.KeyboardStatus.NONE;
     }
   }
@@ -835,6 +871,8 @@ class TextInputMethodHandlerImpl implements TextInputMethodHandler {
       this.keyboardStatus = inputMethod.KeyboardStatus.SHOW;
       this.maybeRunPendingAutofillRequest();
     }
+    DfxLog.i(TextInputMethodHandlerImpl.TAG,
+      `[FlutterDFX] chain=keyboard stage=ime_attach_state_applied HandleAttach: bgDetached=${isDetached}, attached=${this.isInputMethodAttached}, status=${this.keyboardStatus}, target=${this.inputTarget.type}:${this.inputTarget.id}`);
   }
 
   private async detachIfBackground(): Promise<boolean> {
@@ -848,13 +886,28 @@ class TextInputMethodHandlerImpl implements TextInputMethodHandler {
         (currentProcess.state === appManager.ProcessState.STATE_FOREGROUND ||
           currentProcess.state === appManager.ProcessState.STATE_BACKGROUND)
       ) {
-          await this.inputMethodController.hideTextInput();
+          const target = `${this.inputTarget.type}:${this.inputTarget.id}`;
+          DfxLog.i(TextInputMethodHandlerImpl.TAG,
+            `[FlutterDFX] chain=keyboard stage=ime_os_request api=hideTextInput reason=background target=${target}`);
+          try {
+            await this.inputMethodController.hideTextInput();
+          } catch (err) {
+            DfxLog.i(TextInputMethodHandlerImpl.TAG,
+              `[FlutterDFX] chain=keyboard stage=ime_os_result api=hideTextInput success=false reason=background target=${target} code=${(err as BusinessError).code}`);
+            throw err as Error;
+          }
+          DfxLog.i(TextInputMethodHandlerImpl.TAG,
+            `[FlutterDFX] chain=keyboard stage=ime_os_result api=hideTextInput success=true reason=background target=${target}`);
           return true;
       }
     } catch (err) {
       Log.e(
         TextInputMethodHandlerImpl.TAG,
         `detachIfBackground error: ${JSON.stringify(err)}`,
+      );
+      DfxLog.i(
+        TextInputMethodHandlerImpl.TAG,
+        `[FlutterDFX] chain=keyboard stage=ime_background_check_failed code=${(err as BusinessError).code}`,
       );
     }
     return false;
@@ -889,6 +942,8 @@ class TextInputMethodHandlerImpl implements TextInputMethodHandler {
    * @param focusState - The new focus state
    */
   handleChangeFocus(focusState: boolean) {
+    DfxLog.i(TextInputMethodHandlerImpl.TAG,
+      `[FlutterDFX] chain=focus stage=ime_window_focus FocusChange: focus=${focusState}, keyboardFocus=${this.keyboardFocusState}, status=${this.keyboardStatus}, target=${this.inputTarget.type}:${this.inputTarget.id}`);
     if (focusState && this.keyboardFocusState) {
       // When the app loses focus, the system automatically detaches the input method.
       // Upon regaining focus, if the input method should be displayed, it must be reattached.
@@ -1141,6 +1196,8 @@ class TextInputMethodHandlerImpl implements TextInputMethodHandler {
     if (!this.isActiveHandler()) {
       return;
     }
+    DfxLog.i(TextInputMethodHandlerImpl.TAG,
+      `[FlutterDFX] chain=keyboard stage=ime_preview ImePreview: range=${range.start}-${range.end}, target=${this.inputTarget.type}:${this.inputTarget.id}`);
     this.mEditable.handleInsertPreviewTextEvent(text, range);
   }
 
@@ -1187,6 +1244,8 @@ class TextInputMethodHandlerImpl implements TextInputMethodHandler {
     if (!this.isActiveHandler()) {
       return;
     }
+    DfxLog.i(TextInputMethodHandlerImpl.TAG,
+      `[FlutterDFX] chain=keyboard stage=ime_function_key ImeFuncKey: enterKey=${functionKey.enterKeyType}, target=${this.inputTarget.type}:${this.inputTarget.id}`);
     if (functionKey.enterKeyType == inputMethod.EnterKeyType.NEWLINE) {
       // insertText callback does not deliver newline; handle it here.
       this.mEditable.handleNewlineEvent();
@@ -1197,6 +1256,8 @@ class TextInputMethodHandlerImpl implements TextInputMethodHandler {
    private applyKeyboardStatus(state: inputMethod.KeyboardStatus): void {
     const isAutofillActive = this.autoFillSessionActive || this.autoFillRequestInFlight || this.autoSaveInFlight;
     const currentIme: inputMethod.InputMethodProperty = inputMethod.getCurrentInputMethod();
+    DfxLog.i(TextInputMethodHandlerImpl.TAG,
+      `[FlutterDFX] chain=keyboard stage=ime_status_report ApplyKeyboardStatus: state=${this.keyboardStatus}->${state}, imeSwitched=${this.currentImeName !== currentIme.name}, typeSwitched=${this.configuration?.inputType?.type !== this.previousInputType}, autofillActive=${isAutofillActive}, target=${this.inputTarget.type}:${this.inputTarget.id}`);
     this.keyboardStatus = state;
     if (state === inputMethod.KeyboardStatus.HIDE) {
       if (isAutofillActive) {
@@ -1208,7 +1269,7 @@ class TextInputMethodHandlerImpl implements TextInputMethodHandler {
         this.previousInputType = this.configuration?.inputType?.type;
         return;
       }
-      
+
       const closedClientId =
         this.pendingTeardownPlatformViewClientId != -1
           ? this.pendingTeardownPlatformViewClientId

@@ -6,7 +6,33 @@
 
 import { describe, it, expect, Level } from '@ohos/hypium';
 import HiLog from '@ohos.hilog';
+import process from '@ohos.process';
+import { abilityDelegatorRegistry } from '@kit.TestKit';
+import BuildProfile from '../../../../../BuildProfile';
 import Log from '../../../../main/ets/util/Log';
+import DfxLog from '../../../../main/ets/util/DfxLog';
+
+let logSequence = 0;
+
+async function countInfoLogs(format: string, level: HiLog.LogLevel, dfx: boolean = false): Promise<number> {
+  const marker = `DFX_LOG_TEST_${Date.now()}_${logSequence++}`;
+  try {
+    Log.setLogLevel(level);
+    if (dfx) {
+      DfxLog.i('DfxLogTest', `${format} marker=${marker}`);
+    } else {
+      Log.i('DfxLogTest', `${format} marker=${marker}`);
+    }
+    await new Promise<void>(resolve => setTimeout(resolve, 200));
+    const result = await abilityDelegatorRegistry.getAbilityDelegator().executeShellCommand(
+      `hilog -x -P ${process.pid} -e ${marker}`, 5);
+    expect(result.exitCode).assertEqual(0);
+    return result.stdResult.split('\n').filter(line => line.includes('DfxLogTest --> ') &&
+      line.includes(marker)).length;
+  } finally {
+    Log.setLogLevel(HiLog.LogLevel.WARN);
+  }
+}
 
 export default function logTest() {
   // Ensure all log levels are allowed in this test session so the body of
@@ -61,21 +87,43 @@ export default function logTest() {
     });
   });
 
-  describe('Log.i', () => {
-    it('Log.i does not throw with simple format', Level.LEVEL1, () => {
+  describe('DfxLog.i', () => {
+    it('DFX logs bypass the local warning threshold', Level.LEVEL1, async () => {
+      const expected = HiLog.isLoggable(0x00FF, 'Flutter', HiLog.LogLevel.INFO) ? 1 : 0;
+      expect(await countInfoLogs('[FlutterDFX] chain=focus stage=test', HiLog.LogLevel.WARN, true)).assertEqual(expected);
+    });
+
+    it('DFX logs follow the active system filter', Level.LEVEL1, async () => {
+      const expected = HiLog.isLoggable(0x00FF, 'Flutter', HiLog.LogLevel.INFO) ? 1 : 0;
+      expect(await countInfoLogs('[FlutterDFX] chain=focus stage=test', HiLog.LogLevel.DEBUG, true)).assertEqual(expected);
+    });
+
+    it('ordinary info logs retain build mode filtering', Level.LEVEL1, async () => {
+      const mode = BuildProfile.BUILD_MODE_NAME.toLowerCase();
+      const expected = mode !== 'release' && mode !== 'profile' &&
+        HiLog.isLoggable(0x00FF, 'Flutter', HiLog.LogLevel.INFO) ? 1 : 0;
+      expect(await countInfoLogs('ordinary info message', HiLog.LogLevel.WARN)).assertEqual(expected);
+    });
+
+    it('ordinary info logs remain available at the info threshold', Level.LEVEL1, async () => {
+      const expected = HiLog.isLoggable(0x00FF, 'Flutter', HiLog.LogLevel.INFO) ? 1 : 0;
+      expect(await countInfoLogs('ordinary info message', HiLog.LogLevel.INFO)).assertEqual(expected);
+    });
+
+    it('DfxLog.i does not throw with simple format', Level.LEVEL1, () => {
       let threw = false;
       try {
-        Log.i('TestTag', 'info message');
+        DfxLog.i('TestTag', '[FlutterDFX] info message');
       } catch (e) {
         threw = true;
       }
       expect(threw).assertEqual(false);
     });
 
-    it('Log.i does not throw with format and args', Level.LEVEL1, () => {
+    it('DfxLog.i does not throw with format and args', Level.LEVEL1, () => {
       let threw = false;
       try {
-        Log.i('TestTag', 'value is %s', 'hello');
+        DfxLog.i('TestTag', '[FlutterDFX] value is %s', 'hello');
       } catch (e) {
         threw = true;
       }

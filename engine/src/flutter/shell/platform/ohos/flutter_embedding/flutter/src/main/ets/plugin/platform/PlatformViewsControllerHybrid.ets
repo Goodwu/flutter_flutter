@@ -16,6 +16,7 @@ import { createDVModelFromJson } from '../../view/DynamicView/dynamicViewJson';
 import { FlutterView } from '../../view/FlutterView';
 import DartExecutor from '../../embedding/engine/dart/DartExecutor';
 import Log from '../../util/Log';
+import DfxLog from '../../util/DfxLog';
 import PlatformViewFactory from './PlatformViewFactory';
 import { ByteBuffer } from '../../util/ByteBuffer';
 import Any from '../common/Any';
@@ -585,16 +586,19 @@ export default class PlatformViewsControllerHybrid implements HybridCompositionH
   // 把竞技场判给平台视图的触摸经 postEvent → builderNode.postTouchEvent投递给 DISPLAY 节点。
   onTouch(touch: PlatformViewTouch): void {
     this.focusViewId = touch.viewId;
+    const downBaseAction = touch.action & MOTION_EVENT_ACTION_MASK;
     const wrapper = this.viewWrappers.get(touch.viewId);
     if (wrapper == undefined) {
-      Log.w(TAG, `ControllerHybrid.onTouch no wrapper id=${touch.viewId} (dropped)`);
+      if (downBaseAction !== TouchEventType.ACTION_MOVE) {
+          DfxLog.i(TAG,
+          `[FlutterDFX] chain=gesture stage=platform_view_dropped view=${touch.viewId} action=${touch.action} reason=no_wrapper`);
+      }
       return;
     }
     const params = wrapper.getDvModel().getLayoutParams() as Record<string, Any>;
     // MASK 后比较：多指 POINTER_DOWN/UP(action=(idx<<8)|5|6) 不参与翻转，
     // down 语义 = "该视图仍持有至少一根手指"——DOWN 置位，UP/CANCEL 复位，
     // POINTER_*(另一指变化，还有指在)保持不变。
-    const downBaseAction = touch.action & MOTION_EVENT_ACTION_MASK;
     if (downBaseAction === TouchEventType.ACTION_DOWN) {
       params['down'] = true;
     } else if (downBaseAction === TouchEventType.ACTION_UP ||
@@ -604,12 +608,18 @@ export default class PlatformViewsControllerHybrid implements HybridCompositionH
 
     const nodeController = this.nodeControllers.get(touch.viewId);
     if (nodeController == undefined) {
-      Log.w(TAG, `ControllerHybrid.onTouch no nodeController id=${touch.viewId} (skip post)`);
+      if (downBaseAction !== TouchEventType.ACTION_MOVE) {
+          DfxLog.i(TAG,
+          `[FlutterDFX] chain=gesture stage=platform_view_dropped view=${touch.viewId} action=${touch.action} reason=no_node_controller`);
+      }
       return;
     }
     const touchEvent = this.platformViewTouchToTouchEvent(touch);
     if (touchEvent == null) {
-      Log.w(TAG, `ControllerHybrid.onTouch touch convert failed id=${touch.viewId} action=${touch.action}`);
+      if (downBaseAction !== TouchEventType.ACTION_MOVE) {
+          DfxLog.i(TAG,
+          `[FlutterDFX] chain=gesture stage=platform_view_dropped view=${touch.viewId} action=${touch.action} reason=conversion_failed`);
+      }
       return;
     }
 
@@ -624,7 +634,11 @@ export default class PlatformViewsControllerHybrid implements HybridCompositionH
       platformView.injectedTimestamps.set(touchEvent.timestamp, now);
     }
 
-    nodeController.postEvent(touchEvent, true);
+    const posted = nodeController.postEvent(touchEvent, true);
+    if (downBaseAction !== TouchEventType.ACTION_MOVE) {
+        DfxLog.i(TAG,
+        `[FlutterDFX] chain=gesture stage=platform_view_post view=${touch.viewId} action=${touch.action} eventTime=${touchEvent.timestamp} posted=${posted} mode=hybrid`);
+    }
   }
 
   /**

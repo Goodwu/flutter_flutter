@@ -7,10 +7,12 @@
 #include "flutter/shell/platform/ohos/ohos_touch_processor.h"
 #include <arkui/native_type.h>
 #include <dlfcn.h>
+#include <cinttypes>
 #include <memory>
 #include "flutter/fml/trace_event.h"
 #include "flutter/lib/ui/window/pointer_data_packet.h"
 #include "flutter/shell/platform/ohos/napi/platform_view_ohos_napi.h"
+#include "flutter/shell/platform/ohos/ohos_logging.h"
 #include "flutter/shell/platform/ohos/ohos_shell_holder.h"
 #include "flutter/shell/platform/ohos/ohos_vsync_voting_mgr.h"
 
@@ -40,6 +42,36 @@ constexpr int PLATFORM_AXIS_EVENT_MIN_API_VERSION = 20;
 constexpr int AXIS_PACKET_FIELD_COUNT = 8;
 
 namespace {
+
+void LogPointerBoundary(const PointerData& data) {
+  const char* change;
+  switch (data.change) {
+    case PointerData::Change::kDown:
+      change = "down";
+      break;
+    case PointerData::Change::kUp:
+      change = "up";
+      break;
+    case PointerData::Change::kCancel:
+      change = "cancel";
+      break;
+    case PointerData::Change::kPanZoomStart:
+      change = "pan_zoom_start";
+      break;
+    case PointerData::Change::kPanZoomEnd:
+      change = "pan_zoom_end";
+      break;
+    default:
+      return;
+  }
+  LOGI(
+      "[FlutterDFX] chain=gesture stage=os_boundary_in change=%{public}s "
+      "embedder_id=%{public}" PRId64 " device=%{public}" PRId64
+      " kind=%{public}" PRId64 " time_us=%{public}" PRId64
+      " view_id=%{public}" PRId64 " buttons=%{public}" PRId64,
+      change, data.embedder_id, data.device, static_cast<int64_t>(data.kind),
+      data.time_stamp, data.view_id, data.buttons);
+}
 
 // Physical screen pixels -> ArkUI platform-view layout pixels.
 //
@@ -324,6 +356,7 @@ void OhosTouchProcessor::HandleTouchEvent(
   pointerData.scale = 1.0;
   pointerData.rotation = 0.0;
   packet->SetPointerData(0, pointerData);
+  LogPointerBoundary(pointerData);
   auto ohos_shell_holder = reinterpret_cast<OHOSShellHolder*>(shell_holderID);
   ohos_shell_holder->GetPlatformView()->DispatchPointerDataPacket(
       std::move(packet));
@@ -465,6 +498,7 @@ void OhosTouchProcessor::HandleScaleEvent(int64_t shell_holderID,
   pointerData.kind = PointerData::DeviceKind::kTrackpad;
 
   packet->SetPointerData(0, pointerData);
+  LogPointerBoundary(pointerData);
   auto ohos_shell_holder = reinterpret_cast<OHOSShellHolder*>(shell_holderID);
   ohos_shell_holder->GetPlatformView()->DispatchPointerDataPacket(
       std::move(packet));
@@ -622,6 +656,7 @@ void OhosTouchProcessor::HandlePanZooomEvent(int64_t shell_holderID,
   pointerData.kind = PointerData::DeviceKind::kTrackpad;
 
   packet->SetPointerData(0, pointerData);
+  LogPointerBoundary(pointerData);
   auto ohos_shell_holder = reinterpret_cast<OHOSShellHolder*>(shell_holderID);
   ohos_shell_holder->GetPlatformView()->DispatchPointerDataPacket(
       std::move(packet));
@@ -892,6 +927,7 @@ void OhosTouchProcessor::HandleMouseEvent(
   pointerData.scale = 1.0;
   pointerData.rotation = 0.0;
   packet->SetPointerData(0, pointerData);
+  LogPointerBoundary(pointerData);
   auto ohos_shell_holder = reinterpret_cast<OHOSShellHolder*>(shell_holderID);
   ohos_shell_holder->GetPlatformView()->DispatchPointerDataPacket(
       std::move(packet));

@@ -13,6 +13,7 @@ import MethodCall from '../../../plugin/common/MethodCall';
 import MethodChannel, { MethodCallHandler, MethodResult } from '../../../plugin/common/MethodChannel';
 import TextInputPlugin from '../../../plugin/editing/TextInputPlugin';
 import Log from '../../../util/Log';
+import DfxLog from '../../../util/DfxLog';
 import DartExecutor from '../dart/DartExecutor';
 import inputMethod from '@ohos.inputMethod';
 import ArrayList from '@ohos.util.ArrayList';
@@ -920,9 +921,20 @@ class TextInputCallback implements MethodCallHandler {
     if (this.textInputMethodHandler == null) {
       return;
     }
-    let method: string = call.method;
-    let args: Any = call.args;
+    const method: string = call.method;
     Log.d(TAG, "Received '" + method + "' message.");
+    // setEditingState, setMarkedTextRect, setCaretRect and
+    // setEditableSizeAndTransform can be
+    // sent continuously while dragging the caret, scrolling or laying out.
+    // Keep the boundary log for state-changing requests without flooding
+    // release/profile hilog on these high-frequency synchronization methods.
+    if (method !== 'TextInput.setEditingState' &&
+      method !== 'TextInput.setMarkedTextRect' &&
+      method !== 'TextInput.setCaretRect' &&
+      method !== 'TextInput.setEditableSizeAndTransform') {
+      DfxLog.i(TAG, `[FlutterDFX] chain=keyboard stage=channel_request_received Recv: method=${method}`);
+    }
+    let args: Any = call.args;
     switch (method) {
       case "TextInput.show":
         this.textInputMethodHandler.show();

@@ -9,6 +9,7 @@
 */
 
 import Log from '../../../util/Log';
+import DfxLog from '../../../util/DfxLog';
 import StringCodec from '../../../plugin/common/StringCodec';
 import DartExecutor from '../dart/DartExecutor';
 import BasicMessageChannel from '../../../plugin/common/BasicMessageChannel';
@@ -97,6 +98,8 @@ export default class LifecycleChannel {
   private sendState(state: string, hasFocus: boolean): void {
     if (this.lastOhosState == state && hasFocus == this.lastFocus) {
       // No inputs changed, so Flutter state could not have changed.
+      DfxLog.i(LifecycleChannel.TAG,
+        `[FlutterDFX] chain=focus stage=lifecycle_skipped state=${state} hasFocus=${hasFocus} reason=unchanged_inputs`);
       return;
     }
     let newState: string;
@@ -110,8 +113,12 @@ export default class LifecycleChannel {
     this.lastFocus = hasFocus;
     if (newState == this.lastFlutterState) {
       // No change in the resulting Flutter state, so don't report anything.
+      DfxLog.i(LifecycleChannel.TAG,
+        `[FlutterDFX] chain=focus stage=lifecycle_skipped state=${state} hasFocus=${hasFocus} flutterState=${newState} reason=unchanged_flutter_state`);
       return;
     }
+    DfxLog.i(LifecycleChannel.TAG,
+      `[FlutterDFX] chain=focus stage=lifecycle_send channel=flutter/lifecycle state=${state} hasFocus=${hasFocus} flutterState=${newState}`);
     Log.i(LifecycleChannel.TAG, "Sending " + newState + " message.");
     this.channel.send(newState);
     this.lastFlutterState = newState;
