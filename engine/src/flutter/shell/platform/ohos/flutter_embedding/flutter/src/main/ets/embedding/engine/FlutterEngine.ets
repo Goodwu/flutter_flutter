@@ -44,6 +44,10 @@ import PiPVisibilityBridge from '../ohos/PiPVisibilityBridge';
 
 const TAG = "FlutterEngine";
 
+export interface HostVisibilityProvider {
+  isHostVisible(): boolean;
+}
+
 /**
  * A single Flutter execution environment.
  *
@@ -72,8 +76,9 @@ const TAG = "FlutterEngine";
  */
 export default class FlutterEngine implements EngineLifecycleListener {
   private engineLifecycleListeners = new Set<EngineLifecycleListener>();
-  // Count of attached Flutter hosts that are currently visible.
-  private visibleHostCount: number = 0;
+  // Registered hosts; engine visibility is derived from their current state.
+  private hosts: Set<HostVisibilityProvider> = new Set<HostVisibilityProvider>();
+  private anyHostVisible: boolean = false;
   dartExecutor: DartExecutor;
   private flutterLoader: FlutterLoader;
   private assetManager: resourceManager.ResourceManager;
@@ -314,38 +319,66 @@ export default class FlutterEngine implements EngineLifecycleListener {
   }
 
   /**
-   * Notifies the engine that one of its host views became visible. If this is
-   * the first visible host for this engine, forwards an `appIsResumed` to
-   * Flutter.
+   * Registers a host whose current visibility is taken into account by
+   * {@link updateHostVisibility}. Registration is idempotent.
    */
-  hostDidBecomeVisible(): void {
-    if (this.visibleHostCount === 0) {
-      this.visibleHostCount = 1;
-      Log.d(TAG, `visibleHostCount: ${this.visibleHostCount} -> sending appIsResumed`);
+  attachHost(host: HostVisibilityProvider): void {
+    this.hosts.add(host);
+  }
+
+  /**
+   * Unregisters a host previously registered via {@link attachHost}.
+   * Unregistration is idempotent.
+   */
+  detachHost(host: HostVisibilityProvider): void {
+    this.hosts.delete(host);
+  }
+
+  /**
+   * Recomputes engine visibility from the current state of all registered
+   * hosts and forwards `appIsResumed`/`appIsPaused` only when the derived
+   * visibility flips. Safe to call repeatedly; repeated calls converge and
+   * heal previously missed or out-of-order lifecycle notifications.
+   */
+  updateHostVisibility(): void {
+    let visibleHosts = 0;
+    this.hosts.forEach((host: HostVisibilityProvider) => {
+      if (host.isHostVisible()) {
+        visibleHosts++;
+      }
+    });
+    const anyVisible = visibleHosts > 0;
+    if (anyVisible === this.anyHostVisible) {
+      Log.d(TAG, `anyHostVisible already ${this.anyHostVisible} (visibleHosts=${visibleHosts}/${this.hosts.size})`);
+      return;
+    }
+    const previous = this.anyHostVisible;
+    this.anyHostVisible = anyVisible;
+    if (anyVisible) {
+      Log.d(TAG, `anyHostVisible: ${previous} -> true, sending appIsResumed`);
       this.lifecycleChannel?.appIsResumed();
     } else {
-      this.visibleHostCount ++;
-      Log.d(TAG, `visibleHostCount: ${this.visibleHostCount} (already resumed)`);
+      Log.d(TAG, `anyHostVisible: ${previous} -> false, sending appIsPaused`);
+      this.lifecycleChannel?.appIsPaused();
     }
   }
 
   /**
-   * Notifies the engine that one of its host views became hidden. When the
-   * last visible host is hidden, forwards an `appIsPaused` to Flutter.
+   * Legacy notification that a host became visible. The engine no longer
+   * counts visibility events; this triggers a reconciliation via
+   * {@link updateHostVisibility}.
+   */
+  hostDidBecomeVisible(): void {
+    this.updateHostVisibility();
+  }
+
+  /**
+   * Legacy notification that a host became hidden. The engine no longer
+   * counts visibility events; this triggers a reconciliation via
+   * {@link updateHostVisibility}.
    */
   hostDidBecomeHidden(): void {
-    if (this.visibleHostCount <= 0) {
-      this.visibleHostCount = 0;
-      Log.d(TAG, `hostDidBecomeHidden called but visibleHostCount already 0`);
-      return;
-    }
-    this.visibleHostCount--;
-    if (this.visibleHostCount === 0) {
-      Log.d(TAG, `visibleHostCount: 0 -> sending appIsPaused`);
-      this.lifecycleChannel?.appIsPaused();
-    } else {
-      Log.d(TAG, `visibleHostCount: ${this.visibleHostCount} (still visible hosts)`);
-    }
+    this.updateHostVisibility();
   }
 
   /**

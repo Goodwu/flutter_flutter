@@ -4,7 +4,7 @@
 * found in the LICENSE_KHZG file.
 */
 
-import FlutterEngine from '../embedding/engine/FlutterEngine';
+import FlutterEngine, { HostVisibilityProvider } from '../embedding/engine/FlutterEngine';
 import Log from '../util/Log';
 import DfxLog from '../util/DfxLog';
 import { DVModel, DVModelChildren, DVModelEvents, DVModelParameters } from './DynamicView/dynamicView';
@@ -311,7 +311,7 @@ export class PlatformViewParas {
  * This class manages the Flutter engine, viewport metrics, keyboard handling,
  * and all interactions between Flutter and the native platform.
  */
-export class FlutterView {
+export class FlutterView implements HostVisibilityProvider {
   private flutterEngine: FlutterEngine | null = null
   private id: string = ""
   private isActive: boolean = true
@@ -910,6 +910,10 @@ export class FlutterView {
     return this.pageVisible && this.areaVisible;
   }
 
+  isHostVisible(): boolean {
+    return this.getEffectiveHostVisibility();
+  }
+
   private updateHostVisibility(): void {
     const shouldBeVisible = this.getEffectiveHostVisibility();
     if (this.hostVisible === shouldBeVisible) {
@@ -919,11 +923,7 @@ export class FlutterView {
     if (!this.isAttachedToFlutterEngine()) {
       return;
     }
-    if (shouldBeVisible) {
-      this.flutterEngine?.hostDidBecomeVisible();
-    } else {
-      this.flutterEngine?.hostDidBecomeHidden();
-    }
+    this.flutterEngine?.updateHostVisibility();
   }
 
   /**
@@ -1083,6 +1083,7 @@ export class FlutterView {
     if (this.isAttachedToFlutterEngine()) {
       if (flutterEngine == this.flutterEngine) {
         Log.i(TAG, "Already attached to this engine. Doing nothing.");
+        this.flutterEngine?.updateHostVisibility();
         return;
       }
       // Detach from a previous FlutterEngine so we can attach to this new one.f
@@ -1094,6 +1095,7 @@ export class FlutterView {
     }
     Log.i(TAG, "attachToFlutterEngine");
     this.flutterEngine = flutterEngine;
+    flutterEngine.attachHost(this);
     this.flutterEngine?.getFlutterNapi().xComponentAttachFlutterEngine(this.id)
     this.isXComponentAttachedToEngine = true;
     this.flutterEngine?.getFlutterNapi()?.updateRefreshRate(this.displayInfo!.refreshRate)
@@ -1150,6 +1152,7 @@ export class FlutterView {
     }
 
     this.updateHostVisibility();
+    this.flutterEngine?.updateHostVisibility();
     hiTraceMeter.finishTrace("attachToFlutterEngine", 0);
   }
 
@@ -1183,10 +1186,10 @@ export class FlutterView {
       this.flutterEngine!!.getFlutterNapi().xComponentDetachFlutterEngine(this.id)
       this.isXComponentAttachedToEngine = false;
     }
-    if (this.hostVisible) {
-      this.flutterEngine?.hostDidBecomeHidden();
-      this.hostVisible = false;
-    }
+    const engine = this.flutterEngine;
+    engine?.detachHost(this);
+    this.hostVisible = false;
+    engine?.updateHostVisibility();
     // Keep the controller -> TextInputPlugin link alive until the platform-view
     // hierarchy has been detached. This lets late blur/teardown callbacks clear
     // any physical PlatformView owner that is still active during shutdown.
@@ -1289,6 +1292,7 @@ export class FlutterView {
     this.isSurfaceAvailableForRendering = true;
     this.flutterEngine?.getPlatformViewsController()?.attachToView(this);
     this.flutterEngine?.processPendingMessages();
+    this.flutterEngine?.updateHostVisibility();
     return this.activeSurfaceLifecycleToken;
   }
 
