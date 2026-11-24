@@ -340,3 +340,9 @@ flutter_flutter/                 # 仓库根目录
 ## 问题交流
 
 - 问题反馈：欢迎在 [Flutter框架仓库](https://gitcode.com/openharmony-tpc/flutter_flutter/issues) 以及各个Flutter三方库提交 issue。
+
+---
+
+> Flutter、Dart 及其相关标识是 Google LLC 的商标。其他商标归各自权利人所有。
+>
+> 本项目由独立社区维护，相关商标仅用于技术说明及识别所涉及的技术、产品或平台，不代表本文档或本项目与相关商标权利人存在隶属关系，亦不代表获得其官方认知、授权或背书。

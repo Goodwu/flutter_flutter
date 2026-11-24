@@ -304,3 +304,9 @@ If you would like to contribute code to Flutter-OH, please refer to the [Flutter
 ## Communication
 
 - **Issue Feedback:** Submit issues to the [Flutter Framework Repository](https://gitcode.com/openharmony-tpc/flutter_flutter/issues) or related third-party libraries.
+
+---
+
+> Flutter, Dart, and their related logos are trademarks of Google LLC. All other trademarks are the property of their respective owners.
+>
+> This project is maintained by an independent community. The trademarks are used solely for technical description and identification of the technologies, products, or platforms involved. Such use does not imply any affiliation between this document or this project and the trademark owners, nor does it imply official recognition, authorization, or endorsement by them.
