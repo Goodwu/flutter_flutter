@@ -1007,6 +1007,27 @@ class ScopedSystemDensity {
   double saved_;
 };
 
+// Saves and restores the ETS-pushed full display size (physical px). This
+// is the clamp base BuildViewMetricsForView uses for sized-to-content
+// constraint ranges — see SizedToContentRangeClampsByDisplayNotMainWindow.
+class ScopedDisplaySize {
+ public:
+  ScopedDisplaySize(int64_t width, int64_t height)
+      : saved_width_(PlatformViewOHOSNapi::display_width),
+        saved_height_(PlatformViewOHOSNapi::display_height) {
+    PlatformViewOHOSNapi::display_width = width;
+    PlatformViewOHOSNapi::display_height = height;
+  }
+  ~ScopedDisplaySize() {
+    PlatformViewOHOSNapi::display_width = saved_width_;
+    PlatformViewOHOSNapi::display_height = saved_height_;
+  }
+
+ private:
+  int64_t saved_width_;
+  int64_t saved_height_;
+};
+
 }  // namespace
 
 // ===== GetScreenToPlatformViewLayoutScale =====
@@ -1167,6 +1188,56 @@ TEST_F(PlatformViewOHOSUt, NotifyCreateForViewZeroSizeSkipsMetrics) {
   EXPECT_TRUE(
       view()->NotifyCreateForView(9, MakePvUtWindow(kPvUtHandleA), 0, 0));
   EXPECT_TRUE(delegate().metrics_for(9).empty());
+}
+
+// Regression (windowing.log: view 3 "Tooltip-3" never appeared): a
+// sized-to-content birth surface larger than the MAIN window must clamp
+// its constraint range by the FULL display size. The old clamp used
+// viewport_metrics_ — the implicit view's size, i.e. the main window —
+// so the range max fell below the surface size and
+// Shell::ValidateViewportMetrics rejected the metrics; the view then
+// rendered empty frame sizes forever and its host window stayed parked
+// offscreen at the birth position.
+TEST_F(PlatformViewOHOSUt, SizedToContentRangeClampsByDisplayNotMainWindow) {
+  view()->external_view_embedder_ =
+      std::make_shared<OHOSWindowingViewEmbedder>();
+  ScopedDisplaySize display(1520, 1425);
+
+  // Main window (implicit view) smaller than the display.
+  view()->UpdateDisplaySize(1024, 768);
+
+  // Birth surface at the full display size (the ETS host's parent-size
+  // fallback), request constraints unbounded (min 0, max 0).
+  EXPECT_TRUE(view()->NotifyCreateForView(
+      11, MakePvUtWindow(kPvUtHandleA), 1520, 1425,
+      /*sized_to_content=*/true,
+      /*has_constraints=*/true,
+      /*min_width_constraint=*/0, /*max_width_constraint=*/0,
+      /*min_height_constraint=*/0, /*max_height_constraint=*/0));
+  auto metrics = delegate().metrics_for(11);
+  ASSERT_EQ(metrics.size(), 1u);
+  // Size passes through untouched; the RANGE max is the display size, not
+  // the 1024x768 main window (the old, rejected metrics had max 1024).
+  EXPECT_EQ(metrics[0].physical_width, 1520);
+  EXPECT_EQ(metrics[0].physical_height, 1425);
+  EXPECT_EQ(metrics[0].physical_min_width_constraint, 0);
+  EXPECT_EQ(metrics[0].physical_max_width_constraint, 1520);
+  EXPECT_EQ(metrics[0].physical_min_height_constraint, 0);
+  EXPECT_EQ(metrics[0].physical_max_height_constraint, 1425);
+
+  // A finite request max still wins below the display clamp.
+  view()->NotifySurfaceChangedForView(
+      11, MakePvUtWindow(kPvUtHandleB), 1520, 1425,
+      /*has_constraints=*/true,
+      /*min_width_constraint=*/0, /*max_width_constraint=*/760,
+      /*min_height_constraint=*/0, /*max_height_constraint=*/380);
+  metrics = delegate().metrics_for(11);
+  ASSERT_EQ(metrics.size(), 2u);
+  EXPECT_EQ(metrics[1].physical_max_width_constraint, 760);
+  EXPECT_EQ(metrics[1].physical_max_height_constraint, 380);
+
+  view()->NotifyDestroyForView(11);
+  FlushTasks();
 }
 
 TEST_F(PlatformViewOHOSUt, NotifyDestroyForViewUnknownIsNoop) {

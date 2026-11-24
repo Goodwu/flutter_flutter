@@ -516,22 +516,19 @@ ViewportMetrics PlatformViewOHOS::BuildViewMetricsForView(
   view_metrics.physical_width = physical_width;
   view_metrics.physical_height = physical_height;
   if (constraints.has_constraints) {
-    // Sized-to-content (win32 GetConstraints parity): the content lays out
-    // within [smallest, min(biggest, display)]. v1 clamps biggest by the
-    // FULL display size — the work area (dock-excluded) isn't known on this
-    // side; the ETS positioner still constrains placement against the true
-    // work area, so only oversized-content layout differs slightly.
-    double max_w = constraints.max_width > 0 ? constraints.max_width
-                                             : viewport_metrics_.physical_width;
-    double max_h = constraints.max_height > 0
-                       ? constraints.max_height
-                       : viewport_metrics_.physical_height;
+    // Clamp the constraint range by the FULL display size (max 0 = unbounded).
+    const double display_w =
+        static_cast<double>(PlatformViewOHOSNapi::display_width);
+    const double display_h =
+        static_cast<double>(PlatformViewOHOSNapi::display_height);
     view_metrics.physical_min_width_constraint = constraints.min_width;
     view_metrics.physical_max_width_constraint =
-        std::min(max_w, viewport_metrics_.physical_width);
+        constraints.max_width > 0 ? std::min(constraints.max_width, display_w)
+                                  : display_w;
     view_metrics.physical_min_height_constraint = constraints.min_height;
     view_metrics.physical_max_height_constraint =
-        std::min(max_h, viewport_metrics_.physical_height);
+        constraints.max_height > 0 ? std::min(constraints.max_height, display_h)
+                                   : display_h;
   } else {
     view_metrics.physical_min_width_constraint = physical_width;
     view_metrics.physical_max_width_constraint = physical_width;
