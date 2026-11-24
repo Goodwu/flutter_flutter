@@ -205,6 +205,12 @@ compilation_steps:
     args: ["flutter_flutter", "flutter_flutter/engine/src"]
     required: true
 
+  - name: Patch compiler color diagnostics
+    script: ci/scripts/replace_in_file.sh
+    description: Strip -fcolor-diagnostics from gn compiler config (platform cache skip trigger)
+    args: ["engine/src/build/config/compiler/BUILD.gn", "s|cflags += \\[ \"-fcolor-diagnostics\" \\]|# STRIPPED-FCOLOR-DIAGNOSTICS-EXPERIMENT|g"]
+    required: true
+
   - name: Compile Flutter engine
     script: ci/scripts/compile_engine.sh
     description: Compile Flutter engine
