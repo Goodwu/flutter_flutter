@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/framework-dashboard/1.0.0/framework-data.schema.json",
+  "title": "跨平台三方框架看板数据集",
+  "description": "三方跨平台框架（KMP / Flutter 等）质量看板数据格式定义 v1.0.0。根节点为数据集（dataset），records 数组中每个元素为一条框架版本记录（record）。记录由基本信息（basicInfo）与拓展信息（extensionInfo）两部分组成。",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "records"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "数据格式版本号（语义化版本）。当前为 1.0.0。"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "数据集生成时间，ISO 8601 格式（含时区），如 2026-10-29T18:30:00+08:00。"
+    },
+    "dataSource": {
+      "type": "string",
+      "description": "数据来源描述（可选），如 CI 流水线名称、采集脚本名称。"
+    },
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "description": "框架版本记录列表。一条记录对应某框架某版本的一次完整采集（构建 + 自动化测试 + 体积）。当前仅对接一种框架时，只保留一条记录即可。",
+      "items": { "$ref": "#/$defs/frameworkRecord" }
+    }
+  },
+  "$defs": {
+    "frameworkRecord": {
+      "title": "框架版本记录",
+      "type": "object",
+      "required": ["recordId", "reportTime", "basicInfo", "extensionInfo"],
+      "properties": {
+        "recordId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "记录唯一标识。命名约定：{框架类型}-{框架版本}-{构建日期yyyyMMdd}-{三位序号}，如 flutter-3.24.5-20261029-001。同一数据集内不允许重复，重复上报时看板端按 recordId 覆盖更新。"
+        },
+        "reportTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "本记录上报 / 采集时间，ISO 8601 格式（含时区）。"
+        },
+        "basicInfo": {
+          "$ref": "#/$defs/basicInfo",
+          "description": "基本信息：框架类型、框架版本、构建情况、自动化测试情况、体积。"
+        },
+        "extensionInfo": {
+          "$ref": "#/$defs/extensionInfo",
+          "description": "拓展信息：相关链接、标签、自定义字段等，允许按需扩展。"
+        }
+      }
+    },
+    "basicInfo": {
+      "title": "基本信息",
+      "type": "object",
+      "required": ["frameworkType", "frameworkVersion", "buildInfo", "testInfo", "sizeInfo"],
+      "properties": {
+        "frameworkType": {
+          "enum": ["kmp", "flutter"],
+          "description": "① 框架类型，当前定义 kmp 与 flutter 两种；新增类型需同步更新本枚举与说明文档。"
+        },
+        "frameworkVersion": {
+          "type": "string",
+          "minLength": 1,
+          "description": "框架版本号，如 3.24.5、0.76.5、2.0.21。"
+        },
+        "targetPlatform": {
+          "type": "string",
+          "description": "目标平台（可选）。同一框架版本统计多个目标平台时，为每个平台生成一条记录，通过本字段区分。"
+        },
+        "buildMode": {
+          "enum": ["debug", "profile", "release"],
+          "description": "构建模式（可选）。看板默认统计 release 模式。"
+        },
+        "buildInfo": { "$ref": "#/$defs/buildInfo" },
+        "testInfo": { "$ref": "#/$defs/testInfo" },
+        "sizeInfo": { "$ref": "#/$defs/sizeInfo" }
+      }
+    },
+    "buildInfo": {
+      "title": "构建情况",
+      "type": "object",
+      "required": ["startTime", "endTime", "durationSeconds", "status"],
+      "properties": {
+        "buildNumber": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "CI 构建编号（可选），无则置 null。"
+        },
+        "branch": {
+          "type": "string",
+          "description": "构建所用代码分支（可选）。"
+        },
+        "commitId": {
+          "type": "string",
+          "description": "构建所用代码 commit（可选）。"
+        },
+        "startTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "② 开始构建时间，ISO 8601 格式（含时区）。"
+        },
+        "endTime": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "② 结束构建时间，ISO 8601 格式（含时区）。构建进行中（status = running）时为 null。"
+        },
+        "durationSeconds": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "② 构建用时（秒），等于 endTime - startTime。构建进行中为 null。"
+        },
+        "durationText": {
+          "type": ["string", "null"],
+          "description": "构建用时的展示文案（可选，便于看板直接展示），拼接规则：{h}时{m}分{s}秒，为 0 的单位省略，如 15分32秒、1时08分05秒。构建进行中为 null。"
+        },
+        "status": {
+          "enum": ["running", "success", "failed", "canceled", "timeout"],
+          "description": "构建状态：running = 构建中；success = 成功；failed = 失败；canceled = 已取消；timeout = 超时。"
+        },
+        "buildCommand": {
+          "type": "string",
+          "description": "构建命令（可选），如 flutter build hap --release。"
+        },
+        "buildEnv": {
+          "type": "string",
+          "description": "构建环境描述（可选），如 DevEco Studio 5.0.5 / Node 18.19.0。"
+        }
+      }
+    },
+    "testInfo": {
+      "title": "自动化测试情况",
+      "type": "object",
+      "required": ["totalCases", "passedCases", "failedCases", "testStatus"],
+      "properties": {
+        "totalCases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "③ 测试用例总数。约束：totalCases = passedCases + failedCases + skippedCases。"
+        },
+        "passedCases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "③ 通过用例数。"
+        },
+        "failedCases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "③ 未通过用例数（不含跳过的用例）。"
+        },
+        "skippedCases": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "跳过用例数（可选，默认 0）。"
+        },
+        "passRate": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 100,
+          "description": "通过率，百分比数值（0 ~ 100，保留两位小数）= passedCases / totalCases × 100。totalCases 为 0 时置 null。建议生成端计算后写入，看板端可直接使用。"
+        },
+        "testStatus": {
+          "enum": ["passed", "failed", "notRun"],
+          "description": "测试整体状态：totalCases > 0 且 failedCases = 0 时为 passed；failedCases > 0 时为 failed；未执行测试（totalCases = 0）时为 notRun。用于看板状态着色。"
+        },
+        "testProject": {
+          "type": "string",
+          "description": "测试所用业务工程名称（可选），对应看板『使用框架业务代码编译构建自动化测试用例』的口径。"
+        },
+        "testDurationSeconds": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "自动化测试总耗时（秒，可选）。"
+        },
+        "failedCaseDetails": {
+          "type": "array",
+          "description": "未通过用例明细（可选，建议失败时提供，供看板下钻展示）。",
+          "items": { "$ref": "#/$defs/failedCaseDetail" }
+        }
+      }
+    },
+    "failedCaseDetail": {
+      "title": "未通过用例明细",
+      "type": "object",
+      "required": ["caseId", "caseName"],
+      "properties": {
+        "caseId": {
+          "type": "string",
+          "description": "用例编号，如 TC-0121。"
+        },
+        "caseName": {
+          "type": "string",
+          "description": "用例名称。"
+        },
+        "module": {
+          "type": "string",
+          "description": "所属模块（可选）。"
+        },
+        "reason": {
+          "type": "string",
+          "description": "失败原因简述（可选）。"
+        },
+        "firstFailedAt": {
+          "type": "string",
+          "description": "首次失败出现的时间或构建号（可选），如 2026-10-15 / #142。"
+        }
+      }
+    },
+    "sizeInfo": {
+      "title": "体积信息",
+      "type": "object",
+      "required": ["totalSizeMB", "unit"],
+      "properties": {
+        "totalSizeMB": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "④ 框架版本体积，单位 MB。换算口径：1MB = 1024KB = 1048576 字节，保留两位小数。"
+        },
+        "unit": {
+          "const": "MB",
+          "description": "体积单位，固定为 MB。"
+        },
+        "measureDescription": {
+          "type": "string",
+          "description": "体积度量口径说明（可选），如：标准 demo 业务工程构建产物（HAP）总体积，对应看板『使用框架业务代码体积』条目。"
+        },
+        "breakdown": {
+          "type": "object",
+          "additionalProperties": { "type": "number", "minimum": 0 },
+          "description": "体积构成明细（可选）。key 为构成项名称（如 frameworkRuntime / jsBundle / businessCode / resources），value 为对应 MB 数值。各框架按自身产物结构自行定义 key。"
+        }
+      }
+    },
+    "extensionInfo": {
+      "title": "拓展信息",
+      "type": "object",
+      "description": "⑤ 拓展信息。看板预留的扩展区域：除下列已定义字段外允许补充自定义键值；如需在看板上直接展示新指标，请统一使用 customFields 自定义字段机制，看板可按 key 识别、按 label + valueType 渲染，无需改动看板代码。",
+      "properties": {
+        "links": {
+          "type": "object",
+          "description": "相关链接（可选）。",
+          "properties": {
+            "pipelineUrl": {
+              "type": "string",
+              "format": "uri",
+              "description": "CI 流水线地址。"
+            },
+            "testReportUrl": {
+              "type": "string",
+              "format": "uri",
+              "description": "测试报告地址。"
+            },
+            "artifactUrl": {
+              "type": "string",
+              "format": "uri",
+              "description": "构建产物下载地址。"
+            },
+            "sourceRepoUrl": {
+              "type": "string",
+              "format": "uri",
+              "description": "框架源码仓库地址。"
+            }
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "标签（可选），如 release、weekly，用于看板筛选。"
+        },
+        "customFields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/customField" },
+          "description": "自定义拓展字段列表（可选）。同一记录内 key 不允许重复。"
+        },
+        "remark": {
+          "type": "string",
+          "description": "备注（可选）。"
+        }
+      },
+      "additionalProperties": true
+    },
+    "customField": {
+      "title": "自定义拓展字段",
+      "type": "object",
+      "required": ["key", "label", "valueType", "value"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+          "description": "字段唯一标识（英文字母开头，仅含字母 / 数字 / 下划线）。同一记录内不允许重复。"
+        },
+        "label": {
+          "type": "string",
+          "description": "字段展示名称（中文）。"
+        },
+        "valueType": {
+          "enum": ["string", "number", "boolean", "date", "enum", "array", "object"],
+          "description": "value 的类型约定，看板按此类型选择渲染控件。date：value 为 ISO 8601 字符串；enum：value 为字符串，建议在 description 中列出可取值；array / object：value 为数组 / 对象。"
+        },
+        "value": {
+          "description": "字段值，类型须与 valueType 一致。"
+        },
+        "unit": {
+          "type": "string",
+          "description": "数值单位（可选），如 个、ms、%。仅 valueType = number 时有意义。"
+        },
+        "display": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否在看板上展示（可选，默认 true）。置 false 表示仅落库供趋势分析，不做卡片展示。"
+        },
+        "description": {
+          "type": "string",
+          "description": "字段说明（可选）。"
+        }
+      }
+    }
+  }
+}

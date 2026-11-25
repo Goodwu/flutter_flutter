@@ -2769,6 +2769,7 @@ const Set<String> kExecutableAllowlist = <String>{
   'ci/scripts/check_project_structure.sh',
   'ci/scripts/check_system_info.sh',
   'ci/scripts/check_tool_versions.sh',
+  'ci/scripts/collect_sdk_unit_dashboard.sh',
   'ci/scripts/compile_engine.sh',
   'ci/scripts/compile_hello_world.sh',
   'ci/scripts/compile_web.sh',

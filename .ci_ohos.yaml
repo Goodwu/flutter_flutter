@@ -248,6 +248,11 @@ test_steps:
     description: Run all unit tests in parallel shard groups (single machine), collecting framework coverage
     required: true
 
+  - name: Collect Dashboard Data
+    script: ci/scripts/collect_sdk_unit_dashboard.sh
+    description: Collect one dashboard record per SDK unit-test round from the shard execution logs and merge pending records into the OBS daily file (non-fatal)
+    required: false
+
 # prepare for Integration Gate Test
 integration_gate_steps:
   - name: Prepare Tests
