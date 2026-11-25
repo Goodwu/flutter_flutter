@@ -454,6 +454,11 @@ Future<void> runDartTest(
   final suffix = DateTime.now().microsecondsSinceEpoch.toString();
   final File metricFile = fileSystem.systemTempDirectory.childFile('metrics_$suffix.json');
   final args = <String>[
+    // Assert-based tests (e.g. the Spinner/SummaryStatus variants in
+    // logger_test.dart) require asserts to be enabled in the test isolate;
+    // without the flag they fail deterministically with "Expected: throws
+    // <AssertionError> / Actual: returned <null>" (build 20261124-1-00091).
+    if (enableFlutterToolAsserts) '--enable-asserts',
     'run',
     'test',
     '--reporter=expanded',
