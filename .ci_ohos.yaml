@@ -160,24 +160,11 @@ compilation_steps:
     args: ["engine/src/flutter/testing/testing.gni", "s|enable_unittests = current_toolchain == host_toolchain \\|\\| is_fuchsia \\|\\| is_mac|enable_unittests = false|g"]
     required: true
 
-  - name: Check Build Mode
-    script: ci/scripts/check_build_mode.sh
-    description: Check Build Mode
-    args: ["flutter_flutter", "flutter_flutter/engine/src", "$TARGET_BRANCH", "flutter_flutter"]
-    required: true
-
-  - name: Restoring Engine mTimes
-    script: ci/scripts/restore_engine_mtimes.sh
-    description: Restoring Engine Modification Times
-    args: ["flutter_flutter", "flutter_flutter/engine/src"]
-    required: true
-
-  - name: Compile Flutter engine
-    script: ci/scripts/compile_engine.sh
-    description: Compile Flutter engine
-    args: ["flutter_flutter/engine"]
-    required: true
-
+  # Static checks run BEFORE compilation: none of them depend on build
+  # artifacts (engine_analyze falls back to the bundled dart-sdk; clang-tidy
+  # generates out/host_debug/compile_commands.json itself via gn if missing).
+  # A PR failing lint/analyze now fails in minutes instead of after a full
+  # engine build, and releases the executor for the next queued PR.
   - name: Engine Dart Analyze
     script: ci/scripts/engine_analyze.sh
     description: >
@@ -205,6 +192,30 @@ compilation_steps:
       Incremental: only runs when .h/.c/.cc/.cpp files change.
     required: true
     runIf: "**/*.{h,c,cc,cpp}"
+
+  - name: Check Build Mode
+    script: ci/scripts/check_build_mode.sh
+    description: Check Build Mode
+    args: ["flutter_flutter", "flutter_flutter/engine/src", "$TARGET_BRANCH", "flutter_flutter"]
+    required: true
+
+  - name: Restoring Engine mTimes
+    script: ci/scripts/restore_engine_mtimes.sh
+    description: Restoring Engine Modification Times
+    args: ["flutter_flutter", "flutter_flutter/engine/src"]
+    required: true
+
+  - name: Patch compiler color diagnostics
+    script: ci/scripts/replace_in_file.sh
+    description: Strip -fcolor-diagnostics from gn compiler config (platform cache skip trigger)
+    args: ["engine/src/build/config/compiler/BUILD.gn", "s|cflags += \\[ \"-fcolor-diagnostics\" \\]|# STRIPPED-FCOLOR-DIAGNOSTICS-EXPERIMENT|g"]
+    required: true
+
+  - name: Compile Flutter engine
+    script: ci/scripts/compile_engine.sh
+    description: Compile Flutter engine
+    args: ["flutter_flutter/engine"]
+    required: true
 
   - name: Compile Web SDK
     script: ci/scripts/compile_web.sh
