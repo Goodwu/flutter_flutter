@@ -76,7 +76,7 @@ class PlatformViewOHOSNapiTest : public ::testing::Test {
 };
 
 RegularWindowCreationRequest MakeHostRequest() {
-  RegularWindowCreationRequest request;
+  RegularWindowCreationRequest request = {};
   request.preferred_size.has_preferred_view_size = true;
   request.preferred_size.preferred_view_width = 640.0;
   request.preferred_size.preferred_view_height = 480.0;
@@ -85,7 +85,14 @@ RegularWindowCreationRequest MakeHostRequest() {
 }
 
 DialogWindowCreationRequest MakeDialogHostRequest() {
-  return DialogWindowCreationRequest{};
+  // Valid by the OHOSWindow ctor contract (preferred size or
+  // sized-to-content); the {} zero-init keeps the marshaled reads (title,
+  // constraint doubles) defined.
+  DialogWindowCreationRequest request = {};
+  request.preferred_size.has_preferred_view_size = true;
+  request.preferred_size.preferred_view_width = 640.0;
+  request.preferred_size.preferred_view_height = 480.0;
+  return request;
 }
 
 TooltipWindowCreationRequest MakeTooltipHostRequest() {
@@ -249,10 +256,10 @@ std::unique_ptr<OHOSShellHolder> MakeSoftwareHolder() {
       settings, std::make_shared<PlatformViewOHOSNapi>(nullptr), nullptr);
 }
 
-void InsertNapiWindow(OHOSWindowController* controller,
-                      int64_t view_id,
-                      const RegularWindowCreationRequest& request =
-                          RegularWindowCreationRequest{}) {
+void InsertNapiWindow(
+    OHOSWindowController* controller,
+    int64_t view_id,
+    const RegularWindowCreationRequest& request = MakeHostRequest()) {
   void* host_handle = OHOSWindowController::HandleForViewId(view_id);
   std::lock_guard<std::mutex> lock(controller->windows_mutex_);
   controller->windows_[host_handle] =
@@ -2261,7 +2268,7 @@ TEST_F(PlatformViewOHOSNapiTest, HandleOsWindowClosedTearsDownSeededWindow) {
   auto holder = MakeSoftwareHolder();
   OHOSWindowController* controller = holder->GetWindowController();
   ASSERT_NE(controller, nullptr);
-  InsertNapiWindow(controller, 0, RegularWindowCreationRequest{});
+  InsertNapiWindow(controller, 0);
   void* const handle = OHOSWindowController::HandleForViewId(0);
   ASSERT_EQ(controller->windows_.count(handle), 1u);
   // The stub feeds the seeded window's view id: the call routes to
@@ -2920,8 +2927,7 @@ TEST_F(PlatformViewOHOSNapiTest, NativeComputeWindowPositionStages) {
       PlatformViewOHOSNapi::nativeComputeWindowPosition(env, nullptr));
 
   constexpr int64_t kView = 7;
-  InsertNapiWindow(holder->GetWindowController(), kView,
-                   RegularWindowCreationRequest{});
+  InsertNapiWindow(holder->GetWindowController(), kView);
   StubNapiSetInt64Value(kView);
   EXPECT_NO_FATAL_FAILURE(
       PlatformViewOHOSNapi::nativeComputeWindowPosition(env, nullptr));
@@ -2969,8 +2975,7 @@ TEST_F(PlatformViewOHOSNapiTest, NativeNotifyWindowActivatedStages) {
   EXPECT_EQ(PlatformViewOHOSNapi::nativeNotifyWindowActivated(env, nullptr),
             nullptr);
   constexpr int64_t kView = 8;
-  InsertNapiWindow(holder->GetWindowController(), kView,
-                   RegularWindowCreationRequest{});
+  InsertNapiWindow(holder->GetWindowController(), kView);
   StubNapiSetInt64Value(kView);
   StubNapiSetBoolValue(true);
   EXPECT_EQ(PlatformViewOHOSNapi::nativeNotifyWindowActivated(env, nullptr),
@@ -3479,5 +3484,675 @@ TEST_F(PlatformViewOHOSNapiTest, LogSeverityReplayRemainingEdges) {
     holder->WaitRasterTasksFinished();
   }
 }
+
+// ===== NAPI failure-branch tests (no production code changes) =====
+// Each test sets a StubNapiFail* before calling a public method, exercising
+// the error-handling branch (FML_DLOG, early return, scope close) that the
+// success-path tests do not reach.
+
+// --- FlutterViewHandlePlatformMessage ---
+
+TEST_F(PlatformViewOHOSNapiTest, HandlePlatformMessageCreateStringUtf8Failure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  const uint8_t* payload = reinterpret_cast<const uint8_t*>("data");
+  StubNapiFailCreateStringUtf8(kStubFailure, 0);
+  EXPECT_NO_FATAL_FAILURE({
+    facade.FlutterViewHandlePlatformMessage(
+        1, std::make_unique<PlatformMessage>(
+               "ch", fml::MallocMapping::Copy(payload, payload + 4), nullptr));
+  });
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, HandlePlatformMessageCreateInt64Failure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  const uint8_t* payload = reinterpret_cast<const uint8_t*>("data");
+  StubNapiFailCreateInt64(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE({
+    facade.FlutterViewHandlePlatformMessage(
+        1, std::make_unique<PlatformMessage>(
+               "ch", fml::MallocMapping::Copy(payload, payload + 4), nullptr));
+  });
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, HandlePlatformMessageDataStringFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  const uint8_t* payload = reinterpret_cast<const uint8_t*>("data");
+  // Skip the first create_string_utf8 (channel), fail the second (data).
+  StubNapiFailCreateStringUtf8(kStubFailure, 1);
+  EXPECT_NO_FATAL_FAILURE({
+    facade.FlutterViewHandlePlatformMessage(
+        1, std::make_unique<PlatformMessage>(
+               "ch", fml::MallocMapping::Copy(payload, payload + 4), nullptr));
+  });
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, HandlePlatformMessageInvokeJsFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCallFunction(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE({
+    facade.FlutterViewHandlePlatformMessage(
+        1, std::make_unique<PlatformMessage>("ch", nullptr));
+  });
+  EXPECT_GT(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- UpdatePopupPosition ---
+
+TEST_F(PlatformViewOHOSNapiTest, UpdatePopupPositionCreateInt64Failure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateInt64(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.UpdatePopupPosition(1));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, UpdatePopupPositionInvokeJsFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCallFunction(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.UpdatePopupPosition(1));
+  EXPECT_GT(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- SetWindowSize (exercises napi_create_int64 + napi_create_double) ---
+
+TEST_F(PlatformViewOHOSNapiTest, SetWindowSizeCreateInt64Failure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateInt64(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowSize(1, 320.0, 240.0));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, SetWindowSizeFirstDoubleFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(1);
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowSize(1, 320.0, 240.0));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, SetWindowSizeSecondDoubleFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(2);
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowSize(1, 320.0, 240.0));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, SetWindowSizeInvokeJsFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCallFunction(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowSize(1, 320.0, 240.0));
+  EXPECT_GT(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- SetWindowTitle (napi_create_string_utf8) ---
+
+TEST_F(PlatformViewOHOSNapiTest, SetWindowTitleCreateStringFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateStringUtf8(kStubFailure, 0);
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowTitle(1, "title"));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, SetWindowTitleInvokeJsFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCallFunction(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowTitle(1, "title"));
+  EXPECT_GT(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- SetWindowMaximized / SetWindowMinimized / SetWindowFullscreen
+//     (napi_create_int64 + napi_get_boolean) ---
+
+TEST_F(PlatformViewOHOSNapiTest, SetWindowMaximizedCreateInt64Failure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateInt64(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowMaximized(1, true));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, SetWindowMaximizedGetBooleanFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailGetBooleanOnCall(1);
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowMaximized(1, true));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, SetWindowMinimizedGetBooleanFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailGetBooleanOnCall(1);
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowMinimized(1, true));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, SetWindowFullscreenGetBooleanFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailGetBooleanOnCall(1);
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowFullscreen(1, true));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- CreateRegularWindow (exercises MarshalRegularWindowRequest) ---
+// MarshalRegularWindowRequest calls MarshalWindowSizeRequest (which creates
+// doubles for width/height) then MarshalWindowConstraints (which creates
+// doubles for min/max). Fail each double in sequence.
+
+TEST_F(PlatformViewOHOSNapiTest, CreateRegularWindowDoubleFailAt1) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(1);
+  EXPECT_NO_FATAL_FAILURE(facade.CreateRegularWindow(1, MakeHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, CreateRegularWindowDoubleFailAt2) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(2);
+  EXPECT_NO_FATAL_FAILURE(facade.CreateRegularWindow(1, MakeHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, CreateRegularWindowDoubleFailAt3) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(3);
+  EXPECT_NO_FATAL_FAILURE(facade.CreateRegularWindow(1, MakeHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, CreateRegularWindowDoubleFailAt4) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(4);
+  EXPECT_NO_FATAL_FAILURE(facade.CreateRegularWindow(1, MakeHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, CreateRegularWindowBooleanFailAt1) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailGetBooleanOnCall(1);
+  EXPECT_NO_FATAL_FAILURE(facade.CreateRegularWindow(1, MakeHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, CreateRegularWindowBooleanFailAt2) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailGetBooleanOnCall(2);
+  EXPECT_NO_FATAL_FAILURE(facade.CreateRegularWindow(1, MakeHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, CreateRegularWindowTitleStringFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateStringUtf8(kStubFailure, 0);
+  EXPECT_NO_FATAL_FAILURE(facade.CreateRegularWindow(1, MakeHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- CreateDialogWindow ---
+
+TEST_F(PlatformViewOHOSNapiTest, CreateDialogWindowDoubleFailAt1) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(1);
+  EXPECT_NO_FATAL_FAILURE(
+      facade.CreateDialogWindow(1, MakeDialogHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, CreateDialogWindowBooleanFailAt1) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailGetBooleanOnCall(1);
+  EXPECT_NO_FATAL_FAILURE(
+      facade.CreateDialogWindow(1, MakeDialogHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- SetWindowConstraints (exercises MarshalWindowConstraints) ---
+
+TEST_F(PlatformViewOHOSNapiTest, SetWindowConstraintsDoubleFailAt1) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  WindowConstraints c{true, 320.0, 240.0, 640.0, 480.0};
+  StubNapiFailCreateDoubleOnCall(1);
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowConstraints(1, c));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, SetWindowConstraintsDoubleFailAt2) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  WindowConstraints c{true, 320.0, 240.0, 640.0, 480.0};
+  StubNapiFailCreateDoubleOnCall(2);
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowConstraints(1, c));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, SetWindowConstraintsBooleanFailAt1) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  WindowConstraints c{true, 320.0, 240.0, 640.0, 480.0};
+  StubNapiFailGetBooleanOnCall(1);
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowConstraints(1, c));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, SetWindowConstraintsInvokeJsFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  WindowConstraints c{true, 320.0, 240.0, 640.0, 480.0};
+  StubNapiFailCallFunction(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowConstraints(1, c));
+  EXPECT_GT(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- FlutterViewOnFirstFrame (napi_create_int64 for flag) ---
+
+TEST_F(PlatformViewOHOSNapiTest, OnFirstFrameInvokeJsFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCallFunction(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.FlutterViewOnFirstFrame(true));
+  EXPECT_GT(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- FlutterViewOnPreEngineRestart ---
+
+TEST_F(PlatformViewOHOSNapiTest, OnPreEngineRestartInvokeJsFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCallFunction(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.FlutterViewOnPreEngineRestart());
+  EXPECT_GT(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- FlutterViewSetApplicationLocale (napi_create_string_utf8) ---
+
+TEST_F(PlatformViewOHOSNapiTest, SetLocaleInvokeJsFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCallFunction(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.FlutterViewSetApplicationLocale("en-US"));
+  EXPECT_GT(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- DestroyWindowHost ---
+
+TEST_F(PlatformViewOHOSNapiTest, DestroyWindowHostCreateInt64Failure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateInt64(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.DestroyWindowHost(1));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, DestroyWindowHostInvokeJsFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCallFunction(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.DestroyWindowHost(1));
+  EXPECT_GT(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- ExitApplication ---
+
+TEST_F(PlatformViewOHOSNapiTest, ExitApplicationInvokeJsFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCallFunction(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.ExitApplication());
+  EXPECT_GT(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- ActivateWindow ---
+
+TEST_F(PlatformViewOHOSNapiTest, ActivateWindowCreateInt64Failure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateInt64(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.ActivateWindow(1));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, ActivateWindowInvokeJsFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCallFunction(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.ActivateWindow(1));
+  EXPECT_GT(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- UpdateTooltipPosition ---
+
+TEST_F(PlatformViewOHOSNapiTest, UpdateTooltipPositionCreateInt64Failure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateInt64(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.UpdateTooltipPosition(1));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, UpdateTooltipPositionInvokeJsFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCallFunction(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.UpdateTooltipPosition(1));
+  EXPECT_GT(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- OnDisplayMutatorsHybrid (int64 + array + double) ---
+
+TEST_F(PlatformViewOHOSNapiTest, DisplayMutatorsCreateInt64Failure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateInt64(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.OnDisplayMutatorsHybrid(1, {1.0, 2.0, 3.0}));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, DisplayMutatorsCreateArrayFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateArray(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.OnDisplayMutatorsHybrid(1, {1.0, 2.0, 3.0}));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, DisplayMutatorsCreateDoubleFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(1);
+  EXPECT_NO_FATAL_FAILURE(facade.OnDisplayMutatorsHybrid(1, {1.0, 2.0, 3.0}));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- FlutterViewOnTouchEvent (array + string) ---
+
+TEST_F(PlatformViewOHOSNapiTest, TouchEventCreateArrayFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  auto packets = std::make_shared<std::string[]>(1);
+  packets[0] = "{\"change\":0}";
+  StubNapiFailCreateArray(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.FlutterViewOnTouchEvent(packets, 1));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, TouchEventCreateStringFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  auto packets = std::make_shared<std::string[]>(1);
+  packets[0] = "{\"change\":0}";
+  StubNapiFailCreateStringUtf8(kStubFailure, 0);
+  EXPECT_NO_FATAL_FAILURE(facade.FlutterViewOnTouchEvent(packets, 1));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- FlutterViewOnMouseEvent (array + string) ---
+
+TEST_F(PlatformViewOHOSNapiTest, MouseEventCreateArrayFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  auto packets = std::make_shared<std::string[]>(1);
+  packets[0] = "{\"change\":0}";
+  StubNapiFailCreateArray(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.FlutterViewOnMouseEvent(packets, 1));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, MouseEventCreateStringFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  auto packets = std::make_shared<std::string[]>(1);
+  packets[0] = "{\"change\":0}";
+  StubNapiFailCreateStringUtf8(kStubFailure, 0);
+  EXPECT_NO_FATAL_FAILURE(facade.FlutterViewOnMouseEvent(packets, 1));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- FlutterViewOnAxisEvent (array + string) ---
+
+TEST_F(PlatformViewOHOSNapiTest, AxisEventCreateArrayFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  auto packets = std::make_shared<std::string[]>(1);
+  packets[0] = "{\"change\":0}";
+  StubNapiFailCreateArray(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.FlutterViewOnAxisEvent(packets, 1));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, AxisEventCreateStringFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  auto packets = std::make_shared<std::string[]>(1);
+  packets[0] = "{\"change\":0}";
+  StubNapiFailCreateStringUtf8(kStubFailure, 0);
+  EXPECT_NO_FATAL_FAILURE(facade.FlutterViewOnAxisEvent(packets, 1));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- CreateTooltipWindow ---
+
+TEST_F(PlatformViewOHOSNapiTest, CreateTooltipWindowDoubleFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(1);
+  EXPECT_NO_FATAL_FAILURE(
+      facade.CreateTooltipWindow(1, MakeTooltipHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- CreatePopupWindow ---
+
+TEST_F(PlatformViewOHOSNapiTest, CreatePopupWindowDoubleFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(1);
+  EXPECT_NO_FATAL_FAILURE(facade.CreatePopupWindow(1, MakePopupHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- BindEntryAbilityToView ---
+
+TEST_F(PlatformViewOHOSNapiTest, BindEntryAbilityDoubleFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(1);
+  EXPECT_NO_FATAL_FAILURE(facade.BindEntryAbilityToView(1, MakeHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, BindEntryAbilityTitleStringFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateStringUtf8(kStubFailure, 0);
+  EXPECT_NO_FATAL_FAILURE(facade.BindEntryAbilityToView(1, MakeHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- DidUpdateViewSize ---
+
+TEST_F(PlatformViewOHOSNapiTest, DidUpdateViewSizeCreateInt64Failure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateInt64(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.DidUpdateViewSize(1, 320.0, 240.0));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, DidUpdateViewSizeFirstDoubleFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(1);
+  EXPECT_NO_FATAL_FAILURE(facade.DidUpdateViewSize(1, 320.0, 240.0));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, DidUpdateViewSizeSecondDoubleFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(2);
+  EXPECT_NO_FATAL_FAILURE(facade.DidUpdateViewSize(1, 320.0, 240.0));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, DidUpdateViewSizeInvokeJsFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCallFunction(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.DidUpdateViewSize(1, 320.0, 240.0));
+  EXPECT_GT(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- Additional marshal failure tests (deeper double/boolean calls) ---
+// CreateRegularWindow marshals 6 doubles (2 size + 4 constraints) and 2
+// booleans.
+
+TEST_F(PlatformViewOHOSNapiTest, CreateRegularWindowDoubleFailAt5) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(5);
+  EXPECT_NO_FATAL_FAILURE(facade.CreateRegularWindow(1, MakeHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, CreateRegularWindowDoubleFailAt6) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(6);
+  EXPECT_NO_FATAL_FAILURE(facade.CreateRegularWindow(1, MakeHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+// CreateDialogWindow also marshals 6 doubles.
+
+TEST_F(PlatformViewOHOSNapiTest, CreateDialogWindowDoubleFailAt2) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(2);
+  EXPECT_NO_FATAL_FAILURE(
+      facade.CreateDialogWindow(1, MakeDialogHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, CreateDialogWindowDoubleFailAt3) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(3);
+  EXPECT_NO_FATAL_FAILURE(
+      facade.CreateDialogWindow(1, MakeDialogHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, CreateDialogWindowDoubleFailAt4) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(4);
+  EXPECT_NO_FATAL_FAILURE(
+      facade.CreateDialogWindow(1, MakeDialogHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, CreateDialogWindowBooleanFailAt2) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailGetBooleanOnCall(2);
+  EXPECT_NO_FATAL_FAILURE(
+      facade.CreateDialogWindow(1, MakeDialogHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+// SetWindowConstraints marshals 4 doubles (min/max width/height).
+
+TEST_F(PlatformViewOHOSNapiTest, SetWindowConstraintsDoubleFailAt3) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  WindowConstraints c{true, 320.0, 240.0, 640.0, 480.0};
+  StubNapiFailCreateDoubleOnCall(3);
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowConstraints(1, c));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, SetWindowConstraintsDoubleFailAt4) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  WindowConstraints c{true, 320.0, 240.0, 640.0, 480.0};
+  StubNapiFailCreateDoubleOnCall(4);
+  EXPECT_NO_FATAL_FAILURE(facade.SetWindowConstraints(1, c));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+// CreateTooltipWindow / CreatePopupWindow — deeper double failures.
+
+TEST_F(PlatformViewOHOSNapiTest, CreateTooltipWindowDoubleFailAt2) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(2);
+  EXPECT_NO_FATAL_FAILURE(
+      facade.CreateTooltipWindow(1, MakeTooltipHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+TEST_F(PlatformViewOHOSNapiTest, CreatePopupWindowDoubleFailAt2) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(2);
+  EXPECT_NO_FATAL_FAILURE(facade.CreatePopupWindow(1, MakePopupHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+// BindEntryAbilityToView — deeper double failures.
+
+TEST_F(PlatformViewOHOSNapiTest, BindEntryAbilityDoubleFailAt2) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCreateDoubleOnCall(2);
+  EXPECT_NO_FATAL_FAILURE(facade.BindEntryAbilityToView(1, MakeHostRequest()));
+  EXPECT_EQ(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- FlutterViewHandlePlatformMessageResponse with data (InvokeJs fail) ---
+
+TEST_F(PlatformViewOHOSNapiTest, HandleResponseWithInvokeJsFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCallFunction(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(
+      facade.FlutterViewHandlePlatformMessageResponse(9, nullptr));
+  EXPECT_GT(StubNapiCallFunctionCount(), 0u);
+}
+
+// --- OnDisplayMutatorsHybrid with InvokeJs failure ---
+
+TEST_F(PlatformViewOHOSNapiTest, DisplayMutatorsInvokeJsFailure) {
+  PlatformViewOHOSNapi::env_ = FakeNapiEnv();
+  PlatformViewOHOSNapi facade(nullptr);
+  StubNapiFailCallFunction(kStubFailure);
+  EXPECT_NO_FATAL_FAILURE(facade.OnDisplayMutatorsHybrid(1, {1.0, 2.0, 3.0}));
+  EXPECT_GT(StubNapiCallFunctionCount(), 0u);
+}
+
 }  // namespace testing
 }  // namespace flutter

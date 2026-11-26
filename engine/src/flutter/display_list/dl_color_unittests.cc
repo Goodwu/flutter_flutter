@@ -290,6 +290,13 @@ TEST(DisplayListColor, ColorSpaceP3ToP3) {
 // original test expected values are post-conversion numbers; after the OHos
 // fork switched to shader-based conversion, this test must be updated
 // accordingly.)
+//
+// Guarded by FML_OS_OHOS: on the host build (no FML_OS_OHOS), withColorSpace
+// performs the numeric conversion (tested by
+// ColorSpaceP3ToExtendedSRGBLinearLight below), so this OHOS-specific assertion
+// would fail. It only applies when building for the OHOS target where the
+// shader-based conversion path is used.
+#ifdef FML_OS_OHOS
 TEST(DisplayListColor, ColorSpaceP3ToExtendedSRGB) {
   DlColor red(0.9, 1.0, 0.0, 0.0, DlColorSpace::kDisplayP3);
   EXPECT_EQ(DlColor(0.9, 1.0, 0.0, 0.0, DlColorSpace::kExtendedSRGB),
@@ -303,6 +310,7 @@ TEST(DisplayListColor, ColorSpaceP3ToExtendedSRGB) {
   EXPECT_EQ(DlColor(0.9, 0.0, 0.0, 1.0, DlColorSpace::kExtendedSRGB),
             blue.withColorSpace(DlColorSpace::kExtendedSRGB));
 }
+#endif  // FML_OS_OHOS
 
 // Verifies that P3-to-sRGB conversion operates in linear light.
 // Mid-range values (not 0 or 1) expose the gamma nonlinearity:
