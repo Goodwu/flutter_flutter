@@ -18,17 +18,14 @@ PARALLEL="${MAC_X86_PARALLEL:-4}"
 
 # ccache is on by default (keeps the runner's warm cache across runs).
 CCACHE_FLAG=""
-HOST_CCACHE=""
 if command -v ccache >/dev/null 2>&1; then
     CCACHE_FLAG="--use-ccache"
-    HOST_CCACHE="--ccache"
 fi
 
-GN="src/flutter/tools/gn"
 GS_TARGET="flutter/shell/platform/ohos:gen_snapshot flutter/shell/platform/ohos:new_gen_snapshot"
 declare -a BUILDS=(
     "host_release|./ohos -t release -n host ${CCACHE_FLAG}"
-    "host_debug|${GN} --runtime-mode debug --no-lto --no-goma --no-prebuilt-dart-sdk --full-dart-sdk --disable-desktop-embeddings --no-build-embedder-examples --verbose --mac-cpu x64 ${HOST_CCACHE} && ninja -C src/out/host_debug flutter/lib/snapshot:generate_snapshot_bin"
+    "host_debug|./ohos -t debug -n host ${CCACHE_FLAG} --ninja-target flutter/lib/snapshot:generate_snapshot_bin"
     "ohos_release_arm64|./ohos -t release -n config ${CCACHE_FLAG} && ninja -C src/out/ohos_release_arm64 ${GS_TARGET}"
     "ohos_profile_arm64|./ohos -t profile -n config ${CCACHE_FLAG} && ninja -C src/out/ohos_profile_arm64 ${GS_TARGET}"
     "ohos_debug_arm64|./ohos -t debug -n config ${CCACHE_FLAG} && ninja -C src/out/ohos_debug_arm64 ${GS_TARGET}"
