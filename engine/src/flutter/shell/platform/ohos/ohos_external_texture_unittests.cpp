@@ -44,6 +44,7 @@
 #include <cstring>
 #include <memory>
 #include <set>
+#include "flutter/display_list/image/dl_image_skia.h"
 #include "flutter/display_list/skia/dl_sk_canvas.h"
 #include "flutter/fml/log_settings.h"
 #include "flutter/shell/platform/ohos/ohos_external_texture_vulkan.h"
@@ -115,7 +116,7 @@ sk_sp<flutter::DlImage> MakeRasterDlImage(SkColor color) {
   SkBitmap bitmap;
   bitmap.allocN32Pixels(8, 8);
   bitmap.eraseColor(color);
-  return flutter::DlImage::Make(SkImages::RasterFromBitmap(bitmap));
+  return flutter::DlImageSkia::Make(SkImages::RasterFromBitmap(bitmap));
 }
 
 class ScopedCharDevFstat {
@@ -1691,6 +1692,64 @@ TEST_F(OhosExternalTextureTest, FenceProcsPartialMissing) {
     EXPECT_TRUE(FdReleasedOrReused(fd, keep));
     close(keep);
   }
+}
+
+// ===== Additional edge-case tests for uncovered branches =====
+
+TEST_F(OhosExternalTextureTest, OnGrContextCreatedWithValidTexture) {
+  EXPECT_NO_FATAL_FAILURE(texture_->OnGrContextCreated());
+  // Verify the listener was re-registered on the native image.
+  EXPECT_NE(texture_->frame_listener_.onFrameAvailable, nullptr);
+}
+
+TEST_F(OhosExternalTextureTest, OnGrContextCreatedWithNullImageSource) {
+  auto saved = texture_->native_image_source_;
+  texture_->native_image_source_ = nullptr;
+  EXPECT_NO_FATAL_FAILURE(texture_->OnGrContextCreated());
+  // Null guard must have short-circuited without touching the listener.
+  EXPECT_EQ(texture_->native_image_source_, nullptr);
+  texture_->native_image_source_ = saved;
+}
+
+TEST_F(OhosExternalTextureTest, GetProducerSurfaceIdWithNullImageSource) {
+  auto saved = texture_->native_image_source_;
+  texture_->native_image_source_ = nullptr;
+  EXPECT_EQ(texture_->GetProducerSurfaceId(), 0u);
+  texture_->native_image_source_ = saved;
+}
+
+TEST_F(OhosExternalTextureTest, MarkNewFrameAvailableWithNullWindow) {
+  auto saved_window = texture_->producer_nativewindow_;
+  texture_->producer_nativewindow_ = nullptr;
+  EXPECT_NO_FATAL_FAILURE(texture_->MarkNewFrameAvailable());
+  // Even with a null window, the producer flag must be set.
+  EXPECT_TRUE(texture_->producer_has_frame_);
+  texture_->producer_nativewindow_ = saved_window;
+}
+
+TEST_F(OhosExternalTextureTest, MarkNewFrameAvailableWithNullImageSource) {
+  auto saved_image = texture_->native_image_source_;
+  texture_->native_image_source_ = nullptr;
+  EXPECT_NO_FATAL_FAILURE(texture_->MarkNewFrameAvailable());
+  // Even with a null image source, the producer flag must be set.
+  EXPECT_TRUE(texture_->producer_has_frame_);
+  texture_->native_image_source_ = saved_image;
+}
+
+TEST_F(OhosExternalTextureTest, ResetWithoutSurfaceIdPreservesSource) {
+  // Set producer_has_frame_ to true so the assertion is meaningful.
+  texture_->MarkNewFrameAvailable();
+  ASSERT_TRUE(texture_->producer_has_frame_);
+  EXPECT_NO_FATAL_FAILURE(texture_->Reset(false));
+  // Reset(false) does not clear the producer frame flag.
+  EXPECT_TRUE(texture_->producer_has_frame_);
+}
+
+TEST_F(OhosExternalTextureTest, GetProducerWindowIdWithNullImageSource) {
+  auto saved = texture_->native_image_source_;
+  texture_->native_image_source_ = nullptr;
+  EXPECT_EQ(texture_->GetProducerWindowId(), 0u);
+  texture_->native_image_source_ = saved;
 }
 
 }  // namespace testing

@@ -757,5 +757,121 @@ TEST_F(OHOSImageGeneratorTest, ParseGifAndWebpLoopCountDirect) {
             kSevenPlaysTotal);
 }
 
+// ===== ParseGifLoopCount: uncovered edge cases =====
+
+TEST_F(OHOSImageGeneratorTest, ParseGifLoopCountNullDataReturnsOne) {
+  EXPECT_EQ(OHOSImageGenerator::ParseGifLoopCount(nullptr), 1);
+  EXPECT_EQ(OHOSImageGenerator::ParseGifLoopCount(SkData::MakeEmpty()), 1);
+}
+
+TEST_F(OHOSImageGeneratorTest, ParseGifLoopCountWrongAppIdIgnored) {
+  // Build a GIF with an application extension whose app ID is neither
+  // "NETSCAPE2.0" nor "ANIMEXTS1.0" — the extension must be skipped.
+  std::vector<uint8_t> bytes = {'G', 'I', 'F', '8', '9', 'a'};
+  const uint8_t kDescriptor[] = {0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00};
+  bytes.insert(bytes.end(), kDescriptor, kDescriptor + sizeof(kDescriptor));
+  const uint8_t kExtHeader[] = {0x21, 0xFF, 0x0B};
+  bytes.insert(bytes.end(), kExtHeader, kExtHeader + sizeof(kExtHeader));
+  const char kWrongAppId[] = "XXXXXXXXXXX";  // 11 bytes
+  bytes.insert(bytes.end(), kWrongAppId, kWrongAppId + 11);
+  bytes.push_back(0x03);
+  bytes.push_back(0x01);
+  bytes.push_back(0x05);
+  bytes.push_back(0x00);
+  bytes.push_back(0x00);
+  bytes.push_back(0x3B);
+  EXPECT_EQ(OHOSImageGenerator::ParseGifLoopCount(Bytes(bytes)), 1);
+}
+
+TEST_F(OHOSImageGeneratorTest, ParseGifLoopCountWrongSubBlockSkipped) {
+  // Build a GIF with a NETSCAPE2.0 extension but wrong sub-block size and id.
+  std::vector<uint8_t> bytes = {'G', 'I', 'F', '8', '9', 'a'};
+  const uint8_t kDescriptor[] = {0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00};
+  bytes.insert(bytes.end(), kDescriptor, kDescriptor + sizeof(kDescriptor));
+  const uint8_t kExtHeader[] = {0x21, 0xFF, 0x0B};
+  bytes.insert(bytes.end(), kExtHeader, kExtHeader + sizeof(kExtHeader));
+  const char kAppId[] = "NETSCAPE2.0";
+  bytes.insert(bytes.end(), kAppId, kAppId + 11);
+  // Wrong sub-block size (0x02 instead of 0x03) and wrong id (0x02 instead of
+  // 0x01)
+  bytes.push_back(0x02);
+  bytes.push_back(0x02);
+  bytes.push_back(0x05);
+  bytes.push_back(0x00);
+  bytes.push_back(0x00);
+  bytes.push_back(0x3B);
+  EXPECT_EQ(OHOSImageGenerator::ParseGifLoopCount(Bytes(bytes)), 1);
+}
+
+// ===== ParseWebpAnimLoopCount: uncovered edge cases =====
+
+TEST_F(OHOSImageGeneratorTest, ParseWebpAnimLoopCountNullDataReturnsMinusOne) {
+  EXPECT_EQ(OHOSImageGenerator::ParseWebpAnimLoopCount(nullptr), -1);
+  EXPECT_EQ(OHOSImageGenerator::ParseWebpAnimLoopCount(SkData::MakeEmpty()),
+            -1);
+}
+
+TEST_F(OHOSImageGeneratorTest, ParseWebpAnimLoopCountRiffWithoutWebp) {
+  // RIFF header + 4 bytes but no WEBP signature.
+  std::vector<uint8_t> bytes = {'R',  'I',  'F', 'F', 0x08, 0x00,
+                                0x00, 0x00, 'X', 'X', 'X',  'X'};
+  EXPECT_EQ(OHOSImageGenerator::ParseWebpAnimLoopCount(Bytes(bytes)), -1);
+}
+
+TEST_F(OHOSImageGeneratorTest, ParseWebpAnimLoopCountCorruptChunk) {
+  // RIFF/WEBP with a chunk whose declared size exceeds remaining data.
+  std::vector<uint8_t> bytes = {'R',  'I',  'F', 'F', 0x14, 0x00,
+                                0x00, 0x00, 'W', 'E', 'B',  'P'};
+  // Chunk tag "VP8X" with an impossibly large size.
+  bytes.insert(bytes.end(), {'V', 'P', '8', 'X'});
+  bytes.insert(bytes.end(), {0xFF, 0xFF, 0xFF, 0xFF});
+  // 6 bytes payload so total size >= 26 (loop entry threshold).
+  bytes.insert(bytes.end(), {0x00, 0x00, 0x00, 0x00, 0x00, 0x00});
+  EXPECT_EQ(OHOSImageGenerator::ParseWebpAnimLoopCount(Bytes(bytes)), -1);
+}
+
+TEST_F(OHOSImageGeneratorTest, ParseWebpAnimLoopCountSmallAnimChunk) {
+  // RIFF/WEBP with an ANIM chunk whose declared size is < kAnimPayloadSize (6).
+  std::vector<uint8_t> bytes = {'R',  'I',  'F', 'F', 0x12, 0x00,
+                                0x00, 0x00, 'W', 'E', 'B',  'P'};
+  bytes.insert(bytes.end(), {'A', 'N', 'I', 'M'});
+  // chunk size = 2 (< 6 required for background color + loop count)
+  bytes.insert(bytes.end(), {0x02, 0x00, 0x00, 0x00});
+  bytes.insert(bytes.end(), {0x00, 0x00});
+  // Pad to even
+  bytes.push_back(0x00);
+  // Trailing bytes so total size >= 26 (loop entry threshold).
+  bytes.insert(bytes.end(), {0x00, 0x00, 0x00});
+  EXPECT_EQ(OHOSImageGenerator::ParseWebpAnimLoopCount(Bytes(bytes)), -1);
+}
+
+TEST_F(OHOSImageGeneratorTest, ParseWebpAnimLoopCountSkipsNonAnim) {
+  // RIFF/WEBP with a non-ANIM chunk followed by a real ANIM chunk.
+  std::vector<uint8_t> body = {'W', 'E', 'B', 'P'};
+  // VP8X chunk (10 bytes payload, odd → pad)
+  auto push_chunk = [](std::vector<uint8_t>& out, const char* tag,
+                       const std::vector<uint8_t>& payload) {
+    out.insert(out.end(), tag, tag + 4);
+    const uint32_t size = static_cast<uint32_t>(payload.size());
+    for (size_t i = 0; i < kLeUint32Bytes; ++i) {
+      out.push_back(static_cast<uint8_t>((size >> (kBitsPerByte * i)) & 0xFF));
+    }
+    out.insert(out.end(), payload.begin(), payload.end());
+    if (size & 1) {
+      out.push_back(0x00);
+    }
+  };
+  push_chunk(body, "VP8X", {0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+  // ANIM chunk with loop count = 3
+  push_chunk(body, "ANIM", {0, 0, 0, 0, 3, 0});
+  std::vector<uint8_t> bytes = {'R', 'I', 'F', 'F'};
+  const uint32_t size = static_cast<uint32_t>(body.size());
+  for (size_t i = 0; i < kLeUint32Bytes; ++i) {
+    bytes.push_back(static_cast<uint8_t>((size >> (kBitsPerByte * i)) & 0xFF));
+  }
+  bytes.insert(bytes.end(), body.begin(), body.end());
+  EXPECT_EQ(OHOSImageGenerator::ParseWebpAnimLoopCount(Bytes(bytes)), 3);
+}
+
 }  // namespace testing
 }  // namespace flutter
